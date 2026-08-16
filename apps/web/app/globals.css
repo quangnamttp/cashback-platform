@@ -133,6 +133,10 @@ button {
   color: #111827;
 }
 
+.wide-button {
+  width: 100%;
+}
+
 .button-secondary {
   background: rgba(255, 255, 255, 0.08);
   color: white;
@@ -160,9 +164,46 @@ button {
 
 .hero-copy h1 {
   margin: 12px 0 16px;
-  font-size: clamp(2.4rem, 5vw, 4.2rem);
-  line-height: 1.02;
+  font-size: clamp(2.2rem, 4vw, 3.8rem);
+  line-height: 1.04;
   letter-spacing: -0.06em;
+}
+
+.hero-cta {
+  display: flex;
+  gap: 12px;
+  margin-top: 28px;
+  max-width: 760px;
+}
+
+.hero-cta input {
+  flex: 1;
+  min-height: 56px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.flow-badges,
+.info-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.info-strip {
+  margin-top: 18px;
+}
+
+.info-strip span {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.82);
+  padding: 8px 12px;
+  font-size: 0.78rem;
 }
 
 .hero-copy p {
@@ -311,7 +352,11 @@ button {
 
 .features-grid,
 .platform-grid,
-.stats-grid {
+.stats-grid,
+.coupon-grid,
+.deal-grid,
+.flash-sale-grid,
+.social-grid {
   display: grid;
   gap: 20px;
 }
@@ -320,12 +365,24 @@ button {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.platform-grid {
+.platform-grid,
+.coupon-grid,
+.deal-grid,
+.social-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.flash-sale-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 20px;
 }
 
 .feature-card,
 .platform-card,
+.coupon-card,
+.deal-card,
+.flash-card,
+.social-card,
 .panel,
 .stat-card,
 .info-block,
@@ -338,6 +395,98 @@ button {
 
 .feature-card {
   padding: 24px;
+}
+
+.coupon-card,
+.deal-card,
+.flash-card,
+.social-card {
+  padding: 20px;
+}
+
+.coupon-meta,
+.deal-tag,
+.social-platform {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--primary-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.coupon-card h3,
+.deal-card h3,
+.social-card h3 {
+  margin: 16px 0 10px;
+}
+
+.coupon-card p,
+.deal-card p,
+.social-card p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.coupon-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.deal-card strong,
+.flash-card strong {
+  display: block;
+  margin-top: 12px;
+  font-size: 1.1rem;
+}
+
+.flash-card {
+  display: grid;
+  gap: 8px;
+}
+
+.flash-card span,
+.flash-card small {
+  color: var(--muted);
+}
+
+.status-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 22px 0 24px;
+}
+
+.status-list span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.status-pill {
+  display: inline-flex;
+  margin-top: 12px;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(22, 163, 74, 0.1);
+  color: #166534;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .step-badge {
@@ -493,9 +642,16 @@ button {
   gap: 10px;
 }
 
-.field-group label {
+.field-group label,
+.field-label {
   color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--muted);
 }
 
 .inline-input-row {
@@ -738,10 +894,58 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.form-panel {
+  padding: 24px;
+}
+
+.compact-cta {
+  max-width: 100%;
+  margin-bottom: 18px;
+}
+
+.two-column-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.ordered-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+
+.muted-copy {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.auth-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-grid strong {
+  display: block;
+  margin-top: 6px;
+}
+
 @media (max-width: 980px) {
   .hero-grid,
   .features-grid,
   .platform-grid,
+  .coupon-grid,
+  .deal-grid,
+  .flash-sale-grid,
+  .social-grid,
   .benefits-layout,
   .stats-grid,
   .footer-grid,
@@ -759,8 +963,12 @@ button {
     width: 100%;
     justify-content: space-between;
     padding-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    font-size: 0.78rem;
   }
 
+  .hero-cta,
   .inline-input-row,
   .result-grid,
   .page-header {
@@ -774,12 +982,26 @@ button {
     padding: 64px 0;
   }
 
-  .summary-grid {
+  .summary-grid,
+  .info-strip,
+  .flow-badges {
     grid-template-columns: 1fr;
   }
 
+  .hero-copy h1 {
+    font-size: 2.4rem;
+  }
+
   .main-nav {
-    gap: 12px;
-    font-size: 0.8rem;
+    gap: 8px 10px;
+    font-size: 0.72rem;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .button {
+    flex: 1;
   }
 }
