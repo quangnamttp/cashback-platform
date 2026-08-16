@@ -1,51 +1,77 @@
-const adminStats = [
-  { label: 'Users', value: '1,284' },
-  { label: 'Links', value: '2,436' },
-  { label: 'Orders', value: '8,910' },
-  { label: 'Commissions', value: '₫46.3M' },
-  { label: 'Cashback', value: '₫18.7M' },
-  { label: 'Fraud', value: '3.2%' },
-];
+import { mockAdminStats, mockFraudSignals } from '../../lib/mock-data';
 
 export default function AdminPage() {
   return (
-    <main className="container" style={{ padding: '32px 0' }}>
-      <div className="admin-grid">
-        <aside className="panel">
-          <h3>Admin</h3>
-          <div style={{ display: 'grid', gap: '12px' }}>
-            <a href="#">Dashboard</a>
-            <a href="#">Users</a>
-            <a href="#">Affiliate platforms</a>
-            <a href="#">Products / links</a>
-            <a href="#">Orders</a>
-            <a href="#">Commissions</a>
-            <a href="#">Cashback</a>
-            <a href="#">Fraud signals</a>
+    <main className="container admin-page-shell">
+      <aside className="admin-sidebar panel">
+        <div className="brand-block compact">
+          <div className="brand-mark">C</div>
+          <div>
+            <div className="brand-name">Cashback Platform</div>
+            <div className="brand-subtitle">Admin console</div>
           </div>
-        </aside>
+        </div>
 
-        <section>
-          <h1 style={{ marginTop: 0 }}>Dashboard</h1>
-          <div className="metrics-grid">
-            {adminStats.map((stat) => (
-              <div key={stat.label} className="metric">
-                <span>{stat.label}</span>
-                <strong>{stat.value}</strong>
-              </div>
-            ))}
+        <nav className="admin-nav">
+          <a href="#">Dashboard</a>
+          <a href="#">Users</a>
+          <a href="#">Affiliate platforms</a>
+          <a href="#">Products / links</a>
+          <a href="#">Orders</a>
+          <a href="#">Commissions</a>
+          <a href="#">Cashback</a>
+          <a href="#">Fraud signals</a>
+        </nav>
+      </aside>
+
+      <section className="admin-content">
+        <div className="page-header">
+          <div>
+            <span className="eyebrow dark">Overview</span>
+            <h1>Admin dashboard</h1>
           </div>
+          <button className="button button-primary">Export report</button>
+        </div>
 
-          <div className="panel" style={{ marginTop: 24 }}>
+        <div className="stats-grid admin-grid">
+          {mockAdminStats.map((stat) => (
+            <div key={stat.label} className="stat-card compact">
+              <div className="stat-label">{stat.label}</div>
+              <div className="stat-value">{stat.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="panel admin-table-panel">
+          <div className="panel-header">
             <h3>Recent fraud signals</h3>
-            <ul>
-              <li>Duplicate order pattern detected on Shopee</li>
-              <li>Abnormal cashback ratio on TikTok Shop</li>
-              <li>Self-referral risk flagged for one campaign</li>
-            </ul>
+            <span className="badge badge-danger">3 flagged</span>
           </div>
-        </section>
-      </div>
+
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Reason</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockFraudSignals.map((signal) => (
+                <tr key={signal.user}>
+                  <td>{signal.user}</td>
+                  <td>{signal.reason}</td>
+                  <td>
+                    <span className={`badge badge-${signal.risk === 'HIGH' ? 'danger' : 'warning'}`}>
+                      {signal.risk}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   );
 }

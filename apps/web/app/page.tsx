@@ -1,156 +1,155 @@
-const platforms = ['Shopee', 'TikTok Shop', 'Lazada'];
-
-const metrics = [
-  { label: 'Orders tracked', value: '12.4K' },
-  { label: 'Active affiliates', value: '3.8K' },
-  { label: 'Ready cashback', value: '₫82.2M' },
-  { label: 'Fraud signals', value: '2.1%' },
-];
-
-const features = [
-  { title: 'Link recognition', text: 'Detect marketplace automatically from product URLs and normalize each link before tracking.' },
-  { title: 'Affiliate-first flow', text: 'Generate tracking links using adapter-driven flows prepared for official platform integrations.' },
-  { title: 'Cashback logic', text: 'Only reward valid confirmed commissions and keep a clear status trail from order to payout.' },
-];
-
-const history = [
-  { name: 'Laptop gaming', status: 'Confirmed', amount: '₫1,240,000', platform: 'Shopee' },
-  { name: 'Smartwatch', status: 'Pending', amount: '₫420,000', platform: 'TikTok Shop' },
-  { name: 'Soap kit', status: 'Paid', amount: '₫180,000', platform: 'Lazada' },
-];
+import Link from 'next/link';
+import { SiteFooter } from '../components/layout/SiteFooter';
+import { SiteHeader } from '../components/layout/SiteHeader';
+import { LinkChecker } from '../components/affiliate/LinkChecker';
+import { mockBenefits, mockFaq, mockPlatforms } from '../lib/mock-data';
 
 export default function HomePage() {
   return (
-    <main>
+    <main className="landing-page">
+      <SiteHeader />
+
       <section className="hero">
-        <div className="container">
-          <nav className="nav">
-            <div className="logo">Cashback Platform</div>
-            <div className="nav-links">
-              <a href="#features">Cách hoạt động</a>
-              <a href="#platforms">Sàn hỗ trợ</a>
-              <a href="#history">Lịch sử</a>
-              <a href="#account">Tài khoản</a>
-            </div>
-            <button className="secondary-btn">Đăng nhập</button>
-          </nav>
+        <div className="container hero-grid">
+          <div className="hero-copy">
+            <span className="eyebrow">Affiliate cashback</span>
+            <h1>Nhận cashback từ những link sản phẩm bạn mua.</h1>
+            <p>
+              Dán link từ Shopee, TikTok Shop hay Lazada. Hệ thống xác định sàn, chuẩn hóa URL và giúp bạn theo dõi commission, cashback và trạng thái giao dịch rõ ràng.
+            </p>
 
-          <div className="hero-grid">
-            <div>
-              <p style={{ textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.8 }}>Affiliate cashback</p>
-              <h1 style={{ fontSize: '3rem', lineHeight: 1.1, margin: '16px 0' }}>Nhận hoàn tiền từ sản phẩm bạn mua</h1>
-              <p style={{ maxWidth: 560, opacity: 0.9 }}>
-                Dán link sản phẩm từ Shopee, TikTok Shop hoặc Lazada. Hệ thống nhận diện sàn, chuẩn hóa link và tạo affiliate tracking flow theo adapter chuẩn sẵn cho tích hợp chính thức sau này.
-              </p>
+            <LinkChecker />
 
-              <div className="input-row">
-                <input placeholder="Dán link sản phẩm của bạn ở đây..." />
-                <button className="primary-btn">Nhận hoàn tiền</button>
-              </div>
-
-              <div style={{ marginTop: 18, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {platforms.map((platform) => (
-                  <span key={platform} className="platform-pill" style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}>
-                    {platform}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="hero-card">
-              <h3 style={{ marginTop: 0 }}>Tổng quan nhanh</h3>
-              <div className="metrics-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <div className="metric" style={{ background: 'rgba(255,255,255,0.08)', color: 'white', borderColor: 'rgba(255,255,255,0.12)' }}>
-                  <span>Commission</span>
-                  <strong>₫4.2M</strong>
-                </div>
-                <div className="metric" style={{ background: 'rgba(255,255,255,0.08)', color: 'white', borderColor: 'rgba(255,255,255,0.12)' }}>
-                  <span>Cashback</span>
-                  <strong>₫1.6M</strong>
-                </div>
-              </div>
-              <div style={{ marginTop: 18, padding: '16px 0 0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}><span>Pending</span><strong>42%</strong></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}><span>Confirmed</span><strong>38%</strong></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Refunded</span><strong>20%</strong></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="section" id="features">
-        <div className="container">
-          <h2 style={{ textAlign: 'center', fontSize: '2.25rem', marginBottom: 24 }}>Cách hoạt động</h2>
-          <div className="features-grid">
-            {features.map((feature) => (
-              <div key={feature.title} className="card">
-                <h3>{feature.title}</h3>
-                <p>{feature.text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section" id="platforms">
-        <div className="container">
-          <h2 style={{ fontSize: '2.25rem', marginBottom: 20 }}>Sàn hỗ trợ</h2>
-          <div className="platform-grid">
-            {platforms.map((platform) => (
-              <div key={platform} className="card">
-                <h3>{platform}</h3>
-                <p>Nhận diện link, chuẩn hóa URL và chuẩn bị flow affiliate theo adapter. Dữ liệu được tách biệt với logic payout.</p>
-                <span className="platform-pill">Adapter ready</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="section" id="history">
-        <div className="container">
-          <div className="history-grid">
-            <div className="panel">
-              <h3>Lịch sử cashback</h3>
-              {history.map((item) => (
-                <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #e5e7eb' }}>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <div style={{ fontSize: '0.9rem', color: '#475467' }}>{item.platform}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div>{item.amount}</div>
-                    <div style={{ color: '#0f766e', fontWeight: 700 }}>{item.status}</div>
-                  </div>
-                </div>
+            <div className="platform-row" aria-label="Supported platforms">
+              {mockPlatforms.map((platform) => (
+                <span key={platform.name} className="platform-pill light" style={{ borderColor: `${platform.accent}55` }}>
+                  {platform.name}
+                </span>
               ))}
             </div>
+          </div>
 
-            <aside className="panel" id="account">
-              <h3>Tài khoản</h3>
-              <div style={{ display: 'grid', gap: 12 }}>
-                <div><strong>Người dùng</strong><div>anhquang@example.com</div></div>
-                <div><strong>Cashback khả dụng</strong><div>₫1,680,000</div></div>
-                <div><strong>Hạng</strong><div>Affiliate Pro</div></div>
+          <div className="hero-summary">
+            <div className="summary-card card-glass">
+              <div className="summary-header">
+                <span>Cashback khả dụng</span>
+                <span className="badge badge-success">+12.5%</span>
               </div>
-            </aside>
+              <div className="summary-value">₫1.68M</div>
+              <div className="summary-grid">
+                <div>
+                  <span>Đã xác nhận</span>
+                  <strong>₫1.02M</strong>
+                </div>
+                <div>
+                  <span>Đang chờ</span>
+                  <strong>₫660K</strong>
+                </div>
+              </div>
+              <div className="summary-progress">
+                <span style={{ width: '68%' }} />
+              </div>
+              <div className="summary-meta">68% các giao dịch đang ở trạng thái hợp lệ</div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="section">
+      <section id="how-it-works" className="section">
         <div className="container">
-          <div className="metrics-grid">
-            {metrics.map((metric) => (
-              <div key={metric.label} className="metric">
-                <span>{metric.label}</span>
-                <strong>{metric.value}</strong>
+          <div className="section-header">
+            <span className="eyebrow dark">Cách hoạt động</span>
+            <h2>Luồng đơn giản, rõ ràng, dễ kiểm tra.</h2>
+          </div>
+
+          <div className="features-grid">
+            {mockBenefits.map((item, index) => (
+              <div key={item.title} className="feature-card">
+                <span className="step-badge">0{index + 1}</span>
+                <h3>{item.title}</h3>
+                <p>{item.text}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
+
+      <section id="platforms" className="section muted-section">
+        <div className="container">
+          <div className="section-header left-header">
+            <span className="eyebrow dark">Sàn hỗ trợ</span>
+            <h2>Chuẩn hóa ngay cho 3 marketplace chính.</h2>
+          </div>
+
+          <div className="platform-grid">
+            {mockPlatforms.map((platform) => (
+              <div key={platform.name} className="platform-card">
+                <div className="platform-title-row">
+                  <span className="dot" style={{ background: platform.accent }} />
+                  <h3>{platform.name}</h3>
+                </div>
+                <p>{platform.description}</p>
+                <span className="platform-pill">Adapter-ready</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="benefits" className="section">
+        <div className="container benefits-layout">
+          <div className="info-block">
+            <span className="eyebrow dark">Tại sao chọn chúng tôi</span>
+            <h2>Cashback rõ ràng từ link đến payout.</h2>
+            <p>
+              Mỗi giao dịch đều có lịch sử trạng thái, từ link nhập, nhận diện sàn, xác nhận commission đến khi cashback được tính và rút. Không có sự mơ hồ trong hành trình của người dùng.
+            </p>
+            <div className="bullet-list">
+              <div>• Theo dõi multi-platform trong một dashboard</div>
+              <div>• Tránh spam và order duplicated</div>
+              <div>• Dễ mở rộng cho affiliate API thật sau này</div>
+            </div>
+            <Link href="/dashboard" className="button button-primary">Xem dashboard</Link>
+          </div>
+
+          <div className="stats-panel">
+            <div className="stat-stack">
+              <div className="mini-stat">
+                <span>Orders tracked</span>
+                <strong>12.4K</strong>
+              </div>
+              <div className="mini-stat">
+                <span>Ready cashback</span>
+                <strong>₫82.2M</strong>
+              </div>
+              <div className="mini-stat">
+                <span>Fraud risk</span>
+                <strong>2.1%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq" className="section muted-section">
+        <div className="container">
+          <div className="section-header center-header">
+            <span className="eyebrow dark">FAQ</span>
+            <h2>Câu hỏi thường gặp.</h2>
+          </div>
+
+          <div className="faq-list">
+            {mockFaq.map((faq) => (
+              <details key={faq.question} open>
+                <summary>{faq.question}</summary>
+                <p>{faq.answer}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <SiteFooter />
     </main>
   );
 }
