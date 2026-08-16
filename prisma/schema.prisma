@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  AFFILIATE
+  USER
+}
+
+enum PlatformType {
+  SHOPEE
+  TIKTOK_SHOP
+  LAZADA
+}
+
+enum LinkStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+}
+
+enum CommissionStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REJECTED
+  REFUNDED
+}
+
+enum CashbackStatus {
+  PENDING
+  ELIGIBLE
+  REJECTED
+  PAID
+}
+
+enum FraudRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  passwordHash          String
+  fullName              String
+  role                  UserRole  @default(USER)
+  isActive              Boolean   @default(true)
+  emailVerifiedAt       DateTime?
+  lastLoginAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  productLinks          ProductLink[]
+  affiliateLinks        AffiliateLink[]
+  orders                Order[]
+  cashbackHistories     CashbackHistory[]
+  fraudSignals          FraudSignal[]
+}
+
+model AffiliateNetwork {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  platform     PlatformType
+  isEnabled    Boolean  @default(true)
+  apiBaseUrl   String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  commissionRules CommissionRule[]
+  affiliateLinks  AffiliateLink[]
+}
+
+model ProductLink {
+  id                String       @id @default(cuid())
+  userId            String
+  originalUrl       String
+  normalizedUrl     String?
+  platform          PlatformType
+  productIdentifier String?
+  sourceHost        String?
+  isValid           Boolean      @default(false)
+  status            LinkStatus   @default(ACTIVE)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  user              User          @relation(fields: [userId], references: [id])
+  affiliateLinks    AffiliateLink[]
+
+  @@index([userId, platform])
+}
+
+model AffiliateLink {
+  id                  String      @id @default(cuid())
+  userId              String
+  productLinkId       String
+  affiliateNetworkId  String?
+  trackingCode        String?
+  generatedUrl        String
+  officialMethod      String?
+  status              LinkStatus  @default(ACTIVE)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  user               User              @relation(fields: [userId], references: [id])
+  productLink        ProductLink       @relation(fields: [productLinkId], references: [id])
+  affiliateNetwork   AffiliateNetwork? @relation(fields: [affiliateNetworkId], references: [id])
+  orders             Order[]
+
+  @@index([userId, status])
+}
+
+model CommissionRule {
+  id                 String            @id @default(cuid())
+  affiliateNetworkId String
+  platform           PlatformType
+  rate               Decimal           @db.Decimal(10, 4)
+  minOrderValue      Decimal?          @db.Decimal(12, 2)
+  maxCommission      Decimal?          @db.Decimal(12, 2)
+  isActive           Boolean           @default(true)
+  validFrom          DateTime?
+  validTo            DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  affiliateNetwork   AffiliateNetwork @relation(fields: [affiliateNetworkId], references: [id])
+}
+
+model Order {
+  id                 String        @id @default(cuid())
+  userId             String
+  affiliateLinkId    String
+  platform           PlatformType
+  externalOrderId    String?
+  orderTotal         Decimal       @db.Decimal(12, 2)
+  currency           String        @default("VND")
+  status             OrderStatus   @default(PENDING)
+  orderDate          DateTime?
+  confirmedAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  user               User           @relation(fields: [userId], references: [id])
+  affiliateLink      AffiliateLink  @relation(fields: [affiliateLinkId], references: [id])
+  commissions        Commission[]
+  cashbackHistories  CashbackHistory[]
+
+  @@index([userId, status])
+  @@index([platform, externalOrderId])
+}
+
+model Commission {
+  id                String            @id @default(cuid())
+  orderId           String
+  amount            Decimal           @db.Decimal(12, 2)
+  currency          String            @default("VND")
+  rate              Decimal           @db.Decimal(10, 4)
+  status            CommissionStatus  @default(PENDING)
+  source            String?
+  confirmedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  order             Order @relation(fields: [orderId], references: [id])
+  cashbackHistories CashbackHistory[]
+
+  @@index([orderId, status])
+}
+
+model CashbackHistory {
+  id              String         @id @default(cuid())
+  userId          String
+  orderId         String?
+  commissionId    String?
+  amount          Decimal        @db.Decimal(12, 2)
+  currency        String         @default("VND")
+  status          CashbackStatus @default(PENDING)
+  rate            Decimal        @db.Decimal(10, 4)
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user            User           @relation(fields: [userId], references: [id])
+  order           Order?         @relation(fields: [orderId], references: [id])
+  commission      Commission?    @relation(fields: [commissionId], references: [id])
+
+  @@index([userId, status])
+}
+
+model FraudSignal {
+  id             String         @id @default(cuid())
+  userId         String
+  riskLevel      FraudRiskLevel @default(MEDIUM)
+  reason         String
+  evidence       String?
+  isResolved     Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user           User @relation(fields: [userId], references: [id])
+
+  @@index([userId, riskLevel])
+}
