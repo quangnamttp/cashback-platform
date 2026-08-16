@@ -11,38 +11,30 @@ export default function HomePage() {
       <section className="hero">
         <div className="container hero-grid">
           <div className="hero-copy">
-            <span className="eyebrow">BUY → SAVE → GET CASHBACK</span>
-            <h1>Paste your Shopee / TikTok Shop / Lazada product link</h1>
-            <p>
-              We detect the marketplace, process the affiliate/deep link through a marketplace adapter, and help you get a usable shopping link before purchase. Cashback becomes available only after order and commission confirmation.
-            </p>
+            <h1>Save money when you shop online</h1>
+            <p>Get cashback from your favorite stores. Paste a product link and earn cashback on every purchase.</p>
 
             <div className="hero-cta">
-              <input placeholder="Paste your Shopee / TikTok Shop / Lazada product link" />
-              <button className="button button-primary">GET CASHBACK LINK</button>
+              <input placeholder="https://shopee.vn/..." />
+              <button className="button button-primary">🔗 Nhận hoàn tiền</button>
             </div>
 
-            <div className="flow-badges">
-              {mockPlatforms.map((platform) => (
-                <span key={platform.name} className="platform-pill light" style={{ borderColor: `${platform.accent}55` }}>
-                  {platform.name}
-                </span>
-              ))}
-            </div>
-
-            <div className="info-strip">
-              <span>Secure checkout</span>
-              <span>Order tracking</span>
-              <span>Commission confirmation</span>
-              <span>Cashback wallet</span>
+            <div style={{ marginTop: '20px' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Supported stores:</span>
+              <div className="flow-badges">
+                {mockPlatforms.map((platform) => (
+                  <span key={platform.name} className="platform-pill light" style={{ borderColor: `${platform.accent}55` }}>
+                    {platform.name}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
           <div className="hero-summary">
             <div className="summary-card">
               <div className="summary-header">
-                <span>Eligible cashback</span>
-                <span className="badge badge-success">Confirmed only</span>
+                <span>Your cashback</span>
               </div>
               <div className="summary-value">₫1.68M</div>
               <div className="summary-grid">
@@ -56,8 +48,32 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="summary-progress"><span style={{ width: '52%' }} /></div>
-              <div className="summary-meta">Cashback is only paid after commission confirmation.</div>
+              <div className="summary-meta">Paid after order confirmation</div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section section-alt" id="stores">
+        <div className="container">
+          <div className="section-header">
+            <span className="eyebrow dark">Popular stores</span>
+            <h2>Shop and earn cashback</h2>
+          </div>
+
+          <div className="platform-grid">
+            {mockPlatforms.map((platform, idx) => {
+              const emojis = ['🛍️', '🎵', '📦'];
+              const cashbacks = ['Up to 4%', 'Up to 3%', 'Up to 5%'];
+              return (
+                <div key={platform.name} className="platform-card">
+                  <div style={{ fontSize: '1.5rem' }}>{emojis[idx]}</div>
+                  <h3>{platform.name}</h3>
+                  <p>{cashbacks[idx]}</p>
+                  <button className="button button-secondary" style={{ marginTop: '12px' }}>Shop now</button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -66,51 +82,48 @@ export default function HomePage() {
         <div className="container">
           <div className="section-header">
             <span className="eyebrow dark">How it works</span>
-            <h2>Simple and transparent product flow.</h2>
+            <h2>Simple, transparent, and rewarding</h2>
           </div>
 
           <div className="features-grid">
             <div className="feature-card">
-              <span className="step-badge">01</span>
-              <h3>Paste product link</h3>
-              <p>User pastes a Shopee, TikTok Shop, or Lazada product URL for marketplace detection.</p>
+              <span className="step-badge">1</span>
+              <h3>Paste link</h3>
+              <p>Share your product link from Shopee, TikTok Shop, or Lazada.</p>
             </div>
             <div className="feature-card">
-              <span className="step-badge">02</span>
-              <h3>Generate affiliate link</h3>
-              <p>System identifies the source marketplace and processes the link via an adapter-first flow.</p>
+              <span className="step-badge">2</span>
+              <h3>Get cashback link</h3>
+              <p>We generate an affiliate link to track your purchase.</p>
             </div>
             <div className="feature-card">
-              <span className="step-badge">03</span>
-              <h3>Track order and commission</h3>
-              <p>Orders and commission details are tracked separately until the status is confirmed.</p>
+              <span className="step-badge">3</span>
+              <h3>Shop and buy</h3>
+              <p>Click and complete your purchase on the marketplace.</p>
             </div>
             <div className="feature-card">
-              <span className="step-badge">04</span>
-              <h3>Cashback becomes available</h3>
-              <p>Only confirmed commission becomes eligible cashback, then it appears in the wallet.</p>
+              <span className="step-badge">4</span>
+              <h3>Get cashback</h3>
+              <p>Cashback is credited to your wallet after confirmation.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="section muted-section">
+      <section className="section section-alt">
         <div className="container">
-          <div className="section-header left-header">
-            <span className="eyebrow dark">Current coupons</span>
-            <h2>Fresh marketplace offers.</h2>
+          <div className="section-header">
+            <span className="eyebrow dark">Featured offers</span>
+            <h2>Current marketplace deals</h2>
           </div>
 
           <div className="coupon-grid">
-            {mockCoupons.map((coupon) => (
+            {mockCoupons.slice(0, 3).map((coupon) => (
               <div key={coupon.code} className="coupon-card">
                 <div className="coupon-meta">{coupon.marketplace}</div>
-                <h3>{coupon.code}</h3>
-                <p>{coupon.discount}</p>
-                <ul>
-                  <li>Min. order: {coupon.minOrder}</li>
-                  <li>Status: {coupon.status}</li>
-                </ul>
+                <h3>{coupon.discount}</h3>
+                <p>{coupon.code}</p>
+                <small>Min. order: {coupon.minOrder}</small>
               </div>
             ))}
           </div>
@@ -119,39 +132,57 @@ export default function HomePage() {
 
       <section className="section">
         <div className="container">
-          <div className="section-header left-header">
-            <span className="eyebrow dark">Deals / Flash sales</span>
-            <h2>Time-based offers and limited windows.</h2>
+          <div className="section-header">
+            <span className="eyebrow dark">Flash sales</span>
+            <h2>Limited-time offers</h2>
           </div>
 
           <div className="deal-grid">
-            {mockDeals.map((deal) => (
+            {mockDeals.slice(0, 3).map((deal) => (
               <div key={deal.title} className="deal-card">
                 <div className="deal-tag">{deal.marketplace}</div>
                 <h3>{deal.title}</h3>
-                <p>{deal.time}</p>
+                <small>{deal.time}</small>
                 <strong>{deal.discount}</strong>
-              </div>
-            ))}
-          </div>
-
-          <div className="flash-sale-grid">
-            {mockFlashSales.map((sale) => (
-              <div key={sale.marketplace} className="flash-card">
-                <span>{sale.marketplace}</span>
-                <strong>{sale.window}</strong>
-                <small>{sale.label}</small>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="section muted-section">
+      <section className="section section-alt">
         <div className="container">
-          <div className="section-header left-header">
+          <div className="section-header center-header">
+            <span className="eyebrow dark">Why cashback platform?</span>
+            <h2>Trustworthy cashback, every time</h2>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', marginTop: '32px' }}>
+            <div className="info-block">
+              <h3>✓ Secure</h3>
+              <p>Official affiliate links from verified marketplace partners.</p>
+            </div>
+            <div className="info-block">
+              <h3>✓ Transparent</h3>
+              <p>Real-time tracking of your orders and cashback status.</p>
+            </div>
+            <div className="info-block">
+              <h3>✓ Fast payouts</h3>
+              <p>Quick withdrawal to your bank or e-wallet.</p>
+            </div>
+            <div className="info-block">
+              <h3>✓ Easy to use</h3>
+              <p>No complex steps, just paste, buy, and earn.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section section-alt">
+        <div className="container">
+          <div className="section-header">
             <span className="eyebrow dark">Social media vouchers</span>
-            <h2>Verified sources from creator and brand channels.</h2>
+            <h2>Verified creator and brand offers</h2>
           </div>
 
           <div className="social-grid">
@@ -169,49 +200,44 @@ export default function HomePage() {
       </section>
 
       <section className="section">
-        <div className="container benefits-layout">
-          <div className="info-block">
+        <div className="container">
+          <div className="section-header">
             <span className="eyebrow dark">Cashback wallet</span>
-            <h2>Clear transaction states.</h2>
-            <p>
-              PENDING, CONFIRMED, AVAILABLE, WITHDRAWN, CANCELLED, REFUNDED, and REJECTED are tracked separately so users understand what is pending versus what is actually payable.
-            </p>
-            <div className="status-list">
-              <span>PENDING</span>
-              <span>CONFIRMED</span>
-              <span>AVAILABLE</span>
-              <span>WITHDRAWN</span>
-              <span>CANCELLED</span>
-              <span>REFUNDED</span>
-              <span>REJECTED</span>
-            </div>
-            <Link href="/cashback-wallet" className="button button-primary">Open wallet</Link>
+            <h2>Clear transaction tracking</h2>
           </div>
 
-          <div className="stats-panel">
-            <div className="stat-stack">
-              <div className="mini-stat">
-                <span>Eligible cashback</span>
-                <strong>₫890K</strong>
-              </div>
-              <div className="mini-stat">
-                <span>Orders tracked</span>
-                <strong>12.4K</strong>
-              </div>
-              <div className="mini-stat">
-                <span>Referral rewards</span>
-                <strong>₫120K</strong>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginTop: '24px' }}>
+            <div className="info-block">
+              <h3>Simple states</h3>
+              <p>PENDING, CONFIRMED, AVAILABLE, and WITHDRAWN are tracked separately so you know what&apos;s pending versus what&apos;s payable.</p>
+            </div>
+            <div className="stats-panel">
+              <div className="stat-stack">
+                <div className="mini-stat">
+                  <span>Available</span>
+                  <strong>₫890K</strong>
+                </div>
+                <div className="mini-stat">
+                  <span>Pending</span>
+                  <strong>₫790K</strong>
+                </div>
+                <div className="mini-stat">
+                  <span>Withdrawn</span>
+                  <strong>₫320K</strong>
+                </div>
               </div>
             </div>
           </div>
+
+          <Link href="/cashback-wallet" className="button button-primary" style={{ marginTop: '24px' }}>Open wallet</Link>
         </div>
       </section>
 
-      <section id="faq" className="section muted-section">
+      <section id="faq" className="section section-alt">
         <div className="container">
           <div className="section-header center-header">
             <span className="eyebrow dark">FAQ</span>
-            <h2>Questions first-time users ask.</h2>
+            <h2>Common questions</h2>
           </div>
 
           <div className="faq-list">

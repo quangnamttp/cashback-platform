@@ -1,28 +1,25 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
 
 const navItems = [
   { label: 'Home', href: '/' },
-  { label: 'Get Cashback Link', href: '/get-cashback-link' },
+  { label: 'Stores', href: '/#stores' },
   { label: 'Coupons', href: '/coupons' },
-  { label: 'Deals / Flash Sales', href: '/deals' },
-  { label: 'Social Media Vouchers', href: '/social-vouchers' },
-  { label: 'Orders', href: '/orders' },
-  { label: 'Cashback Wallet', href: '/cashback-wallet' },
-  { label: 'Refer Friends', href: '/referrals' },
-  { label: 'Account', href: '/account' },
+  { label: 'Deals', href: '/deals' },
 ];
 
 export function SiteHeader() {
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+
   return (
     <header className="site-header">
       <div className="container header-inner">
-        <div className="brand-block">
+        <Link href="/" className="brand-block">
           <div className="brand-mark">C</div>
-          <div>
-            <div className="brand-name">Cashback Platform</div>
-            <div className="brand-subtitle">Smart affiliate savings</div>
-          </div>
-        </div>
+          <div className="brand-name">Cashback Platform</div>
+        </Link>
 
         <nav className="main-nav" aria-label="Main navigation">
           {navItems.map((item) => (
@@ -31,8 +28,33 @@ export function SiteHeader() {
         </nav>
 
         <div className="header-actions">
-          <button className="button button-ghost">Google Login</button>
-          <button className="button button-primary">Sign up</button>
+          <button className="language-selector" title="Language selector">
+            🌐 VI ▾
+          </button>
+
+          <div className="account-menu-container">
+            <button 
+              className="account-menu-button"
+              onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
+              aria-expanded={isAccountMenuOpen}
+              aria-haspopup="menu"
+            >
+              👤 Account
+            </button>
+
+            {isAccountMenuOpen && (
+              <div className="account-menu-dropdown active" role="menu">
+                <Link href="/account" role="menuitem">My Profile</Link>
+                <Link href="/orders" role="menuitem">My Orders</Link>
+                <Link href="/cashback-wallet" role="menuitem">Cashback Wallet</Link>
+                <Link href="/referrals" role="menuitem">Refer Friends</Link>
+                <Link href="/social-vouchers" role="menuitem">My Vouchers</Link>
+                <Link href="/account" role="menuitem">Settings</Link>
+                <div className="account-menu-dropdown-divider"></div>
+                <button className="account-menu-dropdown" role="menuitem">Sign out</button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>
