@@ -10,10 +10,7 @@
     "resolveJsonModule": true,
     "declaration": true,
     "sourceMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["apps/*/src/*"]
-    }
+    "baseUrl": "."
   },
   "exclude": ["node_modules", "dist", ".next"]
 }
