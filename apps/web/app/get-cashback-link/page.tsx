@@ -23,7 +23,7 @@ export default function GetCashbackLinkPage() {
 
         <div className="platform-row">
           {mockPlatforms.map((platform) => (
-            <span key={platform.name} className="platform-pill light" style={{ borderColor: `${platform.accent}55` }}>
+            <span key={platform.name} className="hero-platform-pill" style={{ borderColor: `${platform.accent}55` }}>
               {platform.name}
             </span>
           ))}

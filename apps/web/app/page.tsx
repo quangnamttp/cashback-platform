@@ -27,7 +27,7 @@ export default function HomePage() {
 
         <div className="hero-platform-row">
           {mockPlatforms.map((platform) => (
-            <span key={platform.name} className="platform-pill light">
+            <span key={platform.name} className="hero-platform-pill">
               {platformMeta[platform.name]?.emoji} {platform.name}
             </span>
           ))}
