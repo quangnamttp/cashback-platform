@@ -4,7 +4,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "npx prisma generate --schema=../../prisma/schema.prisma && nest build",
+    "build": "npx prisma generate --schema=prisma/schema.prisma && nest build",
     "start": "node dist/server.js",
     "lint": "eslint . --ext .ts"
   },
