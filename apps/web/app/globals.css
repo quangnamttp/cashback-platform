@@ -85,9 +85,14 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  height: 70px;
   gap: 24px;
   padding: 0 20px;
+}
+
+.mobile-wallet-btn {
+  display: none;
+  text-decoration: none;
 }
 
 .brand-block {
@@ -1397,6 +1402,19 @@ p {
     display: none;
   }
   .header-inner {
-    gap: 12px;
+    gap: 8px;
+    padding: 0 12px;
+  }
+  .mobile-wallet-btn {
+    display: inline-flex;
+  }
+  .hide-on-mobile {
+    display: none;
+  }
+  .brand-name {
+    display: none;
+  }
+  .header-actions {
+    gap: 8px;
   }
 }

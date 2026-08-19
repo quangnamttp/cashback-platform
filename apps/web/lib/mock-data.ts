@@ -71,9 +71,9 @@ export const mockFaq = [
 ];
 
 export const mockCoupons = [
-  { marketplace: 'Shopee', code: 'SHOPEE10', discount: '10% tối đa ₫50K', minOrder: '₫150K', status: 'Active' },
-  { marketplace: 'TikTok Shop', code: 'TTSAVE15', discount: '15% tối đa ₫80K', minOrder: '₫200K', status: 'Active' },
-  { marketplace: 'Lazada', code: 'LAZADA12', discount: '12% tối đa ₫60K', minOrder: '₫180K', status: 'Ending soon' },
+  { marketplace: 'Shopee', code: 'SHOPEE10', discount: '10% tối đa ₫50K', minOrder: '₫150K', expiry: '31/08/2026', status: 'Active' },
+  { marketplace: 'TikTok Shop', code: 'TTSAVE15', discount: '15% tối đa ₫80K', minOrder: '₫200K', expiry: '25/08/2026', status: 'Active' },
+  { marketplace: 'Lazada', code: 'LAZADA12', discount: '12% tối đa ₫60K', minOrder: '₫180K', expiry: '22/08/2026', status: 'Ending soon' },
 ];
 
 export const mockDeals = [
@@ -89,10 +89,10 @@ export const mockFlashSales = [
 ];
 
 export const mockSocialVouchers = [
-  { platform: 'Facebook', title: 'Creator coupon', discount: '₫30K off', source: 'Partner feed', status: 'Valid' },
-  { platform: 'Instagram', title: 'Beauty picks', discount: '10% off', source: 'Story code', status: 'Valid' },
-  { platform: 'TikTok', title: 'Shop campaign', discount: '₫50K off', source: 'Live session', status: 'Limited' },
-  { platform: 'YouTube', title: 'Product review code', discount: '15% off', source: 'Verified creator', status: 'Valid' },
+  { platform: 'Facebook', title: 'Creator coupon', code: 'FBVOUCHER30', discount: 'Giảm ₫30K', condition: 'Đơn từ ₫150K', source: 'Partner feed', expiry: '30/08/2026', status: 'Valid' },
+  { platform: 'Instagram', title: 'Beauty picks', code: 'IGBEAUTY10', discount: 'Giảm 10%', condition: 'Đơn từ ₫200K', source: 'Story code', expiry: '28/08/2026', status: 'Valid' },
+  { platform: 'TikTok', title: 'Shop campaign', code: 'TIKTOK50K', discount: 'Giảm ₫50K', condition: 'Đơn từ ₫300K', source: 'Live session', expiry: '24/08/2026', status: 'Limited' },
+  { platform: 'YouTube', title: 'Product review code', code: 'YTREVIEW15', discount: 'Giảm 15%', condition: 'Đơn từ ₫250K', source: 'Verified creator', expiry: '29/08/2026', status: 'Valid' },
 ];
 
 export const mockCashbackStates = [

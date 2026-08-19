@@ -46,7 +46,11 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
         </nav>
 
         <div className="header-actions">
-          <div className="account-menu-container">
+          <Link href="/cashback-wallet" className="icon-btn mobile-wallet-btn" title={t('sidebar_wallet')} aria-label={t('sidebar_wallet')}>
+            💰
+          </Link>
+
+          <div className="account-menu-container hide-on-mobile">
             <button
               className="language-selector"
               onClick={() => {
