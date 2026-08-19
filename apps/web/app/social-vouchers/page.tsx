@@ -1,8 +1,10 @@
 import { mockSocialVouchers } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function SocialVouchersPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Social Media Vouchers</span>
@@ -21,6 +23,7 @@ export default function SocialVouchersPage() {
           </div>
         ))}
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }

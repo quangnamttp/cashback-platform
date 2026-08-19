@@ -1,21 +1,39 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { LANGS, useLanguage } from '../../lib/i18n';
 
-const navItems = [
-  { label: 'Home', href: '/' },
-  { label: 'Stores', href: '/#stores' },
-  { label: 'Coupons', href: '/coupons' },
-  { label: 'Deals', href: '/deals' },
-];
-
-export function SiteHeader() {
+export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
+  const { lang, setLang, t } = useLanguage();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const navItems = [
+    { label: t('nav_home'), href: '/' },
+    { label: t('nav_stores'), href: '/#stores' },
+    { label: t('nav_coupons'), href: '/coupons' },
+    { label: t('nav_deals'), href: '/deals' },
+  ];
+
+  const currentLang = LANGS.find((item) => item.code === lang) ?? LANGS[0];
 
   return (
-    <header className="site-header">
+    <header ref={headerRef} className={`site-header${isScrolled ? ' scrolled' : ''}`}>
       <div className="container header-inner">
+        <button className="mobile-menu-btn" onClick={onMenuToggle} aria-label="Menu">
+          ☰
+        </button>
+
         <Link href="/" className="brand-block">
           <div className="brand-mark">C</div>
           <div className="brand-name">Cashback Platform</div>
@@ -28,30 +46,69 @@ export function SiteHeader() {
         </nav>
 
         <div className="header-actions">
-          <button className="language-selector" title="Language selector">
-            🌐 VI ▾
+          <div className="account-menu-container">
+            <button
+              className="language-selector"
+              onClick={() => {
+                setIsLangMenuOpen((open) => !open);
+                setIsAccountMenuOpen(false);
+              }}
+              title={t('header_language')}
+              aria-haspopup="menu"
+              aria-expanded={isLangMenuOpen}
+            >
+              🌐 {currentLang.short} ▾
+            </button>
+
+            {isLangMenuOpen && (
+              <div className="account-menu-dropdown active lang-dropdown" role="menu">
+                {LANGS.map((item) => (
+                  <button
+                    key={item.code}
+                    role="menuitem"
+                    className={item.code === lang ? 'lang-option active' : 'lang-option'}
+                    onClick={() => {
+                      setLang(item.code);
+                      setIsLangMenuOpen(false);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button className="icon-btn" title={t('header_notifications')} aria-label={t('header_notifications')}>
+            🔔
           </button>
 
           <div className="account-menu-container">
-            <button 
+            <button
               className="account-menu-button"
-              onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
+              onClick={() => {
+                setIsAccountMenuOpen((open) => !open);
+                setIsLangMenuOpen(false);
+              }}
               aria-expanded={isAccountMenuOpen}
               aria-haspopup="menu"
+              title={t('header_account')}
             >
-              👤 Account
+              👤
             </button>
 
             {isAccountMenuOpen && (
               <div className="account-menu-dropdown active" role="menu">
-                <Link href="/account" role="menuitem">My Profile</Link>
-                <Link href="/orders" role="menuitem">My Orders</Link>
-                <Link href="/cashback-wallet" role="menuitem">Cashback Wallet</Link>
-                <Link href="/referrals" role="menuitem">Refer Friends</Link>
-                <Link href="/social-vouchers" role="menuitem">My Vouchers</Link>
-                <Link href="/account" role="menuitem">Settings</Link>
-                <div className="account-menu-dropdown-divider"></div>
-                <button className="account-menu-dropdown" role="menuitem">Sign out</button>
+                <Link href="/account" role="menuitem">{t('account_profile')}</Link>
+                <Link href="/cashback-wallet" role="menuitem">{t('sidebar_wallet')}</Link>
+                <Link href="/orders" role="menuitem">{t('sidebar_orders')}</Link>
+                <Link href="/coupons" role="menuitem">{t('sidebar_my_vouchers')}</Link>
+                <Link href="/referrals" role="menuitem">{t('sidebar_referrals')}</Link>
+                <Link href="/cashback-wallet" role="menuitem">{t('sidebar_withdraw_history')}</Link>
+                <Link href="/account" role="menuitem">{t('sidebar_support')}</Link>
+                <Link href="/account" role="menuitem">{t('sidebar_settings')}</Link>
+                <div className="account-menu-dropdown-divider" />
+                <button role="menuitem">{t('account_sign_out')}</button>
               </div>
             )}
           </div>

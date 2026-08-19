@@ -1,8 +1,10 @@
 import { mockCoupons } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function CouponsPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Coupons</span>
@@ -23,6 +25,7 @@ export default function CouponsPage() {
           </div>
         ))}
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }

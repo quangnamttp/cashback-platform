@@ -1,8 +1,10 @@
 import { mockCashbackRows } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function CashbackPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Cashback</span>
@@ -38,6 +40,7 @@ export default function CashbackPage() {
           </tbody>
         </table>
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }

@@ -1,8 +1,10 @@
 import { mockDeals } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function DealsPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Deals / Flash Sales</span>
@@ -20,6 +22,7 @@ export default function DealsPage() {
           </div>
         ))}
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }

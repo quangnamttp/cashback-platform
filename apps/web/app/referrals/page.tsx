@@ -1,8 +1,10 @@
 import { mockCashbackRows } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function ReferralsPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Refer Friends</span>
@@ -70,6 +72,7 @@ export default function ReferralsPage() {
           </tbody>
         </table>
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }

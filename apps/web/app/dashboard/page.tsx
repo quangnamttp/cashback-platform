@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { mockCashbackRows, mockDashboardStats, mockOrderRows } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function DashboardPage() {
   return (
-    <main className="container dashboard-page">
+    <AppShell>
+    <div className="dashboard-page">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Overview</span>
@@ -79,6 +81,7 @@ export default function DashboardPage() {
           </div>
         </aside>
       </div>
-    </main>
+    </div>
+    </AppShell>
   );
 }

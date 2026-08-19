@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { mockPlatforms } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function GetCashbackLinkPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Get Cashback Link</span>
@@ -46,6 +48,7 @@ export default function GetCashbackLinkPage() {
           </p>
         </div>
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }

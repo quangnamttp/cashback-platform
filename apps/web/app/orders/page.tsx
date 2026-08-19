@@ -1,8 +1,10 @@
 import { mockOrderRows } from '../../lib/mock-data';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function OrdersPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Orders</span>
@@ -44,6 +46,7 @@ export default function OrdersPage() {
           </tbody>
         </table>
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }

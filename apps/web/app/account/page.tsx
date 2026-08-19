@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import { AppShell } from '../../components/layout/AppShell';
 
 export default function AccountPage() {
   return (
-    <main className="container page-shell">
+    <AppShell>
+    <div className="page-shell">
       <div className="page-header">
         <div>
           <span className="eyebrow dark">Account</span>
@@ -37,6 +39,7 @@ export default function AccountPage() {
           Every user has a unique referral link/code. Rewards are only payable after the referred purchase is complete and the related transaction/commission is confirmed.
         </p>
       </section>
-    </main>
+    </div>
+    </AppShell>
   );
 }
