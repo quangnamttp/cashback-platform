@@ -20,7 +20,7 @@ export default function HomePage() {
         <p className="hero-highlight">{t('hero_highlight')}</p>
         <p className="hero-desc">{t('hero_desc')}</p>
 
-        <div className="hero-cta">
+        <div className="hero-search-row">
           <input placeholder={t('hero_placeholder')} />
           <button className="button button-primary">🔗 {t('hero_cta')}</button>
         </div>
