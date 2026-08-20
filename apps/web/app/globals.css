@@ -1468,3 +1468,36 @@ p {
     gap: 8px;
   }
 }
+
+/* Override legacy flex-wrap from old design that broke the header into 2 rows on mobile */
+.header-inner {
+  flex-wrap: nowrap !important;
+}
+
+@media (max-width: 980px) {
+  .header-inner {
+    padding: 0 16px !important;
+  }
+  .main-nav {
+    display: none !important;
+  }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 400px) {
+  .header-actions {
+    gap: 4px;
+  }
+  .icon-btn,
+  .mobile-wallet-btn,
+  .account-menu-button {
+    width: 34px;
+    height: 34px;
+    font-size: 0.9rem;
+  }
+}
