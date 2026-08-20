@@ -1,54 +1,57 @@
+'use client';
+
 import Link from 'next/link';
 import { mockPlatforms } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
+import { useLanguage } from '../../lib/i18n';
 
 export default function GetCashbackLinkPage() {
+  const { t } = useLanguage();
+
   return (
     <AppShell>
-    <div className="page-shell">
-      <div className="page-header">
-        <div>
-          <span className="eyebrow dark">Get Cashback Link</span>
-          <h1>Paste a product link</h1>
+      <div className="page-shell">
+        <div className="page-header">
+          <div>
+            <span className="eyebrow dark">{t('get_link_eyebrow')}</span>
+            <h1>{t('get_link_title')}</h1>
+          </div>
+          <Link href="/" className="button button-primary">{t('back_home')}</Link>
         </div>
-        <Link href="/" className="button button-primary">Back home</Link>
+
+        <section className="panel form-panel">
+          <label className="field-label" htmlFor="product-link">{t('paste_label')}</label>
+          <div className="hero-search-row compact-cta">
+            <input id="product-link" placeholder="https://shopee.vn/..." />
+            <button className="button button-primary">{t('get_link_btn')}</button>
+          </div>
+
+          <div className="platform-row">
+            {mockPlatforms.map((platform) => (
+              <span key={platform.name} className="hero-platform-pill" style={{ borderColor: `${platform.accent}55` }}>
+                {platform.name}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <section className="two-column-grid">
+          <div className="panel">
+            <h3>{t('how_it_works')}</h3>
+            <ol className="ordered-list">
+              <li>{t('step1')}</li>
+              <li>{t('step2')}</li>
+              <li>{t('step3')}</li>
+              <li>{t('step4')}</li>
+            </ol>
+          </div>
+
+          <div className="panel">
+            <h3>{t('important_rule')}</h3>
+            <p className="muted-copy">{t('important_rule_desc')}</p>
+          </div>
+        </section>
       </div>
-
-      <section className="panel form-panel">
-        <label className="field-label" htmlFor="product-link">Paste your Shopee / TikTok Shop / Lazada product link</label>
-        <div className="hero-cta compact-cta">
-          <input id="product-link" placeholder="https://shopee.vn/..." />
-          <button className="button button-primary">GET CASHBACK LINK</button>
-        </div>
-
-        <div className="platform-row">
-          {mockPlatforms.map((platform) => (
-            <span key={platform.name} className="hero-platform-pill" style={{ borderColor: `${platform.accent}55` }}>
-              {platform.name}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      <section className="two-column-grid">
-        <div className="panel">
-          <h3>How the adapter flow works</h3>
-          <ol className="ordered-list">
-            <li>Detect the marketplace from the URL.</li>
-            <li>Validate the link and normalize it.</li>
-            <li>Prepare an affiliate or deep-link flow for the platform.</li>
-            <li>Track commission and cashback after purchase and confirmation.</li>
-          </ol>
-        </div>
-
-        <div className="panel">
-          <h3>Important rule</h3>
-          <p className="muted-copy">
-            Cashback is never treated as guaranteed before commission confirmation. Pending commission remains pending until explicitly confirmed by the related order or platform process.
-          </p>
-        </div>
-      </section>
-    </div>
     </AppShell>
   );
 }

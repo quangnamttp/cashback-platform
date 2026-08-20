@@ -1,45 +1,48 @@
+'use client';
+
 import Link from 'next/link';
 import { AppShell } from '../../components/layout/AppShell';
+import { useLanguage } from '../../lib/i18n';
 
 export default function AccountPage() {
+  const { t } = useLanguage();
+
   return (
     <AppShell>
-    <div className="page-shell">
-      <div className="page-header">
-        <div>
-          <span className="eyebrow dark">Account</span>
-          <h1>Profile & login</h1>
-        </div>
-      </div>
-
-      <section className="two-column-grid">
-        <div className="panel auth-panel">
-          <h3>Google login</h3>
-          <p className="muted-copy">Continue with Google to access your cashback wallet and referral activity.</p>
-          <button className="button button-primary wide-button">Continue with Google</button>
-        </div>
-
-        <div className="panel">
-          <h3>User profile</h3>
-          <div className="profile-grid">
-            <div><span className="field-label">Name</span><strong>Nguyen Minh</strong></div>
-            <div><span className="field-label">Email</span><strong>minh.nguyen@gmail.com</strong></div>
-            <div><span className="field-label">Referral code</span><strong>REF-MINH-2026</strong></div>
-            <div><span className="field-label">Account status</span><strong>Active</strong></div>
+      <div className="page-shell">
+        <div className="page-header">
+          <div>
+            <span className="eyebrow dark">{t('account_eyebrow')}</span>
+            <h1>{t('account_title')}</h1>
           </div>
         </div>
-      </section>
 
-      <section className="panel">
-        <div className="panel-header">
-          <h3>Referral foundation</h3>
-          <Link href="/referrals" className="text-link">View referrals</Link>
-        </div>
-        <p className="muted-copy">
-          Every user has a unique referral link/code. Rewards are only payable after the referred purchase is complete and the related transaction/commission is confirmed.
-        </p>
-      </section>
-    </div>
+        <section className="two-column-grid">
+          <div className="panel auth-panel">
+            <h3>{t('google_login_title')}</h3>
+            <p className="muted-copy">{t('google_login_desc')}</p>
+            <button className="button button-primary wide-button">{t('continue_google')}</button>
+          </div>
+
+          <div className="panel">
+            <h3>{t('user_profile')}</h3>
+            <div className="profile-grid">
+              <div><span className="field-label">{t('field_name')}</span><strong>Nguyen Minh</strong></div>
+              <div><span className="field-label">{t('field_email')}</span><strong>minh.nguyen@gmail.com</strong></div>
+              <div><span className="field-label">{t('field_referral_code')}</span><strong>REF-MINH-2026</strong></div>
+              <div><span className="field-label">{t('field_account_status')}</span><strong>{t('active_status')}</strong></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <h3>{t('referral_foundation')}</h3>
+            <Link href="/referrals" className="text-link">{t('view_referrals')}</Link>
+          </div>
+          <p className="muted-copy">{t('referral_foundation_desc')}</p>
+        </section>
+      </div>
     </AppShell>
   );
 }
