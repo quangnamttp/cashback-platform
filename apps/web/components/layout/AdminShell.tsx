@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { AdminGate } from './AdminGate';
 
 const adminNavItems = [
   { icon: '📊', label: 'Tổng quan', href: '/admin' },
@@ -27,35 +28,37 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <div className="admin-page-shell container">
-      <aside className="admin-sidebar panel">
-        <Link href="/admin" className="brand-block compact">
-          <div className="brand-mark">C</div>
-          <div>
-            <div className="brand-name">Cashback Platform</div>
-            <div className="brand-subtitle">Admin console</div>
+    <AdminGate>
+      <div className="admin-page-shell container">
+        <aside className="admin-sidebar panel">
+          <Link href="/admin" className="brand-block compact">
+            <div className="brand-mark">C</div>
+            <div>
+              <div className="brand-name">Cashback Platform</div>
+              <div className="brand-subtitle">Admin console</div>
+            </div>
+          </Link>
+
+          <nav className="admin-nav">
+            {adminNavItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={isActive(pathname, item.href) ? 'active' : ''}
+              >
+                <span className="admin-nav-icon" aria-hidden="true">{item.icon}</span>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="admin-sidebar-footer">
+            <Link href="/" className="text-link">← Về trang người dùng</Link>
           </div>
-        </Link>
+        </aside>
 
-        <nav className="admin-nav">
-          {adminNavItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={isActive(pathname, item.href) ? 'active' : ''}
-            >
-              <span className="admin-nav-icon" aria-hidden="true">{item.icon}</span>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="admin-sidebar-footer">
-          <Link href="/" className="text-link">← Về trang người dùng</Link>
-        </div>
-      </aside>
-
-      <section className="admin-content">{children}</section>
-    </div>
+        <section className="admin-content">{children}</section>
+      </div>
+    </AdminGate>
   );
 }

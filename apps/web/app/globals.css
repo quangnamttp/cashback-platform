@@ -1692,3 +1692,214 @@ p {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ==========================================================
+   MISSING BASE STYLES (found during audit — pre-existing gaps
+   in the original codebase, not previously styled at all)
+   ========================================================== */
+
+.page-shell,
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.dashboard-panels {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .dashboard-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-top: 6px;
+}
+
+.stat-delta {
+  font-size: 0.78rem;
+  color: var(--primary);
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.text-link {
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.wide-button {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.empty-state {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+.empty-title {
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+/* LinkChecker component (currently unused, styled for completeness) */
+.link-checker {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.inline-input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.inline-input-row input {
+  flex: 1;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.checker-status-row {
+  min-height: 24px;
+}
+
+.link-result-card {
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg-accent);
+}
+
+.result-topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 1rem;
+}
+
+.result-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.result-value {
+  font-size: 0.9rem;
+  color: var(--text);
+  margin-top: 2px;
+  word-break: break-all;
+}
+
+.result-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Admin access gate (UI-level deterrent, not real auth) */
+.admin-gate-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  padding: 20px;
+}
+
+.admin-gate-card {
+  width: min(400px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.admin-gate-card h1 {
+  font-size: 1.3rem;
+  margin: 4px 0 0;
+}
+
+.admin-gate-card input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  margin-top: 8px;
+}
+
+.admin-gate-error {
+  color: #b91c1c;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
