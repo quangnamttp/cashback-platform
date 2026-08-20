@@ -1,0 +1,67 @@
+import { mockAdminUsers } from '../../../lib/mock-data';
+import { AdminShell } from '../../../components/layout/AdminShell';
+
+const statusBadge: Record<string, string> = {
+  ACTIVE: 'badge-success',
+  SUSPENDED: 'badge-warning',
+  LOCKED: 'badge-danger',
+};
+
+export default function AdminUsersPage() {
+  return (
+    <AdminShell>
+      <div className="page-header">
+        <div>
+          <span className="eyebrow dark">Quản lý người dùng</span>
+          <h1>Người dùng</h1>
+        </div>
+      </div>
+
+      <div className="admin-toolbar">
+        <input className="admin-search-input" placeholder="Tìm theo tên hoặc email..." />
+        <span className="badge badge-neutral">{mockAdminUsers.length} người dùng</span>
+      </div>
+
+      <div className="panel admin-table-panel">
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Họ tên</th>
+                <th>Email</th>
+                <th>Số dư</th>
+                <th>Tổng hoàn tiền</th>
+                <th>Ngày tham gia</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mockAdminUsers.map((user) => (
+                <tr key={user.id}>
+                  <td>{user.id}</td>
+                  <td>{user.name}</td>
+                  <td>{user.email}</td>
+                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(user.balance)}</td>
+                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(user.totalCashback)}</td>
+                  <td>{user.joined}</td>
+                  <td><span className={`badge ${statusBadge[user.status]}`}>{user.status}</span></td>
+                  <td>
+                    <div className="admin-action-row">
+                      {user.status === 'LOCKED' ? (
+                        <button className="btn-approve">Mở khóa</button>
+                      ) : (
+                        <button className="btn-reject">Khóa</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </AdminShell>
+  );
+}

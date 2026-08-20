@@ -57,6 +57,28 @@ export const mockAdminStats = [
   { label: 'Withdrawals', value: '₫11.2M' },
 ];
 
+export const mockAdminUsers = [
+  { id: 'USR-1042', name: 'Nguyen Minh', email: 'minh.nguyen@gmail.com', balance: 890000, totalCashback: 2340000, status: 'ACTIVE', joined: '02/03/2026' },
+  { id: 'USR-1039', name: 'Le Thuy Linh', email: 'thuylinh@gmail.com', balance: 156000, totalCashback: 980000, status: 'ACTIVE', joined: '18/02/2026' },
+  { id: 'USR-1021', name: 'Tran Bich Ngoc', email: 'bichngoc@demo.vn', balance: 0, totalCashback: 410000, status: 'SUSPENDED', joined: '05/01/2026' },
+  { id: 'USR-0998', name: 'Pham Anh Quang', email: 'anhquang@example.com', balance: 320000, totalCashback: 1750000, status: 'LOCKED', joined: '22/11/2025' },
+  { id: 'USR-0987', name: 'Do Bao Tran', email: 'bao.tran@example.com', balance: 540000, totalCashback: 620000, status: 'ACTIVE', joined: '11/11/2025' },
+];
+
+export const mockWithdrawalRequests = [
+  { id: 'WD-3021', user: 'minh.nguyen@gmail.com', amount: 500000, method: 'Bank transfer', requestedAt: '19/08/2026', status: 'PENDING' },
+  { id: 'WD-3015', user: 'thuylinh@gmail.com', amount: 150000, method: 'MoMo', requestedAt: '18/08/2026', status: 'PENDING' },
+  { id: 'WD-3002', user: 'bao.tran@example.com', amount: 300000, method: 'Bank transfer', requestedAt: '15/08/2026', status: 'APPROVED' },
+  { id: 'WD-2988', user: 'bichngoc@demo.vn', amount: 200000, method: 'ZaloPay', requestedAt: '10/08/2026', status: 'REJECTED' },
+];
+
+export const mockAdminLogs = [
+  { id: 'LOG-9021', actor: 'admin@cashback.vn', action: 'Approved withdrawal WD-3002', time: '15/08/2026 14:22' },
+  { id: 'LOG-9018', actor: 'admin@cashback.vn', action: 'Locked user USR-0998 (fraud signal)', time: '14/08/2026 09:05' },
+  { id: 'LOG-9010', actor: 'system', action: 'Auto-confirmed commission CB-1098', time: '12/08/2026 22:41' },
+  { id: 'LOG-9004', actor: 'admin@cashback.vn', action: 'Updated coupon SHOPEE10 expiry', time: '10/08/2026 11:18' },
+];
+
 export const mockFraudSignals = [
   { user: 'anhquang@example.com', reason: 'Duplicate order pattern', risk: 'HIGH' },
   { user: 'thuylinh@gmail.com', reason: 'Suspicious click burst', risk: 'MEDIUM' },
