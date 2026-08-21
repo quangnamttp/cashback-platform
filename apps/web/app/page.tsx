@@ -1,13 +1,14 @@
 'use client';
 
 import { AppShell } from '../components/layout/AppShell';
+import { PlatformBadge } from '../components/ui/PlatformBadge';
 import { useLanguage } from '../lib/i18n';
 import { mockCoupons, mockPlatforms } from '../lib/mock-data';
 
-const platformMeta: Record<string, { emoji: string; cashback: string }> = {
-  Shopee: { emoji: '🛍', cashback: 'Up to 4%' },
-  Lazada: { emoji: '🟧', cashback: 'Up to 5%' },
-  'TikTok Shop': { emoji: '🎵', cashback: 'Up to 3%' },
+const platformMeta: Record<string, { cashback: string }> = {
+  Shopee: { cashback: '4%' },
+  Lazada: { cashback: '5%' },
+  'TikTok Shop': { cashback: '3%' },
 };
 
 export default function HomePage() {
@@ -28,7 +29,8 @@ export default function HomePage() {
         <div className="hero-platform-row">
           {mockPlatforms.map((platform) => (
             <span key={platform.name} className="hero-platform-pill">
-              {platformMeta[platform.name]?.emoji} {platform.name}
+              <PlatformBadge name={platform.name} size={20} />
+              {platform.name}
             </span>
           ))}
         </div>
@@ -41,12 +43,12 @@ export default function HomePage() {
 
         <div className="platform-grid">
           {mockPlatforms.map((platform) => {
-            const meta = platformMeta[platform.name] ?? { emoji: '🛍', cashback: 'Up to 4%' };
+            const meta = platformMeta[platform.name] ?? { cashback: '4%' };
             return (
               <div key={platform.name} className="platform-card">
-                <div className="platform-card-emoji">{meta.emoji}</div>
+                <PlatformBadge name={platform.name} size={40} />
                 <h3>{platform.name}</h3>
-                <p>{t('stores_cashback_upto')} {meta.cashback.replace('Up to ', '')}</p>
+                <p>{t('stores_cashback_upto')} {meta.cashback}</p>
                 <button className="button button-secondary">{t('stores_cta')}</button>
               </div>
             );

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { mockPlatforms } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
+import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { useLanguage } from '../../lib/i18n';
 
 export default function GetCashbackLinkPage() {
@@ -28,7 +29,8 @@ export default function GetCashbackLinkPage() {
 
           <div className="platform-row">
             {mockPlatforms.map((platform) => (
-              <span key={platform.name} className="hero-platform-pill" style={{ borderColor: `${platform.accent}55` }}>
+              <span key={platform.name} className="hero-platform-pill">
+                <PlatformBadge name={platform.name} size={20} />
                 {platform.name}
               </span>
             ))}
