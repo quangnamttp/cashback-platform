@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { mockCashbackRows } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 
@@ -10,6 +13,12 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminCashbackPage() {
+  const [rows, setRows] = useState(mockCashbackRows);
+
+  const setStatus = (id: string, status: 'CONFIRMED' | 'REJECTED') => {
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, status } : row)));
+  };
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -33,7 +42,7 @@ export default function AdminCashbackPage() {
               </tr>
             </thead>
             <tbody>
-              {mockCashbackRows.map((item) => (
+              {rows.map((item) => (
                 <tr key={item.id}>
                   <td>{item.id}</td>
                   <td>{item.platform}</td>
@@ -43,8 +52,8 @@ export default function AdminCashbackPage() {
                   <td>
                     {item.status === 'PENDING' ? (
                       <div className="admin-action-row">
-                        <button className="btn-approve">Xác nhận</button>
-                        <button className="btn-reject">Từ chối</button>
+                        <button className="btn-approve" onClick={() => setStatus(item.id, 'CONFIRMED')}>Xác nhận</button>
+                        <button className="btn-reject" onClick={() => setStatus(item.id, 'REJECTED')}>Từ chối</button>
                       </div>
                     ) : (
                       <span className="muted-copy">—</span>
@@ -57,7 +66,7 @@ export default function AdminCashbackPage() {
         </div>
       </div>
 
-      <p className="mock-note">Dữ liệu minh họa (mock) — sẽ nối API affiliate/commission thật ở giai đoạn sau.</p>
+      <p className="mock-note">Dữ liệu minh họa (mock) — trạng thái cập nhật client-side, chưa nối API affiliate/commission thật.</p>
     </AdminShell>
   );
 }

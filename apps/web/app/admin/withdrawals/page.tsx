@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { mockWithdrawalRequests } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 
@@ -8,7 +11,12 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminWithdrawalsPage() {
-  const pendingCount = mockWithdrawalRequests.filter((row) => row.status === 'PENDING').length;
+  const [rows, setRows] = useState(mockWithdrawalRequests);
+  const pendingCount = rows.filter((row) => row.status === 'PENDING').length;
+
+  const setStatus = (id: string, status: 'APPROVED' | 'REJECTED') => {
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, status } : row)));
+  };
 
   return (
     <AdminShell>
@@ -35,7 +43,7 @@ export default function AdminWithdrawalsPage() {
               </tr>
             </thead>
             <tbody>
-              {mockWithdrawalRequests.map((row) => (
+              {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{row.id}</td>
                   <td>{row.user}</td>
@@ -46,8 +54,8 @@ export default function AdminWithdrawalsPage() {
                   <td>
                     {row.status === 'PENDING' ? (
                       <div className="admin-action-row">
-                        <button className="btn-approve">Duyệt</button>
-                        <button className="btn-reject">Từ chối</button>
+                        <button className="btn-approve" onClick={() => setStatus(row.id, 'APPROVED')}>Duyệt</button>
+                        <button className="btn-reject" onClick={() => setStatus(row.id, 'REJECTED')}>Từ chối</button>
                       </div>
                     ) : (
                       <span className="muted-copy">Đã xử lý</span>
@@ -60,7 +68,7 @@ export default function AdminWithdrawalsPage() {
         </div>
       </div>
 
-      <p className="mock-note">Dữ liệu minh họa (mock) — thao tác Duyệt/Từ chối chưa nối logic backend thật, chỉ là giao diện.</p>
+      <p className="mock-note">Dữ liệu minh họa (mock) — trạng thái cập nhật ngay trên giao diện (client-side), chưa lưu vào cơ sở dữ liệu thật. Khi tải lại trang sẽ về trạng thái ban đầu.</p>
     </AdminShell>
   );
 }

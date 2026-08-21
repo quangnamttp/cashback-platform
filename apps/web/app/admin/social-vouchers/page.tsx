@@ -1,7 +1,16 @@
+'use client';
+
+import { useState } from 'react';
 import { mockSocialVouchers } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 
 export default function AdminSocialVouchersPage() {
+  const [vouchers, setVouchers] = useState(mockSocialVouchers);
+
+  const remove = (code: string) => {
+    setVouchers((prev) => prev.filter((v) => v.code !== code));
+  };
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -27,7 +36,7 @@ export default function AdminSocialVouchersPage() {
               </tr>
             </thead>
             <tbody>
-              {mockSocialVouchers.map((v) => (
+              {vouchers.map((v) => (
                 <tr key={v.code}>
                   <td>{v.platform}</td>
                   <td>{v.title} — {v.discount}</td>
@@ -38,17 +47,22 @@ export default function AdminSocialVouchersPage() {
                   <td>
                     <div className="admin-action-row">
                       <button className="btn-approve">Sửa</button>
-                      <button className="btn-reject">Xóa</button>
+                      <button className="btn-reject" onClick={() => remove(v.code)}>Xóa</button>
                     </div>
                   </td>
                 </tr>
               ))}
+              {vouchers.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted-copy">Không còn voucher nào.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <p className="mock-note">Dữ liệu minh họa (mock) — chưa nối API voucher MXH thật.</p>
+      <p className="mock-note">Dữ liệu minh họa (mock) — Xóa cập nhật client-side, chưa nối API voucher MXH thật.</p>
     </AdminShell>
   );
 }

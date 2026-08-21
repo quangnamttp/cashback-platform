@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { LANGS, useLanguage } from '../../lib/i18n';
+import { useTheme } from '../../lib/theme';
 
 export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { lang, setLang, t } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -49,6 +51,15 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
           <Link href="/cashback-wallet" className="icon-btn mobile-wallet-btn" title={t('sidebar_wallet')} aria-label={t('sidebar_wallet')}>
             💰
           </Link>
+
+          <button
+            className="icon-btn theme-toggle-btn"
+            onClick={toggleTheme}
+            title={theme === 'light' ? 'Chuyển sang nền tối' : 'Chuyển sang nền sáng'}
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
 
           <div className="account-menu-container hide-on-mobile">
             <button

@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { mockAdminUsers } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 
@@ -8,6 +11,23 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminUsersPage() {
+  const [users, setUsers] = useState(mockAdminUsers);
+  const [query, setQuery] = useState('');
+
+  const toggleLock = (id: string) => {
+    setUsers((prev) =>
+      prev.map((user) =>
+        user.id === id ? { ...user, status: user.status === 'LOCKED' ? 'ACTIVE' : 'LOCKED' } : user
+      )
+    );
+  };
+
+  const filtered = users.filter(
+    (user) =>
+      user.name.toLowerCase().includes(query.toLowerCase()) ||
+      user.email.toLowerCase().includes(query.toLowerCase())
+  );
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -18,8 +38,13 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="admin-toolbar">
-        <input className="admin-search-input" placeholder="Tìm theo tên hoặc email..." />
-        <span className="badge badge-neutral">{mockAdminUsers.length} người dùng</span>
+        <input
+          className="admin-search-input"
+          placeholder="Tìm theo tên hoặc email..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <span className="badge badge-neutral">{filtered.length} người dùng</span>
       </div>
 
       <div className="panel admin-table-panel">
@@ -38,7 +63,7 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {mockAdminUsers.map((user) => (
+              {filtered.map((user) => (
                 <tr key={user.id}>
                   <td>{user.id}</td>
                   <td>{user.name}</td>
@@ -50,9 +75,9 @@ export default function AdminUsersPage() {
                   <td>
                     <div className="admin-action-row">
                       {user.status === 'LOCKED' ? (
-                        <button className="btn-approve">Mở khóa</button>
+                        <button className="btn-approve" onClick={() => toggleLock(user.id)}>Mở khóa</button>
                       ) : (
-                        <button className="btn-reject">Khóa</button>
+                        <button className="btn-reject" onClick={() => toggleLock(user.id)}>Khóa</button>
                       )}
                     </div>
                   </td>
@@ -62,6 +87,8 @@ export default function AdminUsersPage() {
           </table>
         </div>
       </div>
+
+      <p className="mock-note">Dữ liệu minh họa (mock) — khóa/mở khóa cập nhật client-side, chưa nối cơ sở dữ liệu thật.</p>
     </AdminShell>
   );
 }
