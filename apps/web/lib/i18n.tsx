@@ -161,6 +161,7 @@ const dict = {
     footer_support: 'Hỗ trợ',
     footer_contact: 'Liên hệ',
     footer_policy: 'Chính sách',
+    mbn_more: 'Thêm',
   },
   en: {
     nav_home: 'Home',
@@ -312,6 +313,7 @@ const dict = {
     footer_support: 'Support',
     footer_contact: 'Contact',
     footer_policy: 'Policy',
+    mbn_more: 'More',
   },
   zh: {
     nav_home: '首页',
@@ -463,6 +465,7 @@ const dict = {
     footer_support: '帮助',
     footer_contact: '联系我们',
     footer_policy: '政策',
+    mbn_more: '更多',
   },
 } as const;
 

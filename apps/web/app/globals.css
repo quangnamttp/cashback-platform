@@ -1390,6 +1390,13 @@ p {
   }
   .hero-search-row .button {
     width: 100%;
+    height: 52px;
+    font-size: 1rem;
+  }
+  .hero-search-row input {
+    height: 54px;
+    font-size: 1rem;
+    padding: 0 18px;
   }
 }
 
@@ -1497,7 +1504,7 @@ p {
     padding: 0 12px;
   }
   .mobile-wallet-btn {
-    display: inline-flex;
+    display: none !important;
   }
   .hide-on-mobile {
     display: none;
@@ -1943,4 +1950,113 @@ p {
   color: #b91c1c;
   font-size: 0.82rem;
   font-weight: 600;
+}
+
+/* ==========================================================
+   MOBILE BOTTOM NAVIGATION (layout reference only — own blue
+   color scheme, not copied from any competitor's design)
+   ========================================================== */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .mobile-bottom-nav {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-around;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 150;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(20, 36, 64, 0.06);
+    padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-shell {
+    padding-bottom: 76px;
+  }
+
+  .site-footer {
+    display: none;
+  }
+}
+
+.mbn-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  padding: 4px 2px;
+}
+
+.mbn-item.active {
+  color: var(--primary);
+}
+
+.mbn-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.mbn-center {
+  margin-top: -22px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.mbn-center-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  box-shadow: 0 6px 14px rgba(47, 127, 245, 0.35);
+  border: 3px solid var(--surface);
+}
+
+.notif-dropdown {
+  width: 280px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.notif-dropdown-title {
+  padding: 8px 16px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.notif-item {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.notif-item p {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+
+.notif-item span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }

@@ -5,6 +5,7 @@ import { SiteFooter } from './SiteFooter';
 import { SiteHeader } from './SiteHeader';
 import { SidebarNav } from './Sidebar';
 import { RightPanel } from './RightPanel';
+import { MobileBottomNav } from './MobileBottomNav';
 
 export function AppShell({
   children,
@@ -41,6 +42,8 @@ export function AppShell({
       </div>
 
       <SiteFooter />
+
+      <MobileBottomNav onMoreClick={() => setIsDrawerOpen(true)} />
     </div>
   );
 }

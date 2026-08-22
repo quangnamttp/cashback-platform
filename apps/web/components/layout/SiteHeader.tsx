@@ -10,8 +10,15 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { theme, toggleTheme } = useTheme();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
+
+  const notifications = [
+    { id: 1, text: 'Đơn hàng ORD-2401 đã được xác nhận hoàn tiền 93.000đ', time: '2 giờ trước' },
+    { id: 2, text: 'Coupon SHOPEE10 sắp hết hạn (31/08/2026)', time: '5 giờ trước' },
+    { id: 3, text: 'Yêu cầu rút tiền ₫300.000 đã hoàn tất', time: '1 ngày trước' },
+  ];
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 8);
@@ -94,9 +101,34 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
             )}
           </div>
 
-          <button className="icon-btn" title={t('header_notifications')} aria-label={t('header_notifications')}>
-            🔔
-          </button>
+          <div className="account-menu-container">
+            <button
+              className="icon-btn"
+              onClick={() => {
+                setIsNotifOpen((open) => !open);
+                setIsAccountMenuOpen(false);
+                setIsLangMenuOpen(false);
+              }}
+              title={t('header_notifications')}
+              aria-label={t('header_notifications')}
+              aria-haspopup="menu"
+              aria-expanded={isNotifOpen}
+            >
+              🔔
+            </button>
+
+            {isNotifOpen && (
+              <div className="account-menu-dropdown active notif-dropdown" role="menu">
+                <div className="notif-dropdown-title">{t('header_notifications')}</div>
+                {notifications.map((item) => (
+                  <div key={item.id} className="notif-item">
+                    <p>{item.text}</p>
+                    <span>{item.time}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="account-menu-container">
             <button
