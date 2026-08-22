@@ -9,7 +9,6 @@ const adminNavItems = [
   { icon: '📦', label: 'Đơn hàng', href: '/admin/orders' },
   { icon: '💰', label: 'Cashback / Hoa hồng', href: '/admin/cashback' },
   { icon: '🏪', label: 'Affiliate', href: '/admin/affiliate' },
-  { icon: '🎟', label: 'Coupon', href: '/admin/coupons' },
   { icon: '📱', label: 'Voucher MXH', href: '/admin/social-vouchers' },
   { icon: '💸', label: 'Rút tiền', href: '/admin/withdrawals' },
   { icon: '👥', label: 'Giới thiệu', href: '/admin/referrals' },

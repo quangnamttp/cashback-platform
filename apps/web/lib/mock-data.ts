@@ -92,24 +92,6 @@ export const mockFaq = [
   { question: 'Có thể rút tiền không?', answer: 'Có. Bạn có thể theo dõi phần cashback có sẵn, sau đó điều hướng tới luồng rút tiền trong dashboard.' },
 ];
 
-export const mockCoupons = [
-  { marketplace: 'Shopee', code: 'SHOPEE10', discount: '10% tối đa ₫50K', minOrder: '₫150K', expiry: '31/08/2026', status: 'Active' },
-  { marketplace: 'TikTok Shop', code: 'TTSAVE15', discount: '15% tối đa ₫80K', minOrder: '₫200K', expiry: '25/08/2026', status: 'Active' },
-  { marketplace: 'Lazada', code: 'LAZADA12', discount: '12% tối đa ₫60K', minOrder: '₫180K', expiry: '22/08/2026', status: 'Ending soon' },
-];
-
-export const mockDeals = [
-  { title: 'Flash sale điện gia dụng', marketplace: 'Shopee', time: 'Today, 18:00 - 22:00', discount: 'Up to 35% off' },
-  { title: 'Brand day beauty essentials', marketplace: 'TikTok Shop', time: 'Tomorrow, 09:00 - 15:00', discount: 'Free shipping + extra cashback' },
-  { title: 'Weekend gadget bundle', marketplace: 'Lazada', time: 'Fri - Sun', discount: 'Save up to 25%' },
-];
-
-export const mockFlashSales = [
-  { marketplace: 'Shopee', window: '09:00 - 12:00', label: 'Midday deal' },
-  { marketplace: 'TikTok Shop', window: '13:00 - 16:00', label: 'Creator picks' },
-  { marketplace: 'Lazada', window: '20:00 - 23:00', label: 'Night deal' },
-];
-
 export const mockSocialVouchers = [
   { platform: 'Facebook', title: 'Creator coupon', code: 'FBVOUCHER30', discount: 'Giảm ₫30K', condition: 'Đơn từ ₫150K', source: 'Partner feed', expiry: '30/08/2026', status: 'Valid' },
   { platform: 'Instagram', title: 'Beauty picks', code: 'IGBEAUTY10', discount: 'Giảm 10%', condition: 'Đơn từ ₫200K', source: 'Story code', expiry: '28/08/2026', status: 'Valid' },

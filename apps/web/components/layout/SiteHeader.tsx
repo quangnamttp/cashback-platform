@@ -16,7 +16,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
 
   const notifications = [
     { id: 1, text: 'Đơn hàng ORD-2401 đã được xác nhận hoàn tiền 93.000đ', time: '2 giờ trước' },
-    { id: 2, text: 'Coupon SHOPEE10 sắp hết hạn (31/08/2026)', time: '5 giờ trước' },
+    { id: 2, text: 'Ví của bạn vừa nhận thêm 45.000đ hoàn tiền', time: '5 giờ trước' },
     { id: 3, text: 'Yêu cầu rút tiền ₫300.000 đã hoàn tất', time: '1 ngày trước' },
   ];
 
@@ -30,8 +30,8 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const navItems = [
     { label: t('nav_home'), href: '/' },
     { label: t('nav_stores'), href: '/#stores' },
-    { label: t('nav_coupons'), href: '/coupons' },
-    { label: t('nav_deals'), href: '/deals' },
+    { label: t('sidebar_social_vouchers'), href: '/social-vouchers' },
+    { label: t('sidebar_referrals'), href: '/referrals' },
   ];
 
   const currentLang = LANGS.find((item) => item.code === lang) ?? LANGS[0];
@@ -149,7 +149,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                 <Link href="/account" role="menuitem">{t('account_profile')}</Link>
                 <Link href="/cashback-wallet" role="menuitem">{t('sidebar_wallet')}</Link>
                 <Link href="/orders" role="menuitem">{t('sidebar_orders')}</Link>
-                <Link href="/coupons" role="menuitem">{t('sidebar_my_vouchers')}</Link>
+                <Link href="/social-vouchers" role="menuitem">{t('sidebar_social_vouchers')}</Link>
                 <Link href="/referrals" role="menuitem">{t('sidebar_referrals')}</Link>
                 <Link href="/cashback-wallet" role="menuitem">{t('sidebar_withdraw_history')}</Link>
                 <Link href="/account" role="menuitem">{t('sidebar_support')}</Link>
