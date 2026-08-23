@@ -12,7 +12,6 @@ type SidebarItem = {
 
 const topItems: SidebarItem[] = [
   { icon: '🏠', labelKey: 'sidebar_home', href: '/' },
-  { icon: '🏪', labelKey: 'sidebar_stores', href: '/#stores' },
   { icon: '🔗', labelKey: 'sidebar_get_link', href: '/get-cashback-link' },
 ];
 
@@ -22,9 +21,9 @@ const bottomItems: SidebarItem[] = [
   { icon: '📋', labelKey: 'sidebar_order_status', href: '/cashback' },
   { icon: '📱', labelKey: 'sidebar_social_vouchers', href: '/social-vouchers' },
   { icon: '👥', labelKey: 'sidebar_referrals', href: '/referrals' },
-  { icon: '💸', labelKey: 'sidebar_withdraw_history', href: '/cashback-wallet' },
-  { icon: '❓', labelKey: 'sidebar_support', href: '/account' },
-  { icon: '⚙', labelKey: 'sidebar_settings', href: '/account' },
+  { icon: '💸', labelKey: 'sidebar_withdraw_history', href: '/withdrawal-history' },
+  { icon: '❓', labelKey: 'sidebar_support', href: '/support' },
+  { icon: '⚙', labelKey: 'sidebar_settings', href: '/settings' },
 ];
 
 function isActive(pathname: string, href: string) {

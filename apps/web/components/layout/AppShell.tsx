@@ -43,7 +43,7 @@ export function AppShell({
 
       <SiteFooter />
 
-      <MobileBottomNav onMoreClick={() => setIsDrawerOpen(true)} />
+      <MobileBottomNav />
     </div>
   );
 }

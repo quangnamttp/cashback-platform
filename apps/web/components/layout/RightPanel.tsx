@@ -60,9 +60,9 @@ export function RightPanel() {
       <div className="rp-card rp-support">
         <div className="rp-card-title">{t('panel_support_title')}</div>
         <ul className="rp-support-list">
-          <li><Link href="/account">{t('panel_faq')}</Link></li>
-          <li><Link href="/get-cashback-link">{t('panel_guide')}</Link></li>
-          <li><Link href="/account">{t('panel_contact')}</Link></li>
+          <li><Link href="/support">{t('panel_faq')}</Link></li>
+          <li><Link href="/#guide">{t('panel_guide')}</Link></li>
+          <li><Link href="/support">{t('panel_contact')}</Link></li>
         </ul>
       </div>
     </aside>

@@ -116,7 +116,9 @@ export default function SocialVouchersPage() {
                 value={link}
                 onChange={(event) => setLink(event.target.value)}
               />
-              <button type="button" className="get-link-paste-btn" onClick={() => setLink('')}>{t('sv_clear_link')}</button>
+              {link && (
+                <button type="button" className="get-link-paste-btn" onClick={() => setLink('')}>{t('sv_clear_link')}</button>
+              )}
             </div>
           </div>
           <button
@@ -133,9 +135,9 @@ export default function SocialVouchersPage() {
             <div className="section-header">
               <h2>{t('sv_matched_title')}</h2>
             </div>
-            <div className="voucher-ticket-grid">
-              {filteredVouchers.map((voucher) => (
-                <VoucherTicket key={voucher.code} voucher={voucher} applyLabel={t('sv_use_now')} />
+            <div className="voucher-ticket-stack">
+              {filteredVouchers.map((voucher, index) => (
+                <VoucherTicket key={voucher.code} voucher={voucher} applyLabel={t('sv_use_now')} featured={index === 0} />
               ))}
             </div>
           </section>
@@ -146,9 +148,9 @@ export default function SocialVouchersPage() {
             <h2>{t('sv_status_title')}</h2>
           </div>
 
-          <div className="voucher-ticket-grid">
-            {filteredVouchers.map((voucher) => (
-              <VoucherTicket key={voucher.code} voucher={voucher} applyLabel={t('offer_get_code')} />
+          <div className="voucher-ticket-stack">
+            {filteredVouchers.map((voucher, index) => (
+              <VoucherTicket key={voucher.code} voucher={voucher} applyLabel={t('offer_get_code')} featured={index === 0} />
             ))}
             {filteredVouchers.length === 0 && (
               <p className="muted-copy">{t('sv_empty')}</p>

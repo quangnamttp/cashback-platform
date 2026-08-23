@@ -89,23 +89,49 @@ export default function HomePage() {
           <h2>{t('quick_utilities')}</h2>
         </div>
         <div className="quick-utility-grid">
+          <Link href="/#stores" className="quick-utility-item">
+            <span className="quick-utility-icon" style={{ background: '#ee4d2d' }}>🛍️</span>
+            Shopee
+          </Link>
+          <Link href="/#stores" className="quick-utility-item">
+            <span className="quick-utility-icon" style={{ background: '#111827' }}>🎵</span>
+            TikTok Shop
+          </Link>
+          <Link href="/#stores" className="quick-utility-item">
+            <span className="quick-utility-icon" style={{ background: '#0f146d' }}>🛒</span>
+            Lazada
+          </Link>
           <Link href="/get-cashback-link" className="quick-utility-item">
-            <span>🔗</span>{t('sidebar_get_link')}
+            <span className="quick-utility-icon" style={{ background: '#0096ff' }}>🔗</span>
+            {t('sidebar_get_link')}
           </Link>
           <Link href="/orders" className="quick-utility-item">
-            <span>📦</span>{t('sidebar_orders')}
+            <span className="quick-utility-icon" style={{ background: '#f59e0b' }}>📦</span>
+            {t('sidebar_orders')}
           </Link>
           <Link href="/cashback-wallet" className="quick-utility-item">
-            <span>💰</span>{t('sidebar_wallet')}
+            <span className="quick-utility-icon" style={{ background: '#16a34a' }}>💰</span>
+            {t('sidebar_wallet')}
           </Link>
           <Link href="/social-vouchers" className="quick-utility-item">
-            <span>📱</span>{t('sidebar_social_vouchers')}
+            <span className="quick-utility-icon" style={{ background: '#c13584' }}>📱</span>
+            {t('sidebar_social_vouchers')}
           </Link>
           <Link href="/referrals" className="quick-utility-item">
-            <span>👥</span>{t('sidebar_referrals')}
+            <span className="quick-utility-icon" style={{ background: '#8b5cf6' }}>👥</span>
+            {t('sidebar_referrals')}
           </Link>
-          <Link href="/account" className="quick-utility-item">
-            <span>⚙️</span>{t('sidebar_settings')}
+          <Link href="/support" className="quick-utility-item">
+            <span className="quick-utility-icon" style={{ background: '#0ea5e9' }}>💬</span>
+            {t('sidebar_support')}
+          </Link>
+          <Link href="/#guide" className="quick-utility-item">
+            <span className="quick-utility-icon" style={{ background: '#ef4444' }}>📖</span>
+            {t('guide_title').split(' ').slice(0, 2).join(' ')}
+          </Link>
+          <Link href="/settings" className="quick-utility-item">
+            <span className="quick-utility-icon" style={{ background: '#64748b' }}>⚙️</span>
+            {t('sidebar_settings')}
           </Link>
         </div>
       </section>
@@ -118,10 +144,15 @@ export default function HomePage() {
         <div className="platform-grid">
           {mockPlatforms.map((platform) => (
             <div key={platform.name} className="platform-card">
-              <PlatformBadge name={platform.name} size={40} />
+              <div className="platform-card-top">
+                <PlatformBadge name={platform.name} size={40} />
+                <span className="platform-rate-badge">
+                  {platform.name === 'Lazada' ? '5%' : platform.name === 'TikTok Shop' ? '3%' : '4%'} {t('stores_cashback_label')}
+                </span>
+              </div>
               <h3>{platform.name}</h3>
-              <p>{t('stores_cashback_upto')} {platform.name === 'Lazada' ? '5%' : platform.name === 'TikTok Shop' ? '3%' : '4%'}</p>
-              <button className="button button-secondary">{t('stores_cta')}</button>
+              <p className="platform-card-desc">{platform.description}</p>
+              <button className="button button-secondary wide-button">{t('stores_cta')}</button>
             </div>
           ))}
         </div>
@@ -129,7 +160,7 @@ export default function HomePage() {
       </section>
 
       {/* How to get the link — desktop vs mobile */}
-      <section className="home-section">
+      <section id="guide" className="home-section">
         <div className="section-header">
           <h2>{t('guide_title')}</h2>
           <p className="muted-copy">{t('guide_desc')}</p>

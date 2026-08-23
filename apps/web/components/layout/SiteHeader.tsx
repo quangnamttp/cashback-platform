@@ -151,9 +151,9 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                 <Link href="/orders" role="menuitem">{t('sidebar_orders')}</Link>
                 <Link href="/social-vouchers" role="menuitem">{t('sidebar_social_vouchers')}</Link>
                 <Link href="/referrals" role="menuitem">{t('sidebar_referrals')}</Link>
-                <Link href="/cashback-wallet" role="menuitem">{t('sidebar_withdraw_history')}</Link>
-                <Link href="/account" role="menuitem">{t('sidebar_support')}</Link>
-                <Link href="/account" role="menuitem">{t('sidebar_settings')}</Link>
+                <Link href="/withdrawal-history" role="menuitem">{t('sidebar_withdraw_history')}</Link>
+                <Link href="/support" role="menuitem">{t('sidebar_support')}</Link>
+                <Link href="/settings" role="menuitem">{t('sidebar_settings')}</Link>
                 <div className="account-menu-dropdown-divider" />
                 <button role="menuitem">{t('account_sign_out')}</button>
               </div>

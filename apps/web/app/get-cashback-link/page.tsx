@@ -58,8 +58,8 @@ export default function GetCashbackLinkPage() {
           <button className="button button-primary get-link-cta">✨ {t('get_link_btn')}</button>
 
           <div className="get-link-helper-row">
-            <Link href="/account">▶ {t('get_link_how_to')}</Link>
-            <Link href="/account">⚠ {t('get_link_note')}</Link>
+            <Link href="/#guide">▶ {t('get_link_how_to')}</Link>
+            <a href="#important-rule-section">⚠ {t('get_link_note')}</a>
           </div>
         </section>
 
@@ -67,7 +67,7 @@ export default function GetCashbackLinkPage() {
           <Link href="/social-vouchers" className="quick-utility-item">
             <span>📱</span>{t('sidebar_social_vouchers')}
           </Link>
-          <Link href="/get-cashback-link" className="quick-utility-item">
+          <Link href="/orders" className="quick-utility-item">
             <span>🕐</span>{t('get_link_history')}
           </Link>
           <Link href="/referrals" className="quick-utility-item">
@@ -86,7 +86,7 @@ export default function GetCashbackLinkPage() {
             </ol>
           </div>
 
-          <div className="panel">
+          <div className="panel" id="important-rule-section">
             <h3>{t('important_rule')}</h3>
             <p className="muted-copy">{t('important_rule_desc')}</p>
           </div>

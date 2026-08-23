@@ -8,7 +8,7 @@ export default function AccountPage() {
   const { t } = useLanguage();
 
   return (
-    <AppShell>
+    <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -16,6 +16,15 @@ export default function AccountPage() {
             <h1>{t('account_title')}</h1>
           </div>
         </div>
+
+        <section className="profile-header-card">
+          <div className="profile-avatar">👤</div>
+          <div className="profile-header-info">
+            <h2>Nguyen Minh</h2>
+            <span>minh.nguyen@gmail.com</span>
+          </div>
+          <span className="badge badge-success">{t('active_status')}</span>
+        </section>
 
         <section className="two-column-grid">
           <div className="panel auth-panel">

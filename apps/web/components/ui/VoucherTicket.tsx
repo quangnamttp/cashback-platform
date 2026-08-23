@@ -27,41 +27,52 @@ type Voucher = {
   usedPercent?: number;
 };
 
-export function VoucherTicket({ voucher, applyLabel }: { voucher: Voucher; applyLabel: string }) {
+export function VoucherTicket({
+  voucher,
+  applyLabel,
+  featured = false,
+}: {
+  voucher: Voucher;
+  applyLabel: string;
+  featured?: boolean;
+}) {
   const accent = PLATFORM_ACCENT[voucher.platform] ?? 'var(--primary)';
   const icon = PLATFORM_ICON[voucher.platform] ?? '🎟️';
 
   return (
-    <div className="voucher-ticket">
-      <div className="voucher-ticket-side" style={{ background: accent }}>
-        <span>{icon}</span>
-        {voucher.platform}
+    <div className="voucher-ticket-v2">
+      {featured && <span className="voucher-ticket-v2-ribbon">⭐ Ưu đãi tốt nhất</span>}
+      {voucher.status === 'Limited' && !featured && <span className="voucher-ticket-v2-ribbon warning">Mới</span>}
+
+      <div className="voucher-ticket-v2-side" style={{ background: accent }}>
+        <span className="voucher-ticket-v2-icon">{icon}</span>
+        <span className="voucher-ticket-v2-platform">{voucher.platform}</span>
       </div>
 
-      <div className="voucher-ticket-body">
-        <div className="voucher-ticket-top">
-          <div>
-            <h3>{voucher.discount}</h3>
-            <p>{voucher.condition}</p>
-          </div>
-          {voucher.status === 'Limited' && <span className="voucher-ticket-new">Mới</span>}
-        </div>
-
-        <div className="voucher-ticket-meta">
-          <span className="voucher-ticket-exclusive" style={{ color: accent, borderColor: accent }}>
+      <div className="voucher-ticket-v2-body">
+        <div className="voucher-ticket-v2-top">
+          <h3>{voucher.discount}</h3>
+          <span className="voucher-ticket-v2-exclusive" style={{ color: accent, borderColor: accent }}>
             Độc quyền {voucher.platform}
           </span>
-          <span className="voucher-ticket-expiry">HSD: {voucher.expiry}</span>
         </div>
 
+        <p className="voucher-ticket-v2-condition">{voucher.condition}</p>
+
         {typeof voucher.usedPercent === 'number' && (
-          <div className="voucher-ticket-progress">
-            <div className="voucher-ticket-progress-bar" style={{ width: `${voucher.usedPercent}%`, background: accent }} />
+          <div className="voucher-ticket-v2-progress-row">
+            <div className="voucher-ticket-v2-progress">
+              <div className="voucher-ticket-v2-progress-bar" style={{ width: `${voucher.usedPercent}%`, background: accent }} />
+            </div>
+            <span>Đã dùng {voucher.usedPercent}%</span>
           </div>
         )}
 
-        <div className="voucher-ticket-footer">
-          <span className="coupon-code">{voucher.code}</span>
+        <div className="voucher-ticket-v2-footer">
+          <div>
+            <span className="voucher-ticket-v2-expiry">HSD: {voucher.expiry}</span>
+            <span className="coupon-code">{voucher.code}</span>
+          </div>
           <CopyCodeButton code={voucher.code} label={applyLabel} />
         </div>
       </div>

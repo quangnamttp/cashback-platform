@@ -9,7 +9,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function MobileBottomNav({ onMoreClick }: { onMoreClick: () => void }) {
+export function MobileBottomNav() {
   const pathname = usePathname();
   const { t } = useLanguage();
 
@@ -35,10 +35,10 @@ export function MobileBottomNav({ onMoreClick }: { onMoreClick: () => void }) {
         <span>{t('sidebar_wallet')}</span>
       </Link>
 
-      <button type="button" className="mbn-item mbn-more" onClick={onMoreClick}>
-        <span className="mbn-icon" aria-hidden="true">⋯</span>
-        <span>{t('mbn_more')}</span>
-      </button>
+      <Link href="/social-vouchers" className={`mbn-item${isActive(pathname, '/social-vouchers') ? ' active' : ''}`}>
+        <span className="mbn-icon" aria-hidden="true">📱</span>
+        <span>{t('sidebar_social_vouchers')}</span>
+      </Link>
     </nav>
   );
 }
