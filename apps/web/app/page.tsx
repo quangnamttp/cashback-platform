@@ -1,50 +1,57 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../components/layout/AppShell';
 import { PlatformBadge } from '../components/ui/PlatformBadge';
+import { EventCarousel } from '../components/ui/EventCarousel';
 import { useLanguage } from '../lib/i18n';
 import { formatCurrency } from '../lib/currency';
-import { mockPlatforms } from '../lib/mock-data';
+import { mockHomeEvents, mockPlatforms } from '../lib/mock-data';
 
 const MOCK_LOGGED_IN = true;
 
+const guideSteps = {
+  mobile: [
+    { title: 'guide_mobile_step1_title', desc: 'guide_mobile_step1_desc' },
+    { title: 'guide_mobile_step2_title', desc: 'guide_mobile_step2_desc' },
+    { title: 'guide_mobile_step3_title', desc: 'guide_mobile_step3_desc' },
+  ],
+  desktop: [
+    { title: 'guide_desktop_step1_title', desc: 'guide_desktop_step1_desc' },
+    { title: 'guide_desktop_step2_title', desc: 'guide_desktop_step2_desc' },
+    { title: 'guide_desktop_step3_title', desc: 'guide_desktop_step3_desc' },
+  ],
+};
+
 export default function HomePage() {
   const { t, lang } = useLanguage();
+  const [guideTab, setGuideTab] = useState<'mobile' | 'desktop'>('mobile');
 
   return (
     <AppShell showRightPanel={false}>
-      {/* Promo banner */}
-      <section className="promo-banner">
-        <div className="promo-banner-text">
-          <span className="promo-badge">✓ {t('promo_commit')}</span>
-          <h2>{t('promo_title')}</h2>
-          <p>{t('promo_desc')}</p>
-        </div>
-        <div className="promo-platform-strip">
-          {mockPlatforms.map((platform) => (
-            <span key={platform.name} className="promo-platform-pill">
-              <PlatformBadge name={platform.name} size={18} />
-              {platform.name}
-            </span>
-          ))}
-        </div>
-      </section>
+      {/* Live events carousel — auto-rotating, not a static banner */}
+      <EventCarousel events={mockHomeEvents} />
 
-      {/* Balance / welcome card */}
-      <section className="welcome-card">
-        <span className="promo-badge light">✨ {t('welcome_hi')}</span>
+      {/* Balance / welcome card — premium styling */}
+      <section className="welcome-card-v2">
+        <div className="welcome-card-v2-glow" />
+        <div className="welcome-card-v2-head">
+          <span className="promo-badge light">✨ {t('welcome_hi')}</span>
+          <Link href="/account" className="welcome-card-v2-avatar">👤</Link>
+        </div>
 
         {MOCK_LOGGED_IN ? (
           <>
-            <div className="welcome-balance-row">
+            <div className="welcome-balance-row-v2">
               <div>
                 <div className="wc-label">{t('panel_balance_title')}</div>
-                <div className="wc-value">{formatCurrency(24693, lang)}</div>
+                <div className="wc-value-v2">{formatCurrency(24693, lang)}</div>
               </div>
+              <div className="wc-divider" />
               <div>
                 <div className="wc-label">{t('welcome_saved')}</div>
-                <div className="wc-value wc-value-secondary">{formatCurrency(21218, lang)}</div>
+                <div className="wc-value-v2 secondary">{formatCurrency(21218, lang)}</div>
               </div>
             </div>
 
@@ -119,6 +126,35 @@ export default function HomePage() {
           ))}
         </div>
         <p className="mock-note">{t('mock_notice')}</p>
+      </section>
+
+      {/* How to get the link — desktop vs mobile */}
+      <section className="home-section">
+        <div className="section-header">
+          <h2>{t('guide_title')}</h2>
+          <p className="muted-copy">{t('guide_desc')}</p>
+        </div>
+
+        <div className="sv-platform-tabs guide-tabs">
+          <button className={guideTab === 'mobile' ? 'active' : ''} onClick={() => setGuideTab('mobile')}>
+            📱 {t('guide_tab_mobile')}
+          </button>
+          <button className={guideTab === 'desktop' ? 'active' : ''} onClick={() => setGuideTab('desktop')}>
+            💻 {t('guide_tab_desktop')}
+          </button>
+        </div>
+
+        <div className="guide-steps">
+          {guideSteps[guideTab].map((step, i) => (
+            <div key={step.title} className="guide-step">
+              <div className="guide-step-number">{i + 1}</div>
+              <div>
+                <h3>{t(step.title as any)}</h3>
+                <p>{t(step.desc as any)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* Process steps */}

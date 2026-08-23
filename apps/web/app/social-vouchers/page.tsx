@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../../components/layout/AppShell';
-import { CopyCodeButton } from '../../components/ui/CopyCodeButton';
+import { VoucherTicket } from '../../components/ui/VoucherTicket';
 import { useLanguage } from '../../lib/i18n';
 import { mockSocialVouchers } from '../../lib/mock-data';
 
@@ -42,6 +42,7 @@ export default function SocialVouchersPage() {
   const { t } = useLanguage();
   const [activeGroup, setActiveGroup] = useState('fb-ig');
   const [link, setLink] = useState('');
+  const [revealed, setRevealed] = useState(false);
   const [countdown, setCountdown] = useState<{ nextSlot: string; hours: number; minutes: number } | null>(null);
 
   useEffect(() => {
@@ -49,6 +50,10 @@ export default function SocialVouchersPage() {
     const id = setInterval(() => setCountdown(getNextSlotInfo()), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setRevealed(false);
+  }, [link, activeGroup]);
 
   const filteredVouchers = useMemo(() => {
     if (activeGroup === 'fb-ig') {
@@ -114,26 +119,36 @@ export default function SocialVouchersPage() {
               <button type="button" className="get-link-paste-btn" onClick={() => setLink('')}>{t('sv_clear_link')}</button>
             </div>
           </div>
-          <button className="button button-primary get-link-cta" disabled={!link}>🎟️ {t('sv_apply_code')}</button>
+          <button
+            className="button button-primary get-link-cta"
+            disabled={!link}
+            onClick={() => setRevealed(true)}
+          >
+            🎟️ {t('sv_apply_code')}
+          </button>
         </section>
+
+        {revealed && (
+          <section>
+            <div className="section-header">
+              <h2>{t('sv_matched_title')}</h2>
+            </div>
+            <div className="voucher-ticket-grid">
+              {filteredVouchers.map((voucher) => (
+                <VoucherTicket key={voucher.code} voucher={voucher} applyLabel={t('sv_use_now')} />
+              ))}
+            </div>
+          </section>
+        )}
 
         <section>
           <div className="section-header">
             <h2>{t('sv_status_title')}</h2>
           </div>
 
-          <div className="social-grid">
+          <div className="voucher-ticket-grid">
             {filteredVouchers.map((voucher) => (
-              <div key={voucher.code} className="social-card">
-                <div className="social-platform">{voucher.platform}</div>
-                <h3>{voucher.discount}</h3>
-                <p>{voucher.condition}</p>
-                <p className="coupon-code">{voucher.code}</p>
-                <div className="coupon-footer">
-                  <span className="status-pill">{voucher.status}</span>
-                  <CopyCodeButton code={voucher.code} label={t('offer_get_code')} />
-                </div>
-              </div>
+              <VoucherTicket key={voucher.code} voucher={voucher} applyLabel={t('offer_get_code')} />
             ))}
             {filteredVouchers.length === 0 && (
               <p className="muted-copy">{t('sv_empty')}</p>

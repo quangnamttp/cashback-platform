@@ -1,9 +1,10 @@
 'use client';
 
-import { mockCashbackRows } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
+import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
+import { mockCashbackRows } from '../../lib/mock-data';
 
 const statusKeyMap: Record<string, string> = {
   AVAILABLE: 'status_available',
@@ -12,11 +13,18 @@ const statusKeyMap: Record<string, string> = {
   REJECTED: 'status_rejected',
 };
 
+const statusPillClass: Record<string, string> = {
+  AVAILABLE: 'order-pill success',
+  CONFIRMED: 'order-pill success',
+  PENDING: 'order-pill warning',
+  REJECTED: 'order-pill danger',
+};
+
 export default function CashbackPage() {
   const { t, lang } = useLanguage();
 
   return (
-    <AppShell>
+    <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -25,36 +33,30 @@ export default function CashbackPage() {
           </div>
         </div>
 
-        <section className="panel">
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{t('tbl_id')}</th>
-                  <th>{t('tbl_platform')}</th>
-                  <th>{t('tbl_amount')}</th>
-                  <th>{t('tbl_status')}</th>
-                  <th>{t('tbl_date')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockCashbackRows.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.platform}</td>
-                    <td>{formatCurrency(item.amount, lang)}</td>
-                    <td>
-                      <span className={`badge ${item.status === 'AVAILABLE' || item.status === 'CONFIRMED' ? 'badge-success' : item.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}`}>
-                        {t(statusKeyMap[item.status] as any) || item.status}
-                      </span>
-                    </td>
-                    <td>{item.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <div className="order-card-list">
+          {mockCashbackRows.map((item) => (
+            <div key={item.id} className="order-card">
+              <div className="order-card-main">
+                <PlatformBadge name={item.platform} size={44} />
+                <div className="order-card-info">
+                  <div className="order-card-tags">
+                    <span className="order-card-platform">{item.platform}</span>
+                    <span className="order-card-id">#{item.id}</span>
+                  </div>
+                  <h3>{t('cashback_title')}</h3>
+                </div>
+              </div>
+
+              <div className="order-card-side">
+                <div className="order-card-cashback">{formatCurrency(item.amount, lang)}</div>
+                <span className={statusPillClass[item.status] ?? 'order-pill'}>
+                  ● {t(statusKeyMap[item.status] as any) || item.status}
+                </span>
+                <span className="order-card-date">{item.date}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </AppShell>
   );

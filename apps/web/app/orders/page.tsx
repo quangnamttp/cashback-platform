@@ -1,9 +1,10 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { mockOrderRows } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
+import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { useLanguage } from '../../lib/i18n';
-import { formatCurrency } from '../../lib/currency';
 
 const statusKeyMap: Record<string, string> = {
   CONFIRMED: 'status_confirmed',
@@ -12,11 +13,30 @@ const statusKeyMap: Record<string, string> = {
   CANCELLED: 'status_rejected',
 };
 
+const statusPillClass: Record<string, string> = {
+  CONFIRMED: 'order-pill success',
+  PENDING: 'order-pill warning',
+  REFUNDED: 'order-pill danger',
+  CANCELLED: 'order-pill danger',
+};
+
 export default function OrdersPage() {
   const { t, lang } = useLanguage();
+  const [query, setQuery] = useState('');
+  const [platformFilter, setPlatformFilter] = useState('all');
+
+  const filtered = useMemo(() => {
+    return mockOrderRows.filter((row) => {
+      const matchesQuery =
+        row.product.toLowerCase().includes(query.toLowerCase()) ||
+        row.id.toLowerCase().includes(query.toLowerCase());
+      const matchesPlatform = platformFilter === 'all' || row.platform === platformFilter;
+      return matchesQuery && matchesPlatform;
+    });
+  }, [query, platformFilter]);
 
   return (
-    <AppShell>
+    <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -25,42 +45,56 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        <section className="panel">
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>{t('tbl_id')}</th>
-                  <th>{t('tbl_product')}</th>
-                  <th>{t('tbl_platform')}</th>
-                  <th>{t('tbl_date')}</th>
-                  <th>{t('tbl_value')}</th>
-                  <th>{t('tbl_commission')}</th>
-                  <th>{t('tbl_cashback')}</th>
-                  <th>{t('tbl_status')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockOrderRows.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.product}</td>
-                    <td>{item.platform}</td>
-                    <td>{item.date}</td>
-                    <td>{formatCurrency(item.value, lang)}</td>
-                    <td>{formatCurrency(item.commission, lang)}</td>
-                    <td>{formatCurrency(item.cashback, lang)}</td>
-                    <td>
-                      <span className={`badge ${item.status === 'CONFIRMED' ? 'badge-success' : item.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}`}>
-                        {t(statusKeyMap[item.status] as any) || item.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="order-toolbar">
+          <div className="order-search">
+            <span>🔍</span>
+            <input
+              placeholder={t('order_search_placeholder')}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
           </div>
-        </section>
+          <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} className="order-filter-select">
+            <option value="all">{t('order_filter_all')}</option>
+            <option value="Shopee">Shopee</option>
+            <option value="TikTok Shop">TikTok Shop</option>
+            <option value="Lazada">Lazada</option>
+          </select>
+        </div>
+
+        <div className="order-card-list">
+          {filtered.map((item) => (
+            <div key={item.id} className="order-card">
+              <div className="order-card-main">
+                <PlatformBadge name={item.platform} size={44} />
+                <div className="order-card-info">
+                  <div className="order-card-tags">
+                    <span className="order-card-platform">{item.platform}</span>
+                    <span className="order-card-id">#{item.id}</span>
+                  </div>
+                  <h3>{item.product}</h3>
+                  <a href={item.linkUrl} target="_blank" rel="noreferrer" className="order-card-link">
+                    {t('order_product_link')} ↗
+                  </a>
+                </div>
+              </div>
+
+              <div className="order-card-side">
+                <div className="order-card-cashback">+{item.cashback.toLocaleString('vi-VN')} xu</div>
+                <span className={statusPillClass[item.status] ?? 'order-pill'}>
+                  ● {t(statusKeyMap[item.status] as any) || item.status}
+                </span>
+                <span className="order-card-date">{item.date} {item.time}</span>
+              </div>
+
+              <button className="button button-secondary order-card-view">👁 {t('order_view')}</button>
+            </div>
+          ))}
+
+          {filtered.length === 0 && (
+            <p className="muted-copy">{t('order_empty')}</p>
+          )}
+        </div>
       </div>
     </AppShell>
   );

@@ -1137,8 +1137,8 @@ p {
   position: sticky;
   top: 88px;
   align-self: start;
-  max-height: calc(100vh - 100px);
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .sidebar-nav {
@@ -2669,4 +2669,525 @@ p {
   border-color: var(--primary);
   background: var(--bg-accent);
   color: var(--primary-dark);
+}
+
+/* Orders page: card-list layout */
+.order-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.order-search {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.order-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.9rem;
+}
+
+.order-filter-select {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.order-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.order-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  flex-wrap: wrap;
+}
+
+.order-card-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.order-card-info h3 {
+  font-size: 0.95rem;
+  margin: 4px 0 4px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.order-card-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.order-card-platform {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.order-card-id {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.order-card-link {
+  font-size: 0.8rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.order-card-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.order-card-cashback {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--success);
+}
+
+.order-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.order-pill.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.order-pill.warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.order-pill.danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.order-card-date {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.order-card-view {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .order-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .order-card-side {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+  }
+  .order-card-view {
+    width: 100%;
+  }
+}
+
+/* ==========================================================
+   EVENT CAROUSEL (auto-rotating, homepage top)
+   ========================================================== */
+.event-carousel {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 18px 22px;
+  margin-top: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.event-carousel-track {
+  animation: eventFadeIn 0.4s ease;
+}
+
+@keyframes eventFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.event-carousel-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.event-carousel-title {
+  margin-top: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.event-carousel-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.event-carousel-controls > button {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+.event-carousel-controls > button:hover {
+  background: var(--bg-accent);
+  color: var(--primary);
+}
+
+.event-carousel-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.event-carousel-dots button {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: none;
+  background: var(--border);
+  padding: 0;
+}
+
+.event-carousel-dots button.active {
+  background: var(--primary);
+  width: 18px;
+  border-radius: 4px;
+}
+
+/* ==========================================================
+   PREMIUM WALLET CARD (v2)
+   ========================================================== */
+.welcome-card-v2 {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--primary) 0%, var(--primary-dark) 100%);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-top: 16px;
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+}
+
+.welcome-card-v2-glow {
+  position: absolute;
+  top: -60px;
+  right: -60px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+.welcome-card-v2-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+
+.welcome-card-v2-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.welcome-balance-row-v2 {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 18px;
+  position: relative;
+}
+
+.welcome-balance-row-v2 .wc-label {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.wc-value-v2 {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 4px;
+}
+
+.wc-value-v2.secondary {
+  font-size: 1.3rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.wc-divider {
+  width: 1px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.welcome-card-v2 .welcome-actions {
+  position: relative;
+}
+
+.welcome-card-v2 .button-secondary {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.welcome-card-v2 .button-secondary:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* ==========================================================
+   GET-LINK GUIDE SECTION
+   ========================================================== */
+.guide-tabs {
+  max-width: 320px;
+}
+
+.guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.guide-step {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.guide-step-number {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg-accent);
+  color: var(--primary-dark);
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.guide-step h3 {
+  font-size: 0.95rem;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.guide-step p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ==========================================================
+   VOUCHER TICKET (branded coupon card, like a physical ticket)
+   ========================================================== */
+.voucher-ticket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.voucher-ticket {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+
+.voucher-ticket::before,
+.voucher-ticket::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  left: 76px;
+  z-index: 2;
+}
+
+.voucher-ticket::before {
+  top: -7px;
+}
+
+.voucher-ticket::after {
+  bottom: -7px;
+}
+
+.voucher-ticket-side {
+  width: 92px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 12px 6px;
+  border-right: 2px dashed rgba(255, 255, 255, 0.35);
+}
+
+.voucher-ticket-side span {
+  font-size: 1.5rem;
+}
+
+.voucher-ticket-body {
+  flex: 1;
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.voucher-ticket-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.voucher-ticket-top h3 {
+  font-size: 1.05rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.voucher-ticket-top p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.voucher-ticket-new {
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.voucher-ticket-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.voucher-ticket-exclusive {
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.voucher-ticket-expiry {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.voucher-ticket-progress {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.voucher-ticket-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.voucher-ticket-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
 }
