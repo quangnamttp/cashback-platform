@@ -3028,6 +3028,16 @@ p {
   position: relative;
 }
 
+.welcome-card-v2 .button-primary {
+  background: #fff;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.welcome-card-v2 .button-primary:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .welcome-card-v2 .button-secondary {
   background: rgba(255, 255, 255, 0.16);
   color: #fff;
@@ -3036,6 +3046,12 @@ p {
 
 .welcome-card-v2 .button-secondary:hover {
   background: rgba(255, 255, 255, 0.24);
+}
+
+@media (max-width: 480px) {
+  .wc-divider {
+    display: none;
+  }
 }
 
 /* ==========================================================

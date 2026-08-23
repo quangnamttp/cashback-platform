@@ -116,9 +116,24 @@ export default function SocialVouchersPage() {
                 value={link}
                 onChange={(event) => setLink(event.target.value)}
               />
-              {link && (
-                <button type="button" className="get-link-paste-btn" onClick={() => setLink('')}>{t('sv_clear_link')}</button>
-              )}
+              <button
+                type="button"
+                className="get-link-paste-btn"
+                onClick={async () => {
+                  if (link) {
+                    setLink('');
+                    return;
+                  }
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    setLink(text);
+                  } catch {
+                    // clipboard access may be blocked; user can paste manually
+                  }
+                }}
+              >
+                {link ? `✕ ${t('sv_clear_link')}` : `📋 ${t('get_link_paste')}`}
+              </button>
             </div>
           </div>
           <button
