@@ -188,7 +188,7 @@ const dict = {
     process_step3_desc: 'Sau khi đơn được đối soát hoàn tất, tiền hoàn khả dụng sẽ vào ví và có thể rút ngay.',
 
     referral_hero_title: 'Mời bạn mua sắm, nhận hoa hồng bền vững',
-    referral_hero_desc: 'Chia sẻ link giới thiệu — mỗi đơn hoàn tiền hợp lệ của bạn bè, bạn nhận tới 10% hoa hồng vào số dư ví.',
+    referral_hero_desc: 'Chia sẻ link giới thiệu — mỗi đơn hoàn tiền hợp lệ của bạn bè, bạn nhận tới 5% hoa hồng vào số dư ví.',
     referral_copy_link: 'Sao chép link mời',
     referral_rate_desc: 'hoa hồng / đơn bạn mời',
     referral_clicks: 'Lượt click',
@@ -396,7 +396,7 @@ const dict = {
     process_step3_desc: 'Once reconciliation is complete, the available cashback lands in your wallet and can be withdrawn.',
 
     referral_hero_title: 'Invite friends to shop, earn lasting commission',
-    referral_hero_desc: 'Share your referral link — for every valid cashback order from a friend, you earn up to 10% commission into your wallet balance.',
+    referral_hero_desc: 'Share your referral link — for every valid cashback order from a friend, you earn up to 5% commission into your wallet balance.',
     referral_copy_link: 'Copy referral link',
     referral_rate_desc: 'commission / referred order',
     referral_clicks: 'Clicks',
@@ -604,7 +604,7 @@ const dict = {
     process_step3_desc: '对账完成后，可用返现将进入您的钱包，可立即提现。',
 
     referral_hero_title: '邀请好友购物，获得持续佣金',
-    referral_hero_desc: '分享您的邀请链接——好友每笔有效返现订单，您最高可获得10%佣金进入钱包余额。',
+    referral_hero_desc: '分享您的邀请链接——好友每笔有效返现订单，您最高可获得5%佣金进入钱包余额。',
     referral_copy_link: '复制邀请链接',
     referral_rate_desc: '佣金 / 每笔邀请订单',
     referral_clicks: '点击次数',

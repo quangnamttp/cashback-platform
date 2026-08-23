@@ -3,6 +3,7 @@
 import { mockOrderRows } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
+import { formatCurrency } from '../../lib/currency';
 
 const statusKeyMap: Record<string, string> = {
   CONFIRMED: 'status_confirmed',
@@ -12,7 +13,7 @@ const statusKeyMap: Record<string, string> = {
 };
 
 export default function OrdersPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <AppShell>
@@ -46,9 +47,9 @@ export default function OrdersPage() {
                     <td>{item.product}</td>
                     <td>{item.platform}</td>
                     <td>{item.date}</td>
-                    <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.value)}</td>
-                    <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.commission)}</td>
-                    <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.cashback)}</td>
+                    <td>{formatCurrency(item.value, lang)}</td>
+                    <td>{formatCurrency(item.commission, lang)}</td>
+                    <td>{formatCurrency(item.cashback, lang)}</td>
                     <td>
                       <span className={`badge ${item.status === 'CONFIRMED' ? 'badge-success' : item.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}`}>
                         {t(statusKeyMap[item.status] as any) || item.status}

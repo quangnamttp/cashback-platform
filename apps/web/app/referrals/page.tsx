@@ -4,12 +4,13 @@ import { useState } from 'react';
 import { AppShell } from '../../components/layout/AppShell';
 import { CopyCodeButton } from '../../components/ui/CopyCodeButton';
 import { useLanguage } from '../../lib/i18n';
+import { formatCurrency } from '../../lib/currency';
 
 const commissionHistory = [
-  { user: 'lan.hoa', platform: 'Shopee', amount: 314, rate: '10%', base: 3143, date: '22/08/2026 07:01' },
-  { user: 'thu.mai', platform: 'TikTok Shop', amount: 350, rate: '10%', base: 3500, date: '21/08/2026 09:30' },
-  { user: 'bao.tran', platform: 'TikTok Shop', amount: 1588, rate: '10%', base: 15876, date: '21/08/2026 08:30' },
-  { user: 'quang.nam', platform: 'Shopee', amount: 197, rate: '10%', base: 1970, date: '20/08/2026 21:12' },
+  { user: 'lan.hoa', platform: 'Shopee', amount: 157, rate: '5%', base: 3143, date: '22/08/2026 07:01' },
+  { user: 'thu.mai', platform: 'TikTok Shop', amount: 175, rate: '5%', base: 3500, date: '21/08/2026 09:30' },
+  { user: 'bao.tran', platform: 'TikTok Shop', amount: 794, rate: '5%', base: 15876, date: '21/08/2026 08:30' },
+  { user: 'quang.nam', platform: 'Shopee', amount: 99, rate: '5%', base: 1970, date: '20/08/2026 21:12' },
 ];
 
 const invitedMembers = [
@@ -19,7 +20,7 @@ const invitedMembers = [
 ];
 
 export default function ReferralsPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [tab, setTab] = useState<'history' | 'members'>('history');
   const referralLink = 'https://cashback-platform.example/r/REF-MINH-2026';
 
@@ -37,7 +38,7 @@ export default function ReferralsPage() {
           </div>
 
           <div className="referral-rate-box">
-            <strong>10%</strong>
+            <strong>5%</strong>
             <span>{t('referral_rate_desc')}</span>
           </div>
         </section>
@@ -53,11 +54,11 @@ export default function ReferralsPage() {
           </div>
           <div className="stat-card">
             <div className="stat-label">{t('referral_rate_label')}</div>
-            <div className="stat-value">10%</div>
+            <div className="stat-value">5%</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">{t('referral_rewards')}</div>
-            <div className="stat-value">26.544đ</div>
+            <div className="stat-value">{formatCurrency(26544, lang)}</div>
           </div>
         </section>
 
@@ -78,10 +79,10 @@ export default function ReferralsPage() {
                   <div>
                     <strong>{row.user}</strong>
                     <span>{t('referral_commission_from')} {row.platform}</span>
-                    <span className="referral-list-meta">{t('offer_min_order').replace('Đơn từ', 'Gốc')} {row.base.toLocaleString('vi-VN')}đ · {row.date}</span>
+                    <span className="referral-list-meta">{t('offer_min_order').replace('Đơn từ', 'Gốc')} {formatCurrency(row.base, lang)} · {row.date}</span>
                   </div>
                   <div className="referral-list-amount">
-                    <strong>+{row.amount.toLocaleString('vi-VN')}đ</strong>
+                    <strong>+{formatCurrency(row.amount, lang)}</strong>
                     <span>{row.rate}</span>
                   </div>
                 </div>
@@ -97,7 +98,7 @@ export default function ReferralsPage() {
                     <span className="referral-list-meta">{m.orders} {t('panel_orders').toLowerCase()}</span>
                   </div>
                   <div className="referral-list-amount">
-                    <strong>+{m.earned.toLocaleString('vi-VN')}đ</strong>
+                    <strong>+{formatCurrency(m.earned, lang)}</strong>
                   </div>
                 </div>
               ))}

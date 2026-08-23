@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useLanguage } from '../../lib/i18n';
+import { formatCurrency } from '../../lib/currency';
 
 const MOCK_LOGGED_IN = true;
 const MOCK_BALANCE_XU = 20206;
 
 export function RightPanel() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <aside className="app-right-panel">
@@ -17,7 +18,7 @@ export function RightPanel() {
         {MOCK_LOGGED_IN ? (
           <>
             <div className="rp-balance-value">{MOCK_BALANCE_XU.toLocaleString('vi-VN')} xu</div>
-            <div className="rp-balance-sub">≈ {MOCK_BALANCE_XU.toLocaleString('vi-VN')}đ</div>
+            <div className="rp-balance-sub">≈ {formatCurrency(MOCK_BALANCE_XU, lang)}</div>
             <div className="rp-balance-actions">
               <Link href="/cashback-wallet" className="button button-secondary rp-btn">{t('panel_wallet_btn')}</Link>
               <Link href="/cashback-wallet" className="button button-primary rp-btn">{t('panel_withdraw_btn')}</Link>
@@ -33,15 +34,15 @@ export function RightPanel() {
         <div className="rp-stat-list">
           <div className="rp-stat-row">
             <span>{t('panel_saved')}</span>
-            <strong>₫420.000</strong>
+            <strong>{formatCurrency(420000, lang)}</strong>
           </div>
           <div className="rp-stat-row">
             <span>{t('panel_pending')}</span>
-            <strong>₫156.000</strong>
+            <strong>{formatCurrency(156000, lang)}</strong>
           </div>
           <div className="rp-stat-row">
             <span>{t('panel_received')}</span>
-            <strong>₫234.000</strong>
+            <strong>{formatCurrency(234000, lang)}</strong>
           </div>
           <div className="rp-stat-row">
             <span>{t('panel_orders')}</span>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { mockCashbackRows, mockDashboardStats, mockOrderRows } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
+import { formatCurrency } from '../../lib/currency';
 
 const statusKeyMap: Record<string, string> = {
   CONFIRMED: 'status_confirmed',
@@ -13,7 +14,7 @@ const statusKeyMap: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <AppShell>
@@ -60,7 +61,7 @@ export default function DashboardPage() {
                       <td>{item.id}</td>
                       <td>{item.product}</td>
                       <td>{item.platform}</td>
-                      <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.cashback)}</td>
+                      <td>{formatCurrency(item.cashback, lang)}</td>
                       <td>
                         <span className={`badge ${item.status === 'CONFIRMED' ? 'badge-success' : item.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}`}>
                           {t(statusKeyMap[item.status] as any) || item.status}
@@ -87,7 +88,7 @@ export default function DashboardPage() {
                     <span>{row.date}</span>
                   </div>
                   <div className="amount-box">
-                    <strong>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(row.amount)}</strong>
+                    <strong>{formatCurrency(row.amount, lang)}</strong>
                     <span>{row.status}</span>
                   </div>
                 </div>

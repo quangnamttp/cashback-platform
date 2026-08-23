@@ -3,6 +3,7 @@
 import { mockCashbackRows } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
+import { formatCurrency } from '../../lib/currency';
 
 const statusKeyMap: Record<string, string> = {
   AVAILABLE: 'status_available',
@@ -12,7 +13,7 @@ const statusKeyMap: Record<string, string> = {
 };
 
 export default function CashbackPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <AppShell>
@@ -41,7 +42,7 @@ export default function CashbackPage() {
                   <tr key={item.id}>
                     <td>{item.id}</td>
                     <td>{item.platform}</td>
-                    <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.amount)}</td>
+                    <td>{formatCurrency(item.amount, lang)}</td>
                     <td>
                       <span className={`badge ${item.status === 'AVAILABLE' || item.status === 'CONFIRMED' ? 'badge-success' : item.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}`}>
                         {t(statusKeyMap[item.status] as any) || item.status}

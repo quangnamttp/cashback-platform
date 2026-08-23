@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { mockWithdrawalRequests } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { useLanguage } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/currency';
 
 const statusBadge: Record<string, string> = {
   PENDING: 'badge-warning',
@@ -11,6 +13,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminWithdrawalsPage() {
+  const { lang } = useLanguage();
   const [rows, setRows] = useState(mockWithdrawalRequests);
   const pendingCount = rows.filter((row) => row.status === 'PENDING').length;
 
@@ -47,7 +50,7 @@ export default function AdminWithdrawalsPage() {
                 <tr key={row.id}>
                   <td>{row.id}</td>
                   <td>{row.user}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(row.amount)}</td>
+                  <td>{formatCurrency(row.amount, lang)}</td>
                   <td>{row.method}</td>
                   <td>{row.requestedAt}</td>
                   <td><span className={`badge ${statusBadge[row.status]}`}>{row.status}</span></td>

@@ -4,21 +4,21 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const adminNavItems = [
-  { icon: '📊', label: 'Tổng quan', href: '/admin' },
-  { icon: '👥', label: 'Người dùng', href: '/admin/users' },
-  { icon: '📦', label: 'Đơn hàng', href: '/admin/orders' },
-  { icon: '💰', label: 'Cashback / Hoa hồng', href: '/admin/cashback' },
-  { icon: '🏪', label: 'Affiliate', href: '/admin/affiliate' },
-  { icon: '📱', label: 'Voucher MXH', href: '/admin/social-vouchers' },
-  { icon: '💸', label: 'Rút tiền', href: '/admin/withdrawals' },
-  { icon: '👥', label: 'Giới thiệu', href: '/admin/referrals' },
-  { icon: '⚠️', label: 'Fraud / Risk', href: '/admin/fraud' },
-  { icon: '⚙️', label: 'Cấu hình', href: '/admin/settings' },
-  { icon: '📜', label: 'Logs', href: '/admin/logs' },
+  { icon: '📊', label: 'Tổng quan', href: '/manager' },
+  { icon: '👥', label: 'Người dùng', href: '/manager/users' },
+  { icon: '📦', label: 'Đơn hàng', href: '/manager/orders' },
+  { icon: '💰', label: 'Cashback / Hoa hồng', href: '/manager/cashback' },
+  { icon: '🏪', label: 'Affiliate', href: '/manager/affiliate' },
+  { icon: '📱', label: 'Voucher MXH', href: '/manager/social-vouchers' },
+  { icon: '💸', label: 'Rút tiền', href: '/manager/withdrawals' },
+  { icon: '👥', label: 'Giới thiệu', href: '/manager/referrals' },
+  { icon: '⚠️', label: 'Fraud / Risk', href: '/manager/fraud' },
+  { icon: '⚙️', label: 'Cấu hình', href: '/manager/settings' },
+  { icon: '📜', label: 'Logs', href: '/manager/logs' },
 ];
 
 function isActive(pathname: string, href: string) {
-  if (href === '/admin') return pathname === '/admin';
+  if (href === '/manager') return pathname === '/manager';
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -28,7 +28,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="admin-page-shell container">
       <aside className="admin-sidebar panel">
-        <Link href="/admin" className="brand-block compact">
+        <Link href="/manager" className="brand-block compact">
           <div className="brand-mark">C</div>
           <div>
             <div className="brand-name">Cashback Platform</div>

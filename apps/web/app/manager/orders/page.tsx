@@ -1,5 +1,9 @@
+'use client';
+
 import { mockOrderRows } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { useLanguage } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/currency';
 
 const statusBadge: Record<string, string> = {
   CONFIRMED: 'badge-success',
@@ -9,6 +13,8 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminOrdersPage() {
+  const { lang } = useLanguage();
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -40,9 +46,9 @@ export default function AdminOrdersPage() {
                   <td>{item.product}</td>
                   <td>{item.platform}</td>
                   <td>{item.date}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.value)}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.commission)}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.cashback)}</td>
+                  <td>{formatCurrency(item.value, lang)}</td>
+                  <td>{formatCurrency(item.commission, lang)}</td>
+                  <td>{formatCurrency(item.cashback, lang)}</td>
                   <td><span className={`badge ${statusBadge[item.status] ?? 'badge-neutral'}`}>{item.status}</span></td>
                 </tr>
               ))}

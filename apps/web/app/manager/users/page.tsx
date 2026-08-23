@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { mockAdminUsers } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { useLanguage } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/currency';
 
 const statusBadge: Record<string, string> = {
   ACTIVE: 'badge-success',
@@ -11,6 +13,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminUsersPage() {
+  const { lang } = useLanguage();
   const [users, setUsers] = useState(mockAdminUsers);
   const [query, setQuery] = useState('');
 
@@ -68,8 +71,8 @@ export default function AdminUsersPage() {
                   <td>{user.id}</td>
                   <td>{user.name}</td>
                   <td>{user.email}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(user.balance)}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(user.totalCashback)}</td>
+                  <td>{formatCurrency(user.balance, lang)}</td>
+                  <td>{formatCurrency(user.totalCashback, lang)}</td>
                   <td>{user.joined}</td>
                   <td><span className={`badge ${statusBadge[user.status]}`}>{user.status}</span></td>
                   <td>

@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { AppShell } from '../components/layout/AppShell';
 import { PlatformBadge } from '../components/ui/PlatformBadge';
 import { useLanguage } from '../lib/i18n';
+import { formatCurrency } from '../lib/currency';
 import { mockPlatforms } from '../lib/mock-data';
 
 const MOCK_LOGGED_IN = true;
 
 export default function HomePage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <AppShell showRightPanel={false}>
@@ -39,11 +40,11 @@ export default function HomePage() {
             <div className="welcome-balance-row">
               <div>
                 <div className="wc-label">{t('panel_balance_title')}</div>
-                <div className="wc-value">24.693đ</div>
+                <div className="wc-value">{formatCurrency(24693, lang)}</div>
               </div>
               <div>
                 <div className="wc-label">{t('welcome_saved')}</div>
-                <div className="wc-value wc-value-secondary">21.218đ</div>
+                <div className="wc-value wc-value-secondary">{formatCurrency(21218, lang)}</div>
               </div>
             </div>
 
@@ -60,17 +61,17 @@ export default function HomePage() {
       <section className="mini-stats-row">
         <div className="mini-stat-card">
           <span className="mini-stat-icon">🛍️</span>
-          <div className="mini-stat-value">40.335đ</div>
+          <div className="mini-stat-value">{formatCurrency(40335, lang)}</div>
           <div className="mini-stat-label">{t('welcome_total_orders')}</div>
         </div>
         <div className="mini-stat-card">
           <span className="mini-stat-icon">⏳</span>
-          <div className="mini-stat-value">19.118đ</div>
+          <div className="mini-stat-value">{formatCurrency(19118, lang)}</div>
           <div className="mini-stat-label">{t('panel_pending')}</div>
         </div>
         <div className="mini-stat-card">
           <span className="mini-stat-icon">✅</span>
-          <div className="mini-stat-value">21.218đ</div>
+          <div className="mini-stat-value">{formatCurrency(21218, lang)}</div>
           <div className="mini-stat-label">{t('panel_received')}</div>
         </div>
       </section>

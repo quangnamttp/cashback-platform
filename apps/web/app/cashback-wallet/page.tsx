@@ -3,6 +3,7 @@
 import { mockCashbackRows } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
+import { formatCurrency } from '../../lib/currency';
 
 const statusKeyMap: Record<string, string> = {
   AVAILABLE: 'status_available',
@@ -12,7 +13,7 @@ const statusKeyMap: Record<string, string> = {
 };
 
 export default function CashbackWalletPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <AppShell>
@@ -27,19 +28,19 @@ export default function CashbackWalletPage() {
         <section className="stats-grid">
           <div className="stat-card">
             <div className="stat-label">{t('wallet_available')}</div>
-            <div className="stat-value">₫890K</div>
+            <div className="stat-value">{formatCurrency(890000, lang)}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">{t('wallet_pending')}</div>
-            <div className="stat-value">₫790K</div>
+            <div className="stat-value">{formatCurrency(790000, lang)}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">{t('wallet_withdrawn')}</div>
-            <div className="stat-value">₫320K</div>
+            <div className="stat-value">{formatCurrency(320000, lang)}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">{t('wallet_rejected')}</div>
-            <div className="stat-value">₫60K</div>
+            <div className="stat-value">{formatCurrency(60000, lang)}</div>
           </div>
         </section>
 
@@ -59,7 +60,7 @@ export default function CashbackWalletPage() {
                   <tr key={item.id}>
                     <td>{item.id}</td>
                     <td>{item.platform}</td>
-                    <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.amount)}</td>
+                    <td>{formatCurrency(item.amount, lang)}</td>
                     <td><span className={`badge ${item.status === 'AVAILABLE' || item.status === 'CONFIRMED' ? 'badge-success' : item.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}`}>{t(statusKeyMap[item.status] as any) || item.status}</span></td>
                   </tr>
                 ))}

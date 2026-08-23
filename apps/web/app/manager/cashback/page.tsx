@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { mockCashbackRows } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { useLanguage } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/currency';
 
 const statusBadge: Record<string, string> = {
   AVAILABLE: 'badge-success',
@@ -13,6 +15,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminCashbackPage() {
+  const { lang } = useLanguage();
   const [rows, setRows] = useState(mockCashbackRows);
 
   const setStatus = (id: string, status: 'CONFIRMED' | 'REJECTED') => {
@@ -46,7 +49,7 @@ export default function AdminCashbackPage() {
                 <tr key={item.id}>
                   <td>{item.id}</td>
                   <td>{item.platform}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.amount)}</td>
+                  <td>{formatCurrency(item.amount, lang)}</td>
                   <td><span className={`badge ${statusBadge[item.status] ?? 'badge-neutral'}`}>{item.status}</span></td>
                   <td>{item.date}</td>
                   <td>

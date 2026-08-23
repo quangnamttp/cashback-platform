@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Server-side gate for /admin. Credentials are read from environment
+// Server-side gate for /manager. Credentials are read from environment
 // variables on the server and are NEVER sent to the browser bundle.
 //
 // This is still NOT a substitute for real backend authentication/RBAC
@@ -19,7 +19,7 @@ const DEV_FALLBACK_PASS = 'change-me-in-env';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (!pathname.startsWith('/admin')) {
+  if (!pathname.startsWith('/manager')) {
     return NextResponse.next();
   }
 
@@ -55,5 +55,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/admin'],
+  matcher: ['/manager/:path*', '/manager'],
 };

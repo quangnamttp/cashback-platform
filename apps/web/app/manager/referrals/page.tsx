@@ -1,4 +1,8 @@
+'use client';
+
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { useLanguage } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/currency';
 
 const rows = [
   { referrer: 'minh.nguyen@gmail.com', referred: 'lan.hoa', purchase: 680000, commission: 34000, status: 'CONFIRMED' },
@@ -13,6 +17,8 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminReferralsPage() {
+  const { lang } = useLanguage();
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -39,8 +45,8 @@ export default function AdminReferralsPage() {
                 <tr key={`${row.referrer}-${row.referred}`}>
                   <td>{row.referrer}</td>
                   <td>{row.referred}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(row.purchase)}</td>
-                  <td>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(row.commission)}</td>
+                  <td>{formatCurrency(row.purchase, lang)}</td>
+                  <td>{formatCurrency(row.commission, lang)}</td>
                   <td><span className={`badge ${statusBadge[row.status]}`}>{row.status}</span></td>
                 </tr>
               ))}
