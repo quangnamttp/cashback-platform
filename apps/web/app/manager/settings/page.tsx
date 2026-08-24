@@ -1,6 +1,56 @@
+'use client';
+
+import { useState } from 'react';
 import { AdminShell } from '../../../components/layout/AdminShell';
 
 export default function AdminSettingsPage() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' });
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setStatus({ type: 'idle', message: '' });
+
+    if (newPassword.length < 6) {
+      setStatus({ type: 'error', message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setStatus({ type: 'error', message: 'Xác nhận mật khẩu không khớp.' });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/manager-auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+
+      if (res.ok) {
+        setStatus({ type: 'success', message: 'Đổi mật khẩu thành công. Lần đăng nhập sau sẽ dùng mật khẩu mới.' });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (data.error === 'wrong_current_password') {
+          setStatus({ type: 'error', message: 'Mật khẩu hiện tại không đúng.' });
+        } else {
+          setStatus({ type: 'error', message: 'Có lỗi xảy ra, vui lòng thử lại.' });
+        }
+      }
+    } catch {
+      setStatus({ type: 'error', message: 'Không thể kết nối máy chủ, vui lòng thử lại.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -32,11 +82,58 @@ export default function AdminSettingsPage() {
       </section>
 
       <section className="panel">
-        <h3>Cổng thanh toán rút tiền</h3>
-        <p className="muted-copy">Bank transfer, MoMo, ZaloPay — bật/tắt từng phương thức (giao diện minh họa, chưa nối logic thật).</p>
+        <h3>🔒 Đổi mật khẩu quản trị</h3>
+        <p className="muted-copy">
+          Mật khẩu dùng để đăng nhập trang <code>/manager</code>. Đổi mật khẩu ở đây sẽ lưu qua cookie an toàn
+          (httpOnly) trên trình duyệt này — <strong>chưa phải hệ thống tài khoản admin đầy đủ</strong> (chưa có
+          nhiều tài khoản riêng biệt, chưa có nhật ký ai đổi mật khẩu). Nếu xoá cookie trình duyệt hoặc đổi máy khác,
+          mật khẩu sẽ quay về giá trị mặc định đã cấu hình trên server.
+        </p>
+
+        <form onSubmit={handleChangePassword} className="bank-add-form" style={{ maxWidth: 420, marginTop: 18 }}>
+          <label>
+            <span className="field-label">Mật khẩu hiện tại</span>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            <span className="field-label">Mật khẩu mới</span>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={6}
+              required
+            />
+          </label>
+          <label>
+            <span className="field-label">Xác nhận mật khẩu mới</span>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              minLength={6}
+              required
+            />
+          </label>
+
+          {status.type !== 'idle' && (
+            <p className={status.type === 'error' ? 'admin-gate-error' : 'muted-copy'} style={status.type === 'success' ? { color: 'var(--success)' } : undefined}>
+              {status.message}
+            </p>
+          )}
+
+          <button type="submit" className="button button-primary" disabled={submitting}>
+            {submitting ? 'Đang lưu...' : 'Đổi mật khẩu'}
+          </button>
+        </form>
       </section>
 
-      <p className="mock-note">Đây là giao diện nền tảng (foundation) cho Admin — logic backend cấu hình sẽ triển khai ở phase sau.</p>
+      <p className="mock-note">Đây là giao diện nền tảng (foundation) cho Admin — logic backend cấu hình đầy đủ (RBAC, nhiều tài khoản) sẽ triển khai ở phase sau.</p>
     </AdminShell>
   );
 }
