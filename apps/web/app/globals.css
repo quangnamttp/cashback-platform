@@ -1045,14 +1045,6 @@ p {
     gap: 8px 10px;
     font-size: 0.72rem;
   }
-
-  .header-actions {
-    width: 100%;
-  }
-
-  .header-actions .button {
-    flex: 1;
-  }
 }
 
 /* ==========================================================
@@ -1532,6 +1524,12 @@ p {
 /* Override legacy flex-wrap from old design that broke the header into 2 rows on mobile */
 .header-inner {
   flex-wrap: nowrap !important;
+  justify-content: space-between !important;
+}
+
+.header-actions {
+  width: auto !important;
+  flex-shrink: 0 !important;
 }
 
 @media (max-width: 980px) {
@@ -3599,4 +3597,159 @@ p {
   .voucher-ticket-v2-body {
     padding: 14px;
   }
+}
+
+/* ==========================================================
+   SHIPMENT TRACKER (order status page)
+   ========================================================== */
+.ship-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ship-order-card {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ship-order-card .order-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ship-order-cashback-block {
+  margin-left: auto;
+  text-align: right;
+}
+
+.ship-tracker {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.ship-tracker-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+}
+
+.ship-tracker-node-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.ship-tracker-node {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+
+.ship-tracker-node.done {
+  background: var(--bg-accent);
+  border-color: var(--primary);
+}
+
+.ship-tracker-node.current {
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-lighter);
+}
+
+.ship-tracker-line {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  margin: 0 -4px;
+}
+
+.ship-tracker-line.done {
+  background: var(--primary);
+}
+
+.ship-tracker-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.3;
+}
+
+.ship-tracker-label.done {
+  color: var(--text);
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .ship-tracker-node {
+    width: 28px;
+    height: 28px;
+    font-size: 0.82rem;
+  }
+  .ship-tracker-label {
+    font-size: 0.6rem;
+  }
+}
+
+/* Bank accounts section on wallet page */
+.bank-account-empty {
+  text-align: center;
+  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.bank-account-empty .muted-copy {
+  max-width: 360px;
+}
+
+.bank-add-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bank-add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bank-add-form input {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 0.9rem;
+}
+
+.field-group-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
 }

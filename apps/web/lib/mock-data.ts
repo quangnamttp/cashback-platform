@@ -40,10 +40,10 @@ export const mockOrderRows = [
 ];
 
 export const mockCashbackRows = [
-  { id: 'CB-1102', platform: 'Shopee', amount: 93000, status: 'PENDING', date: '12/08/2026' },
-  { id: 'CB-1101', platform: 'TikTok Shop', amount: 98000, status: 'AVAILABLE', date: '09/08/2026' },
-  { id: 'CB-1099', platform: 'Lazada', amount: 15600, status: 'WITHDRAWN', date: '04/08/2026' },
-  { id: 'CB-1098', platform: 'Shopee', amount: 48000, status: 'CONFIRMED', date: '31/07/2026' },
+  { id: 'CB-1102', platform: 'Shopee', amount: 93000, status: 'PENDING', date: '12/08/2026', shippingStage: 1 },
+  { id: 'CB-1101', platform: 'TikTok Shop', amount: 98000, status: 'AVAILABLE', date: '09/08/2026', shippingStage: 2 },
+  { id: 'CB-1099', platform: 'Lazada', amount: 15600, status: 'WITHDRAWN', date: '04/08/2026', shippingStage: 3 },
+  { id: 'CB-1098', platform: 'Shopee', amount: 48000, status: 'CONFIRMED', date: '31/07/2026', shippingStage: 3 },
 ];
 
 export const mockDashboardStats = [
