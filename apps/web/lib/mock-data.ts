@@ -130,3 +130,10 @@ export const mockProtectedLinks = [
     description: 'Giữ link sạch và ánh xạ trạng thái order theo công thức affiliate chuẩn.',
   },
 ];
+
+export const mockWithdrawalHistory = [
+  { id: 'W6A8AE3E5BD3CF', amount: 43810, bank: 'Ngân hàng MBBANK', accountNumber: '11131102001', accountHolder: 'TRUONG TAN PHUONG', status: 'DONE', createdAt: '23/08/2026 19:13', updatedAt: '24/08/2026 13:53' },
+  { id: 'W6A7AC1D36607A', amount: 43752, bank: 'Ngân hàng MBBANK', accountNumber: '11131102001', accountHolder: 'TRUONG TAN PHUONG', status: 'DONE', createdAt: '11/08/2026 13:31', updatedAt: '12/08/2026 09:02' },
+  { id: 'W6B1FE2A9931D2', amount: 20000, bank: 'MoMo', accountNumber: '0987654321', accountHolder: 'TRUONG TAN PHUONG', status: 'PENDING', createdAt: '24/08/2026 20:40', updatedAt: '24/08/2026 20:40' },
+  { id: 'W6A5DD8B7712E9', amount: 60000, bank: 'Ngân hàng Vietcombank', accountNumber: '0071002345678', accountHolder: 'TRUONG TAN PHUONG', status: 'CANCELLED', updatedAt: '06/08/2026 10:15', createdAt: '05/08/2026 08:20' },
+];

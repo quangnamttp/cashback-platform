@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { LANGS, useLanguage } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme';
+import { useAuth } from '../../lib/auth';
 
 export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { lang, setLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { isLoggedIn, userName, userEmail, login, logout } = useAuth();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -145,17 +147,42 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
             </button>
 
             {isAccountMenuOpen && (
-              <div className="account-menu-dropdown active" role="menu">
-                <Link href="/account" role="menuitem">{t('account_profile')}</Link>
-                <Link href="/cashback-wallet" role="menuitem">{t('sidebar_wallet')}</Link>
-                <Link href="/orders" role="menuitem">{t('sidebar_orders')}</Link>
-                <Link href="/social-vouchers" role="menuitem">{t('sidebar_social_vouchers')}</Link>
-                <Link href="/referrals" role="menuitem">{t('sidebar_referrals')}</Link>
-                <Link href="/withdrawal-history" role="menuitem">{t('sidebar_withdraw_history')}</Link>
-                <Link href="/support" role="menuitem">{t('sidebar_support')}</Link>
-                <Link href="/settings" role="menuitem">{t('sidebar_settings')}</Link>
-                <div className="account-menu-dropdown-divider" />
-                <button role="menuitem">{t('account_sign_out')}</button>
+              <div className="account-menu-dropdown active account-dropdown-v2" role="menu">
+                {isLoggedIn ? (
+                  <>
+                    <div className="account-dropdown-user">
+                      <span className="account-dropdown-avatar">👤</span>
+                      <div>
+                        <strong>{userName}</strong>
+                        <span>{userEmail}</span>
+                      </div>
+                    </div>
+                    <Link href="/account" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
+                      👤 {t('account_profile')}
+                    </Link>
+                    <button
+                      role="menuitem"
+                      className="account-dropdown-logout"
+                      onClick={() => {
+                        logout();
+                        setIsAccountMenuOpen(false);
+                      }}
+                    >
+                      🚪 {t('account_sign_out')}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    role="menuitem"
+                    className="account-dropdown-login"
+                    onClick={() => {
+                      login();
+                      setIsAccountMenuOpen(false);
+                    }}
+                  >
+                    🔑 {t('header_login')}
+                  </button>
+                )}
               </div>
             )}
           </div>

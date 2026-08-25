@@ -58,9 +58,20 @@ export default function SettingsPage() {
         </section>
 
         <section className="panel">
-          <h3>{t('settings_account_title')}</h3>
-          <p className="muted-copy">{t('settings_account_desc')}</p>
-          <button className="btn-reject" style={{ marginTop: 14 }}>{t('account_sign_out')}</button>
+          <h3>🔒 {t('settings_password_title')}</h3>
+          <p className="muted-copy">{t('settings_password_desc')}</p>
+          <div className="bank-add-form" style={{ maxWidth: 420, marginTop: 14 }}>
+            <label>
+              <span className="field-label">{t('settings_password_current')}</span>
+              <input type="password" placeholder="••••••••" />
+            </label>
+            <label>
+              <span className="field-label">{t('settings_password_new')}</span>
+              <input type="password" placeholder="••••••••" />
+            </label>
+            <button className="button button-primary">{t('bank_accounts_save')}</button>
+            <p className="mock-note">{t('settings_password_note')}</p>
+          </div>
         </section>
       </div>
     </AppShell>

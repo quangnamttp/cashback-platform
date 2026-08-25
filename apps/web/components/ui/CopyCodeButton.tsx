@@ -2,7 +2,15 @@
 
 import { useState } from 'react';
 
-export function CopyCodeButton({ code, label }: { code: string; label: string }) {
+export function CopyCodeButton({
+  code,
+  label,
+  className = 'button-secondary',
+}: {
+  code: string;
+  label: string;
+  className?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleClick = async () => {
@@ -16,7 +24,7 @@ export function CopyCodeButton({ code, label }: { code: string; label: string })
   };
 
   return (
-    <button type="button" className="button button-secondary coupon-btn" onClick={handleClick}>
+    <button type="button" className={`button ${className} coupon-btn`} onClick={handleClick}>
       {copied ? '✓ Copied' : label}
     </button>
   );

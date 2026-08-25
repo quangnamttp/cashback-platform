@@ -33,8 +33,7 @@ export default function ReferralsPage() {
           <p>{t('referral_hero_desc')}</p>
 
           <div className="referral-actions">
-            <CopyCodeButton code={referralLink} label={`📋 ${t('referral_copy_link')}`} />
-            <button className="button button-secondary">💵 {t('panel_withdraw_btn')}</button>
+            <CopyCodeButton code={referralLink} label={`📋 ${t('referral_copy_link')}`} className="button-primary" />
           </div>
 
           <div className="referral-rate-box">

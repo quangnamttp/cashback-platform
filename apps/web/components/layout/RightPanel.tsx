@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
+import { useAuth } from '../../lib/auth';
 
-const MOCK_LOGGED_IN = true;
 const MOCK_BALANCE_XU = 20206;
 
 export function RightPanel() {
   const { t, lang } = useLanguage();
+  const { isLoggedIn: MOCK_LOGGED_IN } = useAuth();
 
   return (
     <aside className="app-right-panel">
@@ -21,7 +22,7 @@ export function RightPanel() {
             <div className="rp-balance-sub">≈ {formatCurrency(MOCK_BALANCE_XU, lang)}</div>
             <div className="rp-balance-actions">
               <Link href="/cashback-wallet" className="button button-secondary rp-btn">{t('panel_wallet_btn')}</Link>
-              <Link href="/cashback-wallet" className="button button-primary rp-btn">{t('panel_withdraw_btn')}</Link>
+              <Link href="/withdrawal-history" className="button button-primary rp-btn">{t('panel_withdraw_btn')}</Link>
             </div>
           </>
         ) : (

@@ -47,7 +47,7 @@ export default function CashbackWalletPage() {
           </div>
 
           <div className="welcome-actions">
-            <button className="button button-primary wc-btn">💵 {t('panel_withdraw_btn')}</button>
+            <a href="/withdrawal-history" className="button button-primary wc-btn">💵 {t('panel_withdraw_btn')}</a>
             <a href="/withdrawal-history" className="button button-secondary wc-btn">🕐 {t('sidebar_withdraw_history')}</a>
           </div>
         </section>
