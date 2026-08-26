@@ -22,7 +22,7 @@ export function RightPanel() {
             <div className="rp-balance-sub">≈ {formatCurrency(MOCK_BALANCE_XU, lang)}</div>
             <div className="rp-balance-actions">
               <Link href="/cashback-wallet" className="button button-secondary rp-btn">{t('panel_wallet_btn')}</Link>
-              <Link href="/withdrawal-history" className="button button-primary rp-btn">{t('panel_withdraw_btn')}</Link>
+              <Link href="/cashback-wallet" className="button button-primary rp-btn">{t('panel_withdraw_btn')}</Link>
             </div>
           </>
         ) : (

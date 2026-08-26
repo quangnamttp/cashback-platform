@@ -7,20 +7,18 @@ import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
 import { mockCashbackRows } from '../../lib/mock-data';
 
-const statusKeyMap: Record<string, string> = {
-  AVAILABLE: 'status_available',
-  CONFIRMED: 'status_confirmed',
-  PENDING: 'status_pending',
-  REJECTED: 'status_rejected',
-  WITHDRAWN: 'wallet_withdrawn',
+const shippingStatusKeyMap: Record<number, string> = {
+  0: 'ship_stage_ordered',
+  1: 'ship_stage_preparing',
+  2: 'ship_stage_shipping',
+  3: 'ship_stage_delivered',
 };
 
-const statusPillClass: Record<string, string> = {
-  AVAILABLE: 'order-pill success',
-  CONFIRMED: 'order-pill success',
-  PENDING: 'order-pill warning',
-  REJECTED: 'order-pill danger',
-  WITHDRAWN: 'order-pill neutral',
+const shippingStatusPillClass: Record<number, string> = {
+  0: 'order-pill warning',
+  1: 'order-pill warning',
+  2: 'order-pill warning',
+  3: 'order-pill success',
 };
 
 export default function CashbackPage() {
@@ -37,28 +35,31 @@ export default function CashbackPage() {
         </div>
 
         <div className="ship-order-list">
-          {mockCashbackRows.map((item) => (
-            <div key={item.id} className="ship-order-card">
-              <div className="order-card-main">
-                <PlatformBadge name={item.platform} size={44} />
-                <div className="order-card-info">
-                  <div className="order-card-tags">
-                    <span className="order-card-platform">{item.platform}</span>
-                    <span className="order-card-id">#{item.id}</span>
-                    <span className="order-card-date">{item.date}</span>
+          {mockCashbackRows.map((item) => {
+            const stage = item.shippingStage ?? 0;
+            return (
+              <div key={item.id} className="ship-order-card">
+                <div className="order-card-main">
+                  <PlatformBadge name={item.platform} size={44} />
+                  <div className="order-card-info">
+                    <div className="order-card-tags">
+                      <span className="order-card-platform">{item.platform}</span>
+                      <span className="order-card-id">#{item.id}</span>
+                      <span className="order-card-date">{item.date}</span>
+                    </div>
+                  </div>
+                  <div className="ship-order-cashback-block">
+                    <div className="order-card-cashback">{formatCurrency(item.amount, lang)}</div>
+                    <span className={shippingStatusPillClass[stage] ?? 'order-pill'}>
+                      ● {t(shippingStatusKeyMap[stage] as any)}
+                    </span>
                   </div>
                 </div>
-                <div className="ship-order-cashback-block">
-                  <div className="order-card-cashback">{formatCurrency(item.amount, lang)}</div>
-                  <span className={statusPillClass[item.status] ?? 'order-pill'}>
-                    ● {t(statusKeyMap[item.status] as any) || item.status}
-                  </span>
-                </div>
-              </div>
 
-              <ShipmentTracker stage={item.shippingStage ?? 0} t={t} />
-            </div>
-          ))}
+                <ShipmentTracker stage={stage} t={t} />
+              </div>
+            );
+          })}
         </div>
 
         <p className="mock-note">{t('mock_notice')}</p>

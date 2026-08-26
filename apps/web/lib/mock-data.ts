@@ -137,3 +137,58 @@ export const mockWithdrawalHistory = [
   { id: 'W6B1FE2A9931D2', amount: 20000, bank: 'MoMo', accountNumber: '0987654321', accountHolder: 'TRUONG TAN PHUONG', status: 'PENDING', createdAt: '24/08/2026 20:40', updatedAt: '24/08/2026 20:40' },
   { id: 'W6A5DD8B7712E9', amount: 60000, bank: 'Ngân hàng Vietcombank', accountNumber: '0071002345678', accountHolder: 'TRUONG TAN PHUONG', status: 'CANCELLED', updatedAt: '06/08/2026 10:15', createdAt: '05/08/2026 08:20' },
 ];
+
+export const bankDirectory = [
+  'Vietcombank',
+  'Techcombank',
+  'BIDV',
+  'VietinBank',
+  'MB Bank (Quân đội)',
+  'ACB',
+  'VPBank',
+  'Sacombank',
+  'TPBank',
+  'Agribank',
+  'HDBank',
+  'VIB',
+  'SHB',
+  'SeABank',
+  'MSB',
+  'OCB',
+  'Eximbank',
+  'MoMo (Ví điện tử)',
+  'ZaloPay (Ví điện tử)',
+  'ShopeePay (Ví điện tử)',
+];
+
+export const mockBankList = [
+  'Vietcombank', 'Techcombank', 'MBBank', 'BIDV', 'VietinBank', 'ACB',
+  'VPBank', 'Sacombank', 'TPBank', 'HDBank', 'SHB', 'VIB', 'Agribank',
+  'SeABank', 'MSB', 'OCB', 'Eximbank', 'MoMo', 'ZaloPay', 'ViettelPay',
+];
+
+export const mockLinkedBankAccounts = [
+  { id: 'BANK-1', bank: 'MBBank', accountNumber: '11131102001', accountHolder: 'TRUONG TAN PHUONG' },
+];
+
+export const bankList = [
+  'Vietcombank',
+  'Techcombank',
+  'MBBank',
+  'BIDV',
+  'VietinBank',
+  'Agribank',
+  'ACB',
+  'VPBank',
+  'TPBank',
+  'Sacombank',
+  'VIB',
+  'SHB',
+  'HDBank',
+  'MSB',
+  'OCB',
+  'SeABank',
+  'Eximbank',
+  'MoMo (Ví điện tử)',
+  'ZaloPay (Ví điện tử)',
+];
