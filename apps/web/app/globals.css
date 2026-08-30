@@ -962,7 +962,16 @@ p {
 
 .table-scroll {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 520px;
   -webkit-overflow-scrolling: touch;
+}
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
 }
 
 .data-table {
@@ -1654,6 +1663,8 @@ p {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .brand-block.compact {
