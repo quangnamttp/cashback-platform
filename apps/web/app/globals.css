@@ -2308,6 +2308,17 @@ p {
   color: var(--primary);
 }
 
+.quick-utility-icon-frame {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
 .quick-utility-icon {
   width: 44px;
   height: 44px;
@@ -2317,7 +2328,6 @@ p {
   justify-content: center;
   font-size: 1.25rem;
   color: #fff;
-  box-shadow: var(--shadow-sm);
 }
 
 @media (max-width: 900px) {
