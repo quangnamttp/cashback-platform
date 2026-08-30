@@ -351,6 +351,7 @@ const dict = {
     forgot_desc: 'Nhập email đã đăng ký, chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu.',
     forgot_submit: 'Gửi hướng dẫn',
     forgot_sent_desc: 'Đã gửi hướng dẫn đặt lại mật khẩu đến {email} (minh họa — chưa gửi email thật).',
+    settings_password_close: 'Đóng',
 
     order_search_placeholder: 'Tìm kiếm sản phẩm, mã đơn hàng...',
     order_filter_all: 'Tất cả',
@@ -699,6 +700,7 @@ const dict = {
     forgot_desc: "Enter your registered email and we'll send password reset instructions.",
     forgot_submit: 'Send instructions',
     forgot_sent_desc: 'Password reset instructions sent to {email} (demo only — no real email sent).',
+    settings_password_close: 'Close',
 
     order_search_placeholder: 'Search product or order code...',
     order_filter_all: 'All',

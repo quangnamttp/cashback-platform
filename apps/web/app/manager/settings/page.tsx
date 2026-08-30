@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { AdminShell } from '../../../components/layout/AdminShell';
 
 export default function AdminSettingsPage() {
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -36,6 +37,7 @@ export default function AdminSettingsPage() {
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        setTimeout(() => setShowPasswordForm(false), 2000);
       } else {
         const data = await res.json().catch(() => ({}));
         if (data.error === 'wrong_current_password') {
@@ -82,55 +84,65 @@ export default function AdminSettingsPage() {
       </section>
 
       <section className="panel">
-        <h3>🔒 Đổi mật khẩu quản trị</h3>
-        <p className="muted-copy">
-          Mật khẩu dùng để đăng nhập trang <code>/manager</code>. Đổi mật khẩu ở đây sẽ lưu qua cookie an toàn
-          (httpOnly) trên trình duyệt này — <strong>chưa phải hệ thống tài khoản admin đầy đủ</strong> (chưa có
-          nhiều tài khoản riêng biệt, chưa có nhật ký ai đổi mật khẩu). Nếu xoá cookie trình duyệt hoặc đổi máy khác,
-          mật khẩu sẽ quay về giá trị mặc định đã cấu hình trên server.
-        </p>
-
-        <form onSubmit={handleChangePassword} className="bank-add-form" style={{ maxWidth: 420, marginTop: 18 }}>
-          <label>
-            <span className="field-label">Mật khẩu hiện tại</span>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-            />
-          </label>
-          <label>
-            <span className="field-label">Mật khẩu mới</span>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              minLength={6}
-              required
-            />
-          </label>
-          <label>
-            <span className="field-label">Xác nhận mật khẩu mới</span>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              minLength={6}
-              required
-            />
-          </label>
-
-          {status.type !== 'idle' && (
-            <p className={status.type === 'error' ? 'admin-gate-error' : 'muted-copy'} style={status.type === 'success' ? { color: 'var(--success)' } : undefined}>
-              {status.message}
-            </p>
-          )}
-
-          <button type="submit" className="button button-primary" disabled={submitting}>
-            {submitting ? 'Đang lưu...' : 'Đổi mật khẩu'}
+        <div className="panel-header">
+          <h3>🔒 Đổi mật khẩu quản trị</h3>
+          <button className="button button-secondary" onClick={() => setShowPasswordForm((v) => !v)}>
+            {showPasswordForm ? 'Đóng' : 'Đổi mật khẩu'}
           </button>
-        </form>
+        </div>
+
+        {showPasswordForm && (
+          <>
+            <p className="muted-copy">
+              Mật khẩu dùng để đăng nhập trang <code>/manager</code>. Đổi mật khẩu ở đây sẽ lưu qua cookie an toàn
+              (httpOnly) trên trình duyệt này — <strong>chưa phải hệ thống tài khoản admin đầy đủ</strong> (chưa có
+              nhiều tài khoản riêng biệt, chưa có nhật ký ai đổi mật khẩu). Nếu xoá cookie trình duyệt hoặc đổi máy khác,
+              mật khẩu sẽ quay về giá trị mặc định đã cấu hình trên server.
+            </p>
+
+            <form onSubmit={handleChangePassword} className="bank-add-form" style={{ maxWidth: 420, marginTop: 18 }}>
+              <label>
+                <span className="field-label">Mật khẩu hiện tại</span>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                <span className="field-label">Mật khẩu mới</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={6}
+                  required
+                />
+              </label>
+              <label>
+                <span className="field-label">Xác nhận mật khẩu mới</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={6}
+                  required
+                />
+              </label>
+
+              {status.type !== 'idle' && (
+                <p className={status.type === 'error' ? 'admin-gate-error' : 'muted-copy'} style={status.type === 'success' ? { color: 'var(--success)' } : undefined}>
+                  {status.message}
+                </p>
+              )}
+
+              <button type="submit" className="button button-primary" disabled={submitting}>
+                {submitting ? 'Đang lưu...' : 'Đổi mật khẩu'}
+              </button>
+            </form>
+          </>
+        )}
       </section>
 
       <p className="mock-note">Đây là giao diện nền tảng (foundation) cho Admin — logic backend cấu hình đầy đủ (RBAC, nhiều tài khoản) sẽ triển khai ở phase sau.</p>

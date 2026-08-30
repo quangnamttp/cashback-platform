@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { AppShell } from '../../components/layout/AppShell';
 import { LANGS, useLanguage } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme';
@@ -8,6 +9,7 @@ import { RequireAuth } from '../../components/layout/RequireAuth';
 export default function SettingsPage() {
   const { lang, setLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
 
   return (
     <RequireAuth>
@@ -59,21 +61,29 @@ export default function SettingsPage() {
           </label>
         </section>
 
-        <section className="panel">
-          <h3>🔒 {t('settings_password_title')}</h3>
-          <p className="muted-copy">{t('settings_password_desc')}</p>
-          <div className="bank-add-form" style={{ maxWidth: 420, marginTop: 14 }}>
-            <label>
-              <span className="field-label">{t('settings_password_current')}</span>
-              <input type="password" placeholder="••••••••" />
-            </label>
-            <label>
-              <span className="field-label">{t('settings_password_new')}</span>
-              <input type="password" placeholder="••••••••" />
-            </label>
-            <button className="button button-primary">{t('bank_accounts_save')}</button>
-            <p className="mock-note">{t('settings_password_note')}</p>
+        <section className="panel settings-row" style={{ flexWrap: 'wrap' }}>
+          <div>
+            <h3>🔒 {t('settings_password_title')}</h3>
+            <p className="muted-copy">{t('settings_password_desc')}</p>
           </div>
+          <button className="button button-secondary" onClick={() => setShowPasswordForm((v) => !v)}>
+            {showPasswordForm ? t('settings_password_close') : t('settings_password_title')}
+          </button>
+
+          {showPasswordForm && (
+            <div className="bank-add-form" style={{ maxWidth: 420, width: '100%', marginTop: 14 }}>
+              <label>
+                <span className="field-label">{t('settings_password_current')}</span>
+                <input type="password" placeholder="••••••••" />
+              </label>
+              <label>
+                <span className="field-label">{t('settings_password_new')}</span>
+                <input type="password" placeholder="••••••••" />
+              </label>
+              <button className="button button-primary">{t('bank_accounts_save')}</button>
+              <p className="mock-note">{t('settings_password_note')}</p>
+            </div>
+          )}
         </section>
       </div>
     </AppShell>
