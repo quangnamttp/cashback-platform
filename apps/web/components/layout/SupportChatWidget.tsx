@@ -11,8 +11,11 @@ export function SupportChatWidget() {
   const { isLoggedIn, userName, userEmail } = useAuth();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
-  const [contact, setContact] = useState('');
   const [state, setState] = useState<SendState>('idle');
+
+  if (!isLoggedIn) {
+    return null;
+  }
 
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -22,8 +25,8 @@ export function SupportChatWidget() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: isLoggedIn ? userName : 'Khách',
-          contact: contact || (isLoggedIn ? userEmail : ''),
+          name: userName,
+          contact: userEmail,
           message,
         }),
       });
@@ -68,14 +71,6 @@ export function SupportChatWidget() {
             </div>
           ) : (
             <>
-              {!isLoggedIn && (
-                <input
-                  className="support-chat-input"
-                  placeholder={t('chat_widget_contact_placeholder')}
-                  value={contact}
-                  onChange={(e) => setContact(e.target.value)}
-                />
-              )}
               <textarea
                 className="support-chat-textarea"
                 placeholder={t('chat_widget_message_placeholder')}

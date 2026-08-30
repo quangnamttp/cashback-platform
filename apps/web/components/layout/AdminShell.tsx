@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { mockSupportChats } from '../../lib/mock-data';
 
 const adminNavItems = [
   { icon: '📊', label: 'Tổng quan', href: '/manager' },
@@ -12,6 +13,7 @@ const adminNavItems = [
   { icon: '📱', label: 'Voucher MXH', href: '/manager/social-vouchers' },
   { icon: '💸', label: 'Rút tiền', href: '/manager/withdrawals' },
   { icon: '👥', label: 'Giới thiệu', href: '/manager/referrals' },
+  { icon: '💬', label: 'Hỗ trợ khách hàng', href: '/manager/support-chat' },
   { icon: '⚠️', label: 'Fraud / Risk', href: '/manager/fraud' },
   { icon: '⚙️', label: 'Cấu hình', href: '/manager/settings' },
   { icon: '📜', label: 'Logs', href: '/manager/logs' },
@@ -24,6 +26,7 @@ function isActive(pathname: string, href: string) {
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const unreadCount = mockSupportChats.filter((c) => c.unread).length;
 
   return (
     <div className="admin-page-shell container">
@@ -45,6 +48,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             >
               <span className="admin-nav-icon" aria-hidden="true">{item.icon}</span>
               {item.label}
+              {item.href === '/manager/support-chat' && unreadCount > 0 && (
+                <span className="admin-nav-badge">{unreadCount}</span>
+              )}
             </Link>
           ))}
         </nav>

@@ -84,8 +84,8 @@ export default function GetCashbackLinkPage() {
             <div className="get-link-platform-grid">
               {mockPlatforms.map((platform) => (
                 <span key={platform.name} className="get-link-platform-chip">
-                  <PlatformBadge name={platform.name} size={22} />
-                  {platform.name}
+                  <PlatformBadge name={platform.name} size={20} />
+                  <span>{platform.name}</span>
                 </span>
               ))}
             </div>

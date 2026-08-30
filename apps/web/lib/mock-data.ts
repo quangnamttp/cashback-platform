@@ -225,3 +225,10 @@ export const balanceLedgerTypeKeyMap: Record<string, string> = {
   WITHDRAW: 'ledger_type_withdraw',
   CASHBACK: 'ledger_type_cashback',
 };
+
+export const mockSupportChats = [
+  { id: 'chat-1', name: 'Trương Tấn Phương', email: 'phuong.truong@gmail.com', message: 'Em dán link Shopee mà chưa thấy cộng tiền hoàn, admin kiểm tra giúp em đơn #ORD-2401 với ạ.', time: '26/08/2026 09:12', unread: true },
+  { id: 'chat-2', name: 'Nguyen Minh', email: 'minh.nguyen@gmail.com', message: 'Cho em hỏi rút tiền tối thiểu bao nhiêu vậy ạ?', time: '25/08/2026 20:47', unread: true },
+  { id: 'chat-3', name: 'Lê Thị Hoa', email: 'hoa.le@gmail.com', message: 'App bị lỗi không thêm được tài khoản ngân hàng.', time: '24/08/2026 14:03', unread: false },
+  { id: 'chat-4', name: 'Đặng Văn Nam', email: 'nam.dang@gmail.com', message: 'Mã giới thiệu của em có vẻ không tính hoa hồng, mong shop xem lại.', time: '22/08/2026 08:31', unread: false },
+];
