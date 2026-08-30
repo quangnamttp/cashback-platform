@@ -12,6 +12,7 @@ export default function AdminSettingsPage() {
   const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' });
   const [submitting, setSubmitting] = useState(false);
 
+  const [showAutoReplyForm, setShowAutoReplyForm] = useState(false);
   const [autoReply, setAutoReply] = useState(DEFAULT_AUTO_REPLY);
   const [autoReplySaved, setAutoReplySaved] = useState(false);
 
@@ -98,22 +99,32 @@ export default function AdminSettingsPage() {
       </section>
 
       <section className="panel">
-        <h3>💬 Tin nhắn trả lời tự động</h3>
-        <p className="muted-copy">
-          Nội dung này sẽ tự động hiện lại cho khách sau khi họ gửi tin nhắn hỗ trợ đầu tiên, dùng cho lúc admin
-          không online. <strong>Lưu ý:</strong> hiện lưu trên trình duyệt của bạn — mọi khách hàng đều thấy nội
-          dung này khi cấu hình được đồng bộ qua Firebase; trước đó, khách trên thiết bị khác sẽ thấy nội dung
-          mặc định cho tới khi bạn kết nối backend thật.
-        </p>
-        <textarea
-          className="support-chat-textarea"
-          style={{ marginTop: 12, minHeight: 90 }}
-          value={autoReply}
-          onChange={(e) => setAutoReply(e.target.value)}
-        />
-        <button className="button button-primary" style={{ marginTop: 10 }} onClick={handleSaveAutoReply}>
-          {autoReplySaved ? '✓ Đã lưu' : 'Lưu nội dung'}
-        </button>
+        <div className="panel-header">
+          <h3>💬 Tin nhắn trả lời tự động</h3>
+          <button className="button button-secondary" onClick={() => setShowAutoReplyForm((v) => !v)}>
+            {showAutoReplyForm ? 'Đóng' : 'Chỉnh sửa'}
+          </button>
+        </div>
+
+        {showAutoReplyForm && (
+          <>
+            <p className="muted-copy">
+              Nội dung này sẽ tự động hiện lại cho khách sau khi họ gửi tin nhắn hỗ trợ đầu tiên, dùng cho lúc admin
+              không online. <strong>Lưu ý:</strong> hiện lưu trên trình duyệt của bạn — mọi khách hàng đều thấy nội
+              dung này khi cấu hình được đồng bộ qua Firebase; trước đó, khách trên thiết bị khác sẽ thấy nội dung
+              mặc định cho tới khi bạn kết nối backend thật.
+            </p>
+            <textarea
+              className="support-chat-textarea"
+              style={{ marginTop: 12, minHeight: 90 }}
+              value={autoReply}
+              onChange={(e) => setAutoReply(e.target.value)}
+            />
+            <button className="button button-primary" style={{ marginTop: 10 }} onClick={handleSaveAutoReply}>
+              {autoReplySaved ? '✓ Đã lưu' : 'Lưu nội dung'}
+            </button>
+          </>
+        )}
       </section>
 
       <section className="panel">

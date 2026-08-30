@@ -6,23 +6,24 @@ import { useLanguage, type DictKey } from '../../lib/i18n';
 
 type SidebarItem = {
   icon: string;
+  color: string;
   labelKey: DictKey;
   href: string;
 };
 
 const topItems: SidebarItem[] = [
-  { icon: '🏠', labelKey: 'sidebar_home', href: '/' },
-  { icon: '🔗', labelKey: 'sidebar_get_link', href: '/get-cashback-link' },
+  { icon: '🏠', color: '#0096ff', labelKey: 'sidebar_home', href: '/' },
+  { icon: '🔗', color: '#38bdf8', labelKey: 'sidebar_get_link', href: '/get-cashback-link' },
 ];
 
 const bottomItems: SidebarItem[] = [
-  { icon: '💰', labelKey: 'sidebar_wallet', href: '/cashback-wallet' },
-  { icon: '📦', labelKey: 'sidebar_orders', href: '/orders' },
-  { icon: '📋', labelKey: 'sidebar_order_status', href: '/cashback' },
-  { icon: '📱', labelKey: 'sidebar_social_vouchers', href: '/social-vouchers' },
-  { icon: '👥', labelKey: 'sidebar_referrals', href: '/referrals' },
-  { icon: '❓', labelKey: 'sidebar_support', href: '/support' },
-  { icon: '⚙', labelKey: 'sidebar_settings', href: '/settings' },
+  { icon: '💰', color: '#16a34a', labelKey: 'sidebar_wallet', href: '/cashback-wallet' },
+  { icon: '📦', color: '#f59e0b', labelKey: 'sidebar_orders', href: '/orders' },
+  { icon: '📋', color: '#8b5cf6', labelKey: 'sidebar_order_status', href: '/cashback' },
+  { icon: '📱', color: '#c13584', labelKey: 'sidebar_social_vouchers', href: '/social-vouchers' },
+  { icon: '👥', color: '#6366f1', labelKey: 'sidebar_referrals', href: '/referrals' },
+  { icon: '❓', color: '#0ea5e9', labelKey: 'sidebar_support', href: '/support' },
+  { icon: '⚙', color: '#64748b', labelKey: 'sidebar_settings', href: '/settings' },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -45,7 +46,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className={`sidebar-link${isActive(pathname, item.href) ? ' active' : ''}`}
           >
-            <span className="sidebar-icon" aria-hidden="true">{item.icon}</span>
+            <span className="sidebar-icon-tile" style={{ background: item.color }} aria-hidden="true">{item.icon}</span>
             <span>{t(item.labelKey)}</span>
           </Link>
         ))}
@@ -61,7 +62,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className={`sidebar-link${isActive(pathname, item.href) ? ' active' : ''}`}
           >
-            <span className="sidebar-icon" aria-hidden="true">{item.icon}</span>
+            <span className="sidebar-icon-tile" style={{ background: item.color }} aria-hidden="true">{item.icon}</span>
             <span>{t(item.labelKey)}</span>
           </Link>
         ))}

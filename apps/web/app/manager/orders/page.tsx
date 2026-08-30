@@ -56,6 +56,8 @@ export default function AdminOrdersPage() {
           </table>
         </div>
       </div>
+
+      <p className="mock-note">Dữ liệu minh họa (mock).</p>
     </AdminShell>
   );
 }

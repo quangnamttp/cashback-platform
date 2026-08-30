@@ -6,18 +6,18 @@ import { useEffect, useState } from 'react';
 import { loadSupportChats } from '../../lib/support-chat-store';
 
 const adminNavItems = [
-  { icon: '📊', label: 'Tổng quan', href: '/manager' },
-  { icon: '👥', label: 'Người dùng', href: '/manager/users' },
-  { icon: '📦', label: 'Đơn hàng', href: '/manager/orders' },
-  { icon: '💰', label: 'Cashback / Hoa hồng', href: '/manager/cashback' },
-  { icon: '🏪', label: 'Affiliate', href: '/manager/affiliate' },
-  { icon: '📱', label: 'Voucher MXH', href: '/manager/social-vouchers' },
-  { icon: '💸', label: 'Rút tiền', href: '/manager/withdrawals' },
-  { icon: '👥', label: 'Giới thiệu', href: '/manager/referrals' },
-  { icon: '💬', label: 'Hỗ trợ khách hàng', href: '/manager/support-chat' },
-  { icon: '⚠️', label: 'Fraud / Risk', href: '/manager/fraud' },
-  { icon: '⚙️', label: 'Cấu hình', href: '/manager/settings' },
-  { icon: '📜', label: 'Logs', href: '/manager/logs' },
+  { icon: '📊', color: '#0096ff', label: 'Tổng quan', href: '/manager' },
+  { icon: '👥', color: '#6366f1', label: 'Người dùng', href: '/manager/users' },
+  { icon: '📦', color: '#f59e0b', label: 'Đơn hàng', href: '/manager/orders' },
+  { icon: '💰', color: '#16a34a', label: 'Cashback / Hoa hồng', href: '/manager/cashback' },
+  { icon: '🏪', color: '#ee4d2d', label: 'Affiliate', href: '/manager/affiliate' },
+  { icon: '📱', color: '#c13584', label: 'Voucher MXH', href: '/manager/social-vouchers' },
+  { icon: '💸', color: '#059669', label: 'Rút tiền', href: '/manager/withdrawals' },
+  { icon: '👥', color: '#8b5cf6', label: 'Giới thiệu', href: '/manager/referrals' },
+  { icon: '💬', color: '#0ea5e9', label: 'Hỗ trợ khách hàng', href: '/manager/support-chat' },
+  { icon: '⚠️', color: '#dc2626', label: 'Fraud / Risk', href: '/manager/fraud' },
+  { icon: '⚙️', color: '#64748b', label: 'Cấu hình', href: '/manager/settings' },
+  { icon: '📜', color: '#78716c', label: 'Logs', href: '/manager/logs' },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -51,7 +51,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               href={item.href}
               className={isActive(pathname, item.href) ? 'active' : ''}
             >
-              <span className="admin-nav-icon" aria-hidden="true">{item.icon}</span>
+              <span className="sidebar-icon-tile" style={{ background: item.color }} aria-hidden="true">{item.icon}</span>
               {item.label}
               {item.href === '/manager/support-chat' && unreadCount > 0 && (
                 <span className="admin-nav-badge">{unreadCount}</span>

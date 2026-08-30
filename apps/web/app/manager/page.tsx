@@ -1,5 +1,22 @@
+'use client';
+
 import { mockAdminStats, mockFraudSignals } from '../../lib/mock-data';
 import { AdminShell } from '../../components/layout/AdminShell';
+
+function exportStatsCsv() {
+  const rows = [
+    ['Chỉ số', 'Giá trị'],
+    ...mockAdminStats.map((s) => [s.label, s.value]),
+  ];
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `bao-cao-admin-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function AdminPage() {
   return (
@@ -9,7 +26,7 @@ export default function AdminPage() {
           <span className="eyebrow dark">Tổng quan</span>
           <h1>Admin dashboard</h1>
         </div>
-        <button className="button button-primary">Xuất báo cáo</button>
+        <button className="button button-primary" onClick={exportStatsCsv}>📥 Xuất báo cáo</button>
       </div>
 
       <div className="stats-grid admin-grid">
@@ -52,6 +69,8 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+
+      <p className="mock-note">Báo cáo xuất từ dữ liệu minh họa (mock) hiện có trên trang — khi nối dữ liệu thật, file xuất ra sẽ phản ánh đúng số liệu thực tế.</p>
     </AdminShell>
   );
 }
