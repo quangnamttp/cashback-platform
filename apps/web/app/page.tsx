@@ -152,7 +152,7 @@ export default function HomePage() {
               </div>
               <h3>{platform.name}</h3>
               <p className="platform-card-desc">{platform.description}</p>
-              <button className="button button-secondary wide-button">{t('stores_cta')}</button>
+              <Link href="/get-cashback-link" className="button button-secondary wide-button">{t('stores_cta')}</Link>
             </div>
           ))}
         </div>

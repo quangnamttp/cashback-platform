@@ -915,6 +915,14 @@ p {
   gap: 10px;
 }
 
+.footer-links a {
+  color: var(--text-secondary);
+}
+
+.footer-links a:hover {
+  color: var(--primary);
+}
+
 .site-footer h4 {
   margin: 0;
   font-size: 1rem;
@@ -4583,4 +4591,110 @@ p {
 
 .forgot-success .wide-button {
   margin-top: 10px;
+}
+
+/* ==========================================================
+   SUPPORT CHAT WIDGET (relays to Telegram via API route)
+   ========================================================== */
+.support-chat-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 90px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  font-size: 1.4rem;
+  box-shadow: 0 8px 20px rgba(47, 127, 245, 0.4);
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 861px) {
+  .support-chat-fab {
+    bottom: 24px;
+  }
+}
+
+.support-chat-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 156px;
+  width: min(340px, calc(100vw - 40px));
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 18px;
+  z-index: 250;
+}
+
+@media (min-width: 861px) {
+  .support-chat-panel {
+    bottom: 90px;
+  }
+}
+
+.support-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.support-chat-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.support-chat-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.support-chat-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+
+.support-chat-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 0.85rem;
+  resize: vertical;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+
+.support-chat-success {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.support-chat-success p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }

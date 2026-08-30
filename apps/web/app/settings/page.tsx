@@ -61,17 +61,19 @@ export default function SettingsPage() {
           </label>
         </section>
 
-        <section className="panel settings-row" style={{ flexWrap: 'wrap' }}>
-          <div>
-            <h3>🔒 {t('settings_password_title')}</h3>
-            <p className="muted-copy">{t('settings_password_desc')}</p>
+        <section className="panel">
+          <div className="settings-row">
+            <div>
+              <h3>🔒 {t('settings_password_title')}</h3>
+              <p className="muted-copy">{t('settings_password_desc')}</p>
+            </div>
+            <button className="button button-secondary" onClick={() => setShowPasswordForm((v) => !v)}>
+              {showPasswordForm ? t('settings_password_close') : t('settings_password_title')}
+            </button>
           </div>
-          <button className="button button-secondary" onClick={() => setShowPasswordForm((v) => !v)}>
-            {showPasswordForm ? t('settings_password_close') : t('settings_password_title')}
-          </button>
 
           {showPasswordForm && (
-            <div className="bank-add-form" style={{ maxWidth: 420, width: '100%', marginTop: 14 }}>
+            <div className="bank-add-form" style={{ maxWidth: 420, marginTop: 18 }}>
               <label>
                 <span className="field-label">{t('settings_password_current')}</span>
                 <input type="password" placeholder="••••••••" />

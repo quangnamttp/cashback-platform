@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
+import { useAuth } from '../../lib/auth';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 
 export default function AccountPage() {
   const { t } = useLanguage();
+  const { isLoggedIn, login, logout } = useAuth();
 
   return (
     <RequireAuth>
@@ -32,7 +34,13 @@ export default function AccountPage() {
           <div className="panel auth-panel">
             <h3>{t('google_login_title')}</h3>
             <p className="muted-copy">{t('google_login_desc')}</p>
-            <button className="button button-primary wide-button">{t('continue_google')}</button>
+            {isLoggedIn ? (
+              <button className="btn-reject" style={{ width: '100%', marginTop: 8 }} onClick={logout}>
+                🚪 {t('account_sign_out')}
+              </button>
+            ) : (
+              <button className="button button-primary wide-button" onClick={login}>{t('continue_google')}</button>
+            )}
           </div>
 
           <div className="panel">

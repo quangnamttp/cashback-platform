@@ -6,6 +6,7 @@ import { SiteHeader } from './SiteHeader';
 import { SidebarNav } from './Sidebar';
 import { RightPanel } from './RightPanel';
 import { MobileBottomNav } from './MobileBottomNav';
+import { SupportChatWidget } from './SupportChatWidget';
 
 export function AppShell({
   children,
@@ -44,6 +45,8 @@ export function AppShell({
       <SiteFooter />
 
       <MobileBottomNav />
+
+      <SupportChatWidget />
     </div>
   );
 }
