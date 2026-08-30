@@ -2039,8 +2039,14 @@ p {
 }
 
 .mbn-icon {
-  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
+}
+
+.mbn-icon svg {
+  display: block;
 }
 
 .mbn-center {
