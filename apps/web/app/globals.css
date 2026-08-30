@@ -2587,6 +2587,9 @@ p {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .referral-list-row {
@@ -3546,6 +3549,9 @@ p {
   flex-direction: column;
   gap: 4px;
   margin-top: 14px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .faq-item {
@@ -3669,6 +3675,9 @@ p {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: 720px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .voucher-ticket-v2 {
