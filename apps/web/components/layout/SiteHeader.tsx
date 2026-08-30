@@ -17,7 +17,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const headerRef = useRef<HTMLElement>(null);
 
   const notifications = [
-    { id: 1, text: 'Đơn hàng ORD-2401 đã được xác nhận hoàn tiền 93.000đ', time: '2 giờ trước' },
+    { id: 1, text: 'Đơn hàng 260812XKQ9FRM đã được xác nhận hoàn tiền 93.000đ', time: '2 giờ trước' },
     { id: 2, text: 'Ví của bạn vừa nhận thêm 45.000đ hoàn tiền', time: '5 giờ trước' },
     { id: 3, text: 'Yêu cầu rút tiền ₫300.000 đã hoàn tất', time: '1 ngày trước' },
   ];

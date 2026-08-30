@@ -33,17 +33,17 @@ export const mockBenefits = [
 ];
 
 export const mockOrderRows = [
-  { id: 'ORD-2401', product: 'Máy lọc không khí cao cấp', platform: 'Shopee', date: '12/08/2026', time: '08:00', value: 6200000, commission: 186000, cashback: 93000, status: 'PENDING', linkUrl: 'https://shopee.vn/product/2401', shippingStage: 1 },
-  { id: 'ORD-2389', product: 'Đồng hồ thông minh', platform: 'TikTok Shop', date: '09/08/2026', time: '07:31', value: 4200000, commission: 126000, cashback: 98000, status: 'CONFIRMED', linkUrl: 'https://shop.tiktok.com/product/2389', shippingStage: 2 },
-  { id: 'ORD-2364', product: 'Sữa rửa mặt chuyên dụng', platform: 'Lazada', date: '04/08/2026', time: '07:30', value: 520000, commission: 31200, cashback: 15600, status: 'REFUNDED', linkUrl: 'https://lazada.vn/product/2364', shippingStage: 3 },
-  { id: 'ORD-2332', product: 'Bàn phím cơ', platform: 'Shopee', date: '31/07/2026', time: '07:30', value: 2100000, commission: 63000, cashback: 48000, status: 'CANCELLED', linkUrl: 'https://shopee.vn/product/2332', shippingStage: 3 },
+  { id: '260812XKQ9FRM', product: 'Máy lọc không khí cao cấp', platform: 'Shopee', date: '12/08/2026', time: '08:00', value: 6200000, commission: 186000, cashback: 93000, status: 'PENDING', linkUrl: 'https://shopee.vn/product/2401', shippingStage: 1 },
+  { id: '260809PLW4C2H', product: 'Đồng hồ thông minh', platform: 'TikTok Shop', date: '09/08/2026', time: '07:31', value: 4200000, commission: 126000, cashback: 98000, status: 'CONFIRMED', linkUrl: 'https://shop.tiktok.com/product/2389', shippingStage: 2 },
+  { id: '260804TNB8XQE', product: 'Sữa rửa mặt chuyên dụng', platform: 'Lazada', date: '04/08/2026', time: '07:30', value: 520000, commission: 31200, cashback: 15600, status: 'REFUNDED', linkUrl: 'https://lazada.vn/product/2364', shippingStage: 3 },
+  { id: '260731MZR3KDF', product: 'Bàn phím cơ', platform: 'Shopee', date: '31/07/2026', time: '07:30', value: 2100000, commission: 63000, cashback: 48000, status: 'CANCELLED', linkUrl: 'https://shopee.vn/product/2332', shippingStage: 3 },
 ];
 
 export const mockCashbackRows = [
-  { id: 'CB-1102', platform: 'Shopee', amount: 93000, status: 'PENDING', date: '12/08/2026', shippingStage: 1 },
-  { id: 'CB-1101', platform: 'TikTok Shop', amount: 98000, status: 'AVAILABLE', date: '09/08/2026', shippingStage: 2 },
-  { id: 'CB-1099', platform: 'Lazada', amount: 15600, status: 'WITHDRAWN', date: '04/08/2026', shippingStage: 3 },
-  { id: 'CB-1098', platform: 'Shopee', amount: 48000, status: 'CONFIRMED', date: '31/07/2026', shippingStage: 3 },
+  { id: '260812XKQ9FRM', platform: 'Shopee', amount: 93000, status: 'PENDING', date: '12/08/2026', shippingStage: 1 },
+  { id: '260809PLW4C2H', platform: 'TikTok Shop', amount: 98000, status: 'AVAILABLE', date: '09/08/2026', shippingStage: 2 },
+  { id: '260804TNB8XQE', platform: 'Lazada', amount: 15600, status: 'WITHDRAWN', date: '04/08/2026', shippingStage: 3 },
+  { id: '260731MZR3KDF', platform: 'Shopee', amount: 48000, status: 'CONFIRMED', date: '31/07/2026', shippingStage: 3 },
 ];
 
 export const mockDashboardStats = [
@@ -82,7 +82,7 @@ export const mockWithdrawalRequests = [
 export const mockAdminLogs = [
   { id: 'LOG-9021', actor: 'admin@cashback.vn', action: 'Approved withdrawal WD-3002', time: '15/08/2026 14:22' },
   { id: 'LOG-9018', actor: 'admin@cashback.vn', action: 'Locked user USR-0998 (fraud signal)', time: '14/08/2026 09:05' },
-  { id: 'LOG-9010', actor: 'system', action: 'Auto-confirmed commission CB-1098', time: '12/08/2026 22:41' },
+  { id: 'LOG-9010', actor: 'system', action: 'Auto-confirmed commission 260731MZR3KDF', time: '12/08/2026 22:41' },
   { id: 'LOG-9004', actor: 'admin@cashback.vn', action: 'Updated coupon SHOPEE10 expiry', time: '10/08/2026 11:18' },
 ];
 
@@ -227,7 +227,7 @@ export const balanceLedgerTypeKeyMap: Record<string, string> = {
 };
 
 export const mockSupportChats = [
-  { id: 'chat-1', name: 'Trương Tấn Phương', email: 'phuong.truong@gmail.com', message: 'Em dán link Shopee mà chưa thấy cộng tiền hoàn, admin kiểm tra giúp em đơn #ORD-2401 với ạ.', time: '26/08/2026 09:12', unread: true },
+  { id: 'chat-1', name: 'Trương Tấn Phương', email: 'phuong.truong@gmail.com', message: 'Em dán link Shopee mà chưa thấy cộng tiền hoàn, admin kiểm tra giúp em đơn #260812XKQ9FRM với ạ.', time: '26/08/2026 09:12', unread: true },
   { id: 'chat-2', name: 'Nguyen Minh', email: 'minh.nguyen@gmail.com', message: 'Cho em hỏi rút tiền tối thiểu bao nhiêu vậy ạ?', time: '25/08/2026 20:47', unread: true },
   { id: 'chat-3', name: 'Lê Thị Hoa', email: 'hoa.le@gmail.com', message: 'App bị lỗi không thêm được tài khoản ngân hàng.', time: '24/08/2026 14:03', unread: false },
   { id: 'chat-4', name: 'Đặng Văn Nam', email: 'nam.dang@gmail.com', message: 'Mã giới thiệu của em có vẻ không tính hoa hồng, mong shop xem lại.', time: '22/08/2026 08:31', unread: false },
