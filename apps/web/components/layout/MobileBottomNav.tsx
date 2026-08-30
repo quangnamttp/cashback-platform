@@ -16,13 +16,13 @@ export function MobileBottomNav() {
 
   return (
     <nav className="mobile-bottom-nav" aria-label="Bottom navigation">
-      <Link href="/" className={`mbn-item${isActive(pathname, '/') ? ' active' : ''}`}>
-        <span className="mbn-icon"><HomeIcon /></span>
+      <Link href="/" className={`mbn-item${isActive(pathname, '/') ? ' active' : ''}`} style={{ ['--mbn-color' as any]: '#0096ff' }}>
+        <span className="mbn-icon"><HomeIcon size={18} /></span>
         <span>{t('sidebar_home')}</span>
       </Link>
 
-      <Link href="/orders" className={`mbn-item${isActive(pathname, '/orders') ? ' active' : ''}`}>
-        <span className="mbn-icon"><BoxIcon /></span>
+      <Link href="/orders" className={`mbn-item${isActive(pathname, '/orders') ? ' active' : ''}`} style={{ ['--mbn-color' as any]: '#f59e0b' }}>
+        <span className="mbn-icon"><BoxIcon size={18} /></span>
         <span>{t('sidebar_orders')}</span>
       </Link>
 
@@ -31,13 +31,13 @@ export function MobileBottomNav() {
         <span>{t('sidebar_get_link')}</span>
       </Link>
 
-      <Link href="/cashback-wallet" className={`mbn-item${isActive(pathname, '/cashback-wallet') ? ' active' : ''}`}>
-        <span className="mbn-icon"><WalletIcon /></span>
+      <Link href="/cashback-wallet" className={`mbn-item${isActive(pathname, '/cashback-wallet') ? ' active' : ''}`} style={{ ['--mbn-color' as any]: '#16a34a' }}>
+        <span className="mbn-icon"><WalletIcon size={18} /></span>
         <span>{t('sidebar_wallet')}</span>
       </Link>
 
-      <Link href="/social-vouchers" className={`mbn-item${isActive(pathname, '/social-vouchers') ? ' active' : ''}`}>
-        <span className="mbn-icon"><TicketIcon /></span>
+      <Link href="/social-vouchers" className={`mbn-item${isActive(pathname, '/social-vouchers') ? ' active' : ''}`} style={{ ['--mbn-color' as any]: '#c13584' }}>
+        <span className="mbn-icon"><TicketIcon size={18} /></span>
         <span>{t('sidebar_social_vouchers')}</span>
       </Link>
     </nav>

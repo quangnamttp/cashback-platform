@@ -105,7 +105,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
 
           <div className="account-menu-container">
             <button
-              className="icon-btn"
+              className="icon-btn notif-btn"
               onClick={() => {
                 setIsNotifOpen((open) => !open);
                 setIsAccountMenuOpen(false);

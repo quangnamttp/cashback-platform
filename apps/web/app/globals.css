@@ -1136,6 +1136,28 @@ p {
   font-size: 1rem;
 }
 
+.icon-btn.mobile-wallet-btn {
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+
+.icon-btn.theme-toggle-btn {
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+.icon-btn.notif-btn {
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+[data-theme='dark'] .icon-btn.mobile-wallet-btn,
+[data-theme='dark'] .icon-btn.theme-toggle-btn,
+[data-theme='dark'] .icon-btn.notif-btn {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+}
+
 .icon-btn:hover {
   background: var(--bg-accent);
 }
@@ -2080,6 +2102,18 @@ p {
   align-items: center;
   justify-content: center;
   line-height: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--bg-accent);
+  background: color-mix(in srgb, var(--mbn-color, var(--text-muted)) 14%, transparent);
+  color: var(--mbn-color, var(--text-muted));
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.mbn-item.active .mbn-icon {
+  background: var(--mbn-color, var(--primary));
+  color: #fff;
 }
 
 .mbn-icon svg {
