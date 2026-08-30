@@ -140,24 +140,6 @@ export default function CashbackWalletPage() {
             </div>
           </section>
 
-          <section className="mini-stats-row">
-            <div className="mini-stat-card">
-              <span className="mini-stat-icon">✅</span>
-              <div className="mini-stat-value">{formatCurrency(320000, lang)}</div>
-              <div className="mini-stat-label">{t('wallet_withdrawn')}</div>
-            </div>
-            <div className="mini-stat-card">
-              <span className="mini-stat-icon">❌</span>
-              <div className="mini-stat-value">{formatCurrency(60000, lang)}</div>
-              <div className="mini-stat-label">{t('wallet_rejected')}</div>
-            </div>
-            <div className="mini-stat-card">
-              <span className="mini-stat-icon">📦</span>
-              <div className="mini-stat-value">4</div>
-              <div className="mini-stat-label">{t('panel_orders')}</div>
-            </div>
-          </section>
-
           <div className="wd-notice">
             ⚠️ {t('wd_notice_title')}
             <p>{t('wd_notice_desc').replace('{min}', formatCurrency(MIN_WITHDRAW, lang))}</p>

@@ -173,13 +173,30 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
               )}
             </div>
           ) : (
-            <div className="auth-buttons-row">
-              <Link href="/login" className="auth-btn-login">
-                ➡️ {t('header_login')}
-              </Link>
-              <Link href="/login" className="auth-btn-register hide-on-mobile">
-                👤➕ {t('login_register')}
-              </Link>
+            <div className="account-menu-container">
+              <button
+                className="account-menu-button"
+                onClick={() => {
+                  setIsAccountMenuOpen((open) => !open);
+                  setIsLangMenuOpen(false);
+                }}
+                aria-expanded={isAccountMenuOpen}
+                aria-haspopup="menu"
+                title={t('header_login')}
+              >
+                👤
+              </button>
+
+              {isAccountMenuOpen && (
+                <div className="account-menu-dropdown active account-dropdown-v2" role="menu">
+                  <Link href="/login" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
+                    ➡️ {t('header_login')}
+                  </Link>
+                  <Link href="/login" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
+                    👤➕ {t('login_register')}
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>

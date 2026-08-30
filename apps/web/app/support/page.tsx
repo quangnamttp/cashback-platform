@@ -4,13 +4,15 @@ import { useState } from 'react';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
 import { mockFaq } from '../../lib/mock-data';
+import { RequireAuth } from '../../components/layout/RequireAuth';
 
 export default function SupportPage() {
   const { t } = useLanguage();
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
-    <AppShell showRightPanel={false}>
+    <RequireAuth>
+      <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -60,5 +62,6 @@ export default function SupportPage() {
         </section>
       </div>
     </AppShell>
+    </RequireAuth>
   );
 }

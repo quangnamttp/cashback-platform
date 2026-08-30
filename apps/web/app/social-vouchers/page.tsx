@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { VoucherTicket } from '../../components/ui/VoucherTicket';
 import { useLanguage } from '../../lib/i18n';
 import { mockSocialVouchers } from '../../lib/mock-data';
+import { RequireAuth } from '../../components/layout/RequireAuth';
 
 const REFRESH_SLOTS = ['00:00', '09:00', '12:00', '15:00', '18:00', '20:00'];
 
@@ -63,7 +64,8 @@ export default function SocialVouchersPage() {
   }, [activeGroup]);
 
   return (
-    <AppShell showRightPanel={false}>
+    <RequireAuth>
+      <AppShell showRightPanel={false}>
       <div className="page-shell">
         <section className="sv-hero">
           <div className="sv-hero-text">
@@ -176,5 +178,6 @@ export default function SocialVouchersPage() {
         <p className="mock-note">{t('mock_notice')}</p>
       </div>
     </AppShell>
+    </RequireAuth>
   );
 }

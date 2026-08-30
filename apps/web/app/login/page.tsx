@@ -16,6 +16,7 @@ function LoginPageInner() {
   const [tab, setTab] = useState<'login' | 'register'>('login');
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
 
@@ -76,8 +77,19 @@ function LoginPageInner() {
                 <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
                 {t('login_remember')}
               </label>
-              <a href="#" className="text-link">{t('login_forgot')}</a>
+              <a href="/forgot-password" className="text-link">{t('login_forgot')}</a>
             </div>
+          )}
+
+          {tab === 'register' && (
+            <label>
+              <span className="field-label">{t('login_referral_code_label')}</span>
+              <input
+                placeholder={t('login_referral_code_placeholder')}
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value)}
+              />
+            </label>
           )}
 
           <button type="submit" className="button button-primary wide-button">
@@ -93,6 +105,7 @@ function LoginPageInner() {
         </button>
 
         <p className="login-mock-note">{t('login_mock_note')}</p>
+        <p className="login-mock-note">{t('login_google_link_note')}</p>
 
         <Link href="/" className="text-link login-back-home">← {t('back_home')}</Link>
       </div>
