@@ -195,39 +195,33 @@ export default function HomePage() {
           <p className="muted-copy">{t('process_desc')}</p>
         </div>
 
-        <div className="process-timeline">
-          <div className="process-step">
-            <div className="process-icon">🛒</div>
-            <div className="process-body">
-              <span className="process-step-label">{t('process_step1_label')}</span>
-              <h3>{t('process_step1_title')}</h3>
-              <span className="process-chip">{t('process_step1_chip')}</span>
-              <p>{t('process_step1_desc')}</p>
-            </div>
+        <div className="process-timeline-v2">
+          <div className="process-step-v2">
+            <div className="process-icon-v2 step1">🛍️</div>
+            <span className="process-step-label">{t('process_step1_label')}</span>
+            <h3>{t('process_step1_title')}</h3>
+            <span className="process-chip">{t('process_step1_chip')}</span>
+            <p>{t('process_step1_desc')}</p>
           </div>
 
-          <div className="process-connector" />
+          <div className="process-connector-v2 line1" />
 
-          <div className="process-step">
-            <div className="process-icon">🔄</div>
-            <div className="process-body">
-              <span className="process-step-label">{t('process_step2_label')}</span>
-              <h3>{t('process_step2_title')}</h3>
-              <span className="process-chip warning">{t('process_step2_chip')}</span>
-              <p>{t('process_step2_desc')}</p>
-            </div>
+          <div className="process-step-v2">
+            <div className="process-icon-v2 step2">🔄</div>
+            <span className="process-step-label">{t('process_step2_label')}</span>
+            <h3>{t('process_step2_title')}</h3>
+            <span className="process-chip warning">{t('process_step2_chip')}</span>
+            <p>{t('process_step2_desc')}</p>
           </div>
 
-          <div className="process-connector" />
+          <div className="process-connector-v2 line2" />
 
-          <div className="process-step">
-            <div className="process-icon">💳</div>
-            <div className="process-body">
-              <span className="process-step-label">{t('process_step3_label')}</span>
-              <h3>{t('process_step3_title')}</h3>
-              <span className="process-chip">{t('process_step3_chip')}</span>
-              <p>{t('process_step3_desc')}</p>
-            </div>
+          <div className="process-step-v2">
+            <div className="process-icon-v2 step3">👛</div>
+            <span className="process-step-label">{t('process_step3_label')}</span>
+            <h3>{t('process_step3_title')}</h3>
+            <span className="process-chip">{t('process_step3_chip')}</span>
+            <p>{t('process_step3_desc')}</p>
           </div>
         </div>
 
@@ -238,17 +232,23 @@ export default function HomePage() {
           <div className="process-timing-grid">
             {mockPlatforms.map((platform) => (
               <div key={platform.name} className="process-timing-card">
-                <PlatformBadge name={platform.name} size={32} />
-                <h4>{platform.name}</h4>
-                <span className="process-timing-window">
-                  {platform.name === 'Shopee'
-                    ? t('process_timing_shopee')
-                    : platform.name === 'TikTok Shop'
-                    ? t('process_timing_tiktok')
-                    : t('process_timing_lazada')}
-                </span>
+                <PlatformBadge name={platform.name} size={26} />
+                <div>
+                  <h4>{platform.name}</h4>
+                  <span className="process-timing-window">
+                    {platform.name === 'Shopee'
+                      ? t('process_timing_shopee')
+                      : platform.name === 'TikTok Shop'
+                      ? t('process_timing_tiktok')
+                      : t('process_timing_lazada')}
+                  </span>
+                </div>
               </div>
             ))}
+          </div>
+
+          <div className="process-timing-sync">
+            ⚡ {t('process_timing_sync')}
           </div>
 
           <p className="mock-note">{t('process_timing_footnote')}</p>

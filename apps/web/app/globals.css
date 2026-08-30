@@ -2359,6 +2359,86 @@ p {
   padding-bottom: 6px;
 }
 
+/* Process timeline v2 — horizontal, gradient icon circles + connecting line */
+.process-timeline-v2 {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin-top: 28px;
+  flex-wrap: wrap;
+}
+
+.process-step-v2 {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+}
+
+.process-icon-v2 {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  color: #fff;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 6px;
+}
+
+.process-icon-v2.step1 {
+  background: linear-gradient(135deg, #22c55e, #eab308);
+}
+
+.process-icon-v2.step2 {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+}
+
+.process-icon-v2.step3 {
+  background: linear-gradient(135deg, #0096ff, #2563eb);
+}
+
+.process-step-v2 h3 {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+}
+
+.process-step-v2 p {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  max-width: 240px;
+  line-height: 1.5;
+}
+
+.process-connector-v2 {
+  flex: 0 0 60px;
+  height: 3px;
+  margin-top: 36px;
+  border-radius: 999px;
+}
+
+.process-connector-v2.line1 {
+  background: linear-gradient(90deg, #22c55e, #f97316);
+}
+
+.process-connector-v2.line2 {
+  background: linear-gradient(90deg, #f97316, #0096ff);
+}
+
+@media (max-width: 720px) {
+  .process-connector-v2 {
+    display: none;
+  }
+  .process-timeline-v2 {
+    flex-direction: column;
+  }
+}
+
 .process-step-label {
   font-size: 0.72rem;
   font-weight: 700;
@@ -4989,33 +5069,43 @@ p {
 
 .process-timing-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin-top: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .process-timing-card {
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  padding: 18px;
-  text-align: center;
+  padding: 12px 14px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .process-timing-card h4 {
-  margin: 0;
-  font-size: 0.95rem;
+  margin: 0 0 3px;
+  font-size: 0.85rem;
 }
 
 .process-timing-window {
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--primary-dark);
   background: var(--bg-accent);
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 999px;
+  white-space: nowrap;
+}
+
+.process-timing-sync {
+  margin-top: 14px;
+  background: #fef9e7;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: #92400e;
+  font-weight: 600;
 }
