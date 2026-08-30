@@ -189,6 +189,39 @@ export const bankList = [
   'OCB',
   'SeABank',
   'Eximbank',
+  'LPBank',
+  'Nam A Bank',
+  'ABBank',
+  'PVcomBank',
+  'BacABank',
+  'VietBank',
+  'Kienlongbank',
+  'SCB',
+  'DongABank',
+  'VietABank',
+  'PGBank',
+  'Saigonbank',
+  'CAKE by VPBank',
   'MoMo (Ví điện tử)',
   'ZaloPay (Ví điện tử)',
+  'Viettel Money (Ví điện tử)',
+  'ShopeePay (Ví điện tử)',
+  'VNPay (Ví điện tử)',
 ];
+
+export const mockBalanceLedger = [
+  { id: 'AFF_1752', content: 'Hoa hồng cashback TikTok #58564095988...', type: 'AFFILIATE', before: 2859, change: 224, after: 3083, time: '26/08/2026 09:12' },
+  { id: 'AFF_1747', content: 'Hoa hồng cashback TikTok #58563752003...', type: 'AFFILIATE', before: 1588, change: 1271, after: 2859, time: '25/08/2026 14:05' },
+  { id: 'AFF_1753', content: 'Hoa hồng cashback TikTok #58564094612...', type: 'AFFILIATE', before: 1, change: 1588, after: 1588, time: '24/08/2026 20:31' },
+  { id: 'W6A8AE3E5BD3CF', content: 'Rút tiền quỹ #W6A8AE3E5BD3CF', type: 'WITHDRAW', before: 43811, change: -43810, after: 1, time: '23/08/2026 19:13' },
+  { id: 'CB6A8A3120661BC', content: 'Hoàn tiền đơn mua hàng Shopee - Đơn #2608...', type: 'CASHBACK', before: 24693, change: 19118, after: 43811, time: '23/08/2026 06:30' },
+  { id: 'AFF_1625', content: 'Hoa hồng cashback Shopee #260816G5G8DS...', type: 'AFFILIATE', before: 24079, change: 314, after: 24393, time: '22/08/2026 07:01' },
+  { id: 'AFF_945', content: 'Hoa hồng cashback TikTok #58535179433...', type: 'AFFILIATE', before: 23729, change: 350, after: 24079, time: '21/08/2026 09:30' },
+  { id: 'AFF_1663', content: 'Hoa hồng cashback TikTok #58560385357...', type: 'AFFILIATE', before: 22141, change: 1588, after: 23729, time: '21/08/2026 08:30' },
+];
+
+export const balanceLedgerTypeKeyMap: Record<string, string> = {
+  AFFILIATE: 'ledger_type_affiliate',
+  WITHDRAW: 'ledger_type_withdraw',
+  CASHBACK: 'ledger_type_cashback',
+};

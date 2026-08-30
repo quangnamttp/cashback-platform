@@ -2753,31 +2753,34 @@ p {
 .order-card-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  max-height: 620px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .order-card {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: 13px 14px;
   flex-wrap: wrap;
 }
 
 .order-card-main {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   flex: 1;
   min-width: 220px;
 }
 
 .order-card-info h3 {
-  font-size: 0.95rem;
-  margin: 4px 0 4px;
+  font-size: 0.85rem;
+  margin: 3px 0 3px;
   color: var(--text);
   line-height: 1.4;
 }
@@ -2789,7 +2792,7 @@ p {
 }
 
 .order-card-platform {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: #fff;
   background: var(--primary);
@@ -2798,13 +2801,13 @@ p {
 }
 
 .order-card-id {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
   font-family: monospace;
 }
 
 .order-card-link {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--success);
   font-weight: 600;
 }
@@ -2818,7 +2821,7 @@ p {
 }
 
 .order-card-cashback {
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 800;
   color: var(--success);
 }
@@ -3622,14 +3625,17 @@ p {
 .ship-order-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  max-height: 720px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .ship-order-card {
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  padding: 14px 16px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -4342,4 +4348,141 @@ p {
   display: block;
   text-align: center;
   margin-top: 12px;
+}
+
+/* ==========================================================
+   WALLET PAGE v2 — compact bank selector, manage & ledger modals
+   ========================================================== */
+.wd-bank-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.wd-bank-select {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 0.88rem;
+  margin-top: 6px;
+  color: var(--text);
+}
+
+.wd-bank-select-empty {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Scrollable list containment — prevents long lists from stretching
+   the page and leaving the other column with awkward empty space */
+.scrollable-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.bank-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bank-manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.bank-manage-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bank-manage-row strong {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.bank-manage-row span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.ledger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ledger-row {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.ledger-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ledger-type-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-accent);
+  color: var(--primary-dark);
+}
+
+.ledger-type-badge.withdraw {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.ledger-type-badge.cashback {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ledger-change {
+  font-weight: 800;
+  font-size: 0.88rem;
+}
+
+.ledger-change.positive {
+  color: var(--success);
+}
+
+.ledger-change.negative {
+  color: var(--danger);
+}
+
+.ledger-content {
+  font-size: 0.82rem;
+  color: var(--text);
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.ledger-row-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
