@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { PlatformBadge } from './PlatformBadge';
+import { PromoIllustration } from './PromoIllustration';
 
 type EventItem = {
   id: number;
@@ -26,11 +27,16 @@ export function EventCarousel({ events }: { events: EventItem[] }) {
   return (
     <div className="event-carousel">
       <div className="event-carousel-track" key={current.id}>
-        <span className="event-carousel-tag" style={{ background: current.accent }}>
-          <PlatformBadge name={current.platform} size={16} />
-          {current.tag}
-        </span>
-        <p className="event-carousel-title">{current.title}</p>
+        <div className="event-carousel-text">
+          <span className="event-carousel-tag" style={{ background: current.accent }}>
+            <PlatformBadge name={current.platform} size={16} />
+            {current.tag}
+          </span>
+          <p className="event-carousel-title">{current.title}</p>
+        </div>
+        <div className="event-carousel-art">
+          <PromoIllustration />
+        </div>
       </div>
 
       <div className="event-carousel-controls">

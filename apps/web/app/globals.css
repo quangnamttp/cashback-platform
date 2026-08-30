@@ -3017,16 +3017,46 @@ p {
    EVENT CAROUSEL (auto-rotating, homepage top)
    ========================================================== */
 .event-carousel {
-  background: var(--surface);
+  background: linear-gradient(135deg, #eaf6ff 0%, #d3ecff 100%);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   padding: 18px 22px;
   margin-top: 20px;
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+[data-theme='dark'] .event-carousel {
+  background: linear-gradient(135deg, #16324f 0%, #0f2436 100%);
 }
 
 .event-carousel-track {
   animation: eventFadeIn 0.4s ease;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.event-carousel-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-carousel-art {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.promo-illustration-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 560px) {
+  .event-carousel-art {
+    width: 100px;
+  }
 }
 
 @keyframes eventFadeIn {
