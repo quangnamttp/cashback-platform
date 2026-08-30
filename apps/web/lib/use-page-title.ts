@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-const SITE_NAME = 'Cashback Platform';
+const SITE_NAME = 'Hoàn Tiền DV';
 
 /**
  * Sets the browser tab title for the current page. Needed because these

@@ -10,7 +10,7 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="container footer-grid">
         <div>
-          <div className="brand-name">Cashback Platform</div>
+          <div className="brand-name">Hoàn Tiền DV</div>
           <p className="footer-copy">{t('footer_desc')}</p>
         </div>
 

@@ -3,27 +3,28 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLanguage, type DictKey } from '../../lib/i18n';
+import { HomeIcon, LinkIcon, WalletIcon, BoxIcon, ReceiptIcon, TicketIcon, UsersIcon, HeadsetIcon, GearIcon } from '../ui/Icons';
 
 type SidebarItem = {
-  icon: string;
+  icon: React.ReactNode;
   color: string;
   labelKey: DictKey;
   href: string;
 };
 
 const topItems: SidebarItem[] = [
-  { icon: '🏠', color: '#0096ff', labelKey: 'sidebar_home', href: '/' },
-  { icon: '🔗', color: '#38bdf8', labelKey: 'sidebar_get_link', href: '/get-cashback-link' },
+  { icon: <HomeIcon size={16} />, color: '#0096ff', labelKey: 'sidebar_home', href: '/' },
+  { icon: <LinkIcon size={16} />, color: '#38bdf8', labelKey: 'sidebar_get_link', href: '/get-cashback-link' },
 ];
 
 const bottomItems: SidebarItem[] = [
-  { icon: '💰', color: '#16a34a', labelKey: 'sidebar_wallet', href: '/cashback-wallet' },
-  { icon: '📦', color: '#f59e0b', labelKey: 'sidebar_orders', href: '/orders' },
-  { icon: '📋', color: '#8b5cf6', labelKey: 'sidebar_order_status', href: '/cashback' },
-  { icon: '📱', color: '#c13584', labelKey: 'sidebar_social_vouchers', href: '/social-vouchers' },
-  { icon: '👥', color: '#6366f1', labelKey: 'sidebar_referrals', href: '/referrals' },
-  { icon: '❓', color: '#0ea5e9', labelKey: 'sidebar_support', href: '/support' },
-  { icon: '⚙', color: '#64748b', labelKey: 'sidebar_settings', href: '/settings' },
+  { icon: <WalletIcon size={16} />, color: '#16a34a', labelKey: 'sidebar_wallet', href: '/cashback-wallet' },
+  { icon: <BoxIcon size={16} />, color: '#f59e0b', labelKey: 'sidebar_orders', href: '/orders' },
+  { icon: <ReceiptIcon size={16} />, color: '#8b5cf6', labelKey: 'sidebar_order_status', href: '/cashback' },
+  { icon: <TicketIcon size={16} />, color: '#c13584', labelKey: 'sidebar_social_vouchers', href: '/social-vouchers' },
+  { icon: <UsersIcon size={16} />, color: '#6366f1', labelKey: 'sidebar_referrals', href: '/referrals' },
+  { icon: <HeadsetIcon size={16} />, color: '#0ea5e9', labelKey: 'sidebar_support', href: '/support' },
+  { icon: <GearIcon size={16} />, color: '#64748b', labelKey: 'sidebar_settings', href: '/settings' },
 ];
 
 function isActive(pathname: string, href: string) {

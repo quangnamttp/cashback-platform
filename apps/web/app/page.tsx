@@ -9,6 +9,7 @@ import { useLanguage } from '../lib/i18n';
 import { formatCurrency } from '../lib/currency';
 import { mockHomeEvents, mockPlatforms } from '../lib/mock-data';
 import { usePageTitle } from '../lib/use-page-title';
+import { ShoppingBagIcon, MusicNoteIcon, CartIcon, LinkIcon, BoxIcon, WalletIcon, TicketIcon, UsersIcon, HeadsetIcon, BookIcon, GearIcon } from '../components/ui/Icons';
 
 const MOCK_LOGGED_IN = true;
 
@@ -92,47 +93,47 @@ export default function HomePage() {
         </div>
         <div className="quick-utility-grid">
           <Link href="/#stores" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#ee4d2d' }}>🛍️</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#ee4d2d' }}><ShoppingBagIcon size={20} /></span></span>
             Shopee
           </Link>
           <Link href="/#stores" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#111827' }}>🎵</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#111827' }}><MusicNoteIcon size={20} /></span></span>
             TikTok Shop
           </Link>
           <Link href="/#stores" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0f146d' }}>🛒</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0f146d' }}><CartIcon size={20} /></span></span>
             Lazada
           </Link>
           <Link href="/get-cashback-link" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0096ff' }}>🔗</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0096ff' }}><LinkIcon size={20} /></span></span>
             {t('sidebar_get_link')}
           </Link>
           <Link href="/orders" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#f59e0b' }}>📦</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#f59e0b' }}><BoxIcon size={20} /></span></span>
             {t('sidebar_orders')}
           </Link>
           <Link href="/cashback-wallet" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#16a34a' }}>💰</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#16a34a' }}><WalletIcon size={20} /></span></span>
             {t('sidebar_wallet')}
           </Link>
           <Link href="/social-vouchers" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#c13584' }}>📱</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#c13584' }}><TicketIcon size={20} /></span></span>
             {t('sidebar_social_vouchers')}
           </Link>
           <Link href="/referrals" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#8b5cf6' }}>👥</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#8b5cf6' }}><UsersIcon size={20} /></span></span>
             {t('sidebar_referrals')}
           </Link>
           <Link href="/support" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0ea5e9' }}>💬</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0ea5e9' }}><HeadsetIcon size={20} /></span></span>
             {t('sidebar_support')}
           </Link>
           <Link href="/#guide" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#ef4444' }}>📖</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#ef4444' }}><BookIcon size={20} /></span></span>
             {t('guide_title').split(' ').slice(0, 2).join(' ')}
           </Link>
           <Link href="/settings" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#64748b' }}>⚙️</span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#64748b' }}><GearIcon size={20} /></span></span>
             {t('sidebar_settings')}
           </Link>
         </div>

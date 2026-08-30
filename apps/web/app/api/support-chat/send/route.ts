@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   const message = hasText ? body.message.trim() : '(gửi kèm ảnh, không có nội dung chữ)';
 
   const text = [
-    '🆘 Tin nhắn hỗ trợ mới — Cashback Platform',
+    '🆘 Tin nhắn hỗ trợ mới — Hoàn Tiền DV',
     `Từ: ${name}`,
     `Liên hệ: ${contact}`,
     '',

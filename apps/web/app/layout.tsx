@@ -5,7 +5,7 @@ import { ThemeProvider } from '../lib/theme';
 import { AuthProvider } from '../lib/auth';
 
 export const metadata: Metadata = {
-  title: 'Cashback Platform',
+  title: 'Hoàn Tiền DV',
   description: 'Multi-marketplace affiliate cashback platform for Shopee, TikTok Shop and Lazada',
 };
 

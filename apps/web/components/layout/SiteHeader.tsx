@@ -46,8 +46,8 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
         </button>
 
         <Link href="/" className="brand-block">
-          <div className="brand-mark">C</div>
-          <div className="brand-name">Cashback Platform</div>
+          <div className="brand-mark">H</div>
+          <div className="brand-name">Hoàn Tiền DV</div>
         </Link>
 
         <nav className="main-nav" aria-label="Main navigation">
