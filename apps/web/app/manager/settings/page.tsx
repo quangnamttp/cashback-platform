@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { DEFAULT_AUTO_REPLY, loadAutoReplyMessage, saveAutoReplyMessage } from '../../../lib/auto-reply-store';
 
 export default function AdminSettingsPage() {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -10,6 +11,19 @@ export default function AdminSettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' });
   const [submitting, setSubmitting] = useState(false);
+
+  const [autoReply, setAutoReply] = useState(DEFAULT_AUTO_REPLY);
+  const [autoReplySaved, setAutoReplySaved] = useState(false);
+
+  useEffect(() => {
+    setAutoReply(loadAutoReplyMessage());
+  }, []);
+
+  const handleSaveAutoReply = () => {
+    saveAutoReplyMessage(autoReply);
+    setAutoReplySaved(true);
+    setTimeout(() => setAutoReplySaved(false), 2000);
+  };
 
   const handleChangePassword = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -81,6 +95,25 @@ export default function AdminSettingsPage() {
             <div><span className="field-label">Thời gian xử lý</span><strong>1-3 ngày làm việc</strong></div>
           </div>
         </div>
+      </section>
+
+      <section className="panel">
+        <h3>💬 Tin nhắn trả lời tự động</h3>
+        <p className="muted-copy">
+          Nội dung này sẽ tự động hiện lại cho khách sau khi họ gửi tin nhắn hỗ trợ đầu tiên, dùng cho lúc admin
+          không online. <strong>Lưu ý:</strong> hiện lưu trên trình duyệt của bạn — mọi khách hàng đều thấy nội
+          dung này khi cấu hình được đồng bộ qua Firebase; trước đó, khách trên thiết bị khác sẽ thấy nội dung
+          mặc định cho tới khi bạn kết nối backend thật.
+        </p>
+        <textarea
+          className="support-chat-textarea"
+          style={{ marginTop: 12, minHeight: 90 }}
+          value={autoReply}
+          onChange={(e) => setAutoReply(e.target.value)}
+        />
+        <button className="button button-primary" style={{ marginTop: 10 }} onClick={handleSaveAutoReply}>
+          {autoReplySaved ? '✓ Đã lưu' : 'Lưu nội dung'}
+        </button>
       </section>
 
       <section className="panel">

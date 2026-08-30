@@ -159,6 +159,9 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                   <Link href="/account" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
                     👤 {t('account_profile')}
                   </Link>
+                  <Link href="/download-app" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
+                    📲 {t('account_download_app')}
+                  </Link>
                   <button
                     role="menuitem"
                     className="account-dropdown-logout"

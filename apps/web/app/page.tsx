@@ -230,6 +230,29 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+
+        <div className="process-timing-note">
+          <h3>{t('process_timing_title')}</h3>
+          <p className="muted-copy">{t('process_timing_desc')}</p>
+
+          <div className="process-timing-grid">
+            {mockPlatforms.map((platform) => (
+              <div key={platform.name} className="process-timing-card">
+                <PlatformBadge name={platform.name} size={32} />
+                <h4>{platform.name}</h4>
+                <span className="process-timing-window">
+                  {platform.name === 'Shopee'
+                    ? t('process_timing_shopee')
+                    : platform.name === 'TikTok Shop'
+                    ? t('process_timing_tiktok')
+                    : t('process_timing_lazada')}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="mock-note">{t('process_timing_footnote')}</p>
+        </div>
       </section>
     </AppShell>
   );

@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { mockSupportChats } from '../../lib/mock-data';
+import { useEffect, useState } from 'react';
+import { loadSupportChats } from '../../lib/support-chat-store';
 
 const adminNavItems = [
   { icon: '📊', label: 'Tổng quan', href: '/manager' },
@@ -26,7 +27,11 @@ function isActive(pathname: string, href: string) {
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const unreadCount = mockSupportChats.filter((c) => c.unread).length;
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    setUnreadCount(loadSupportChats().filter((c) => c.unread).length);
+  }, [pathname]);
 
   return (
     <div className="admin-page-shell container">

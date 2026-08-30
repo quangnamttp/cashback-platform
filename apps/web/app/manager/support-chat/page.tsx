@@ -1,39 +1,49 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { Modal } from '../../../components/ui/Modal';
-import { mockSupportChats } from '../../../lib/mock-data';
-
-// Parses "DD/MM/YYYY HH:mm" into a real timestamp so sorting is always
-// chronologically correct (plain string comparison breaks across month
-// boundaries, e.g. "01/09" would incorrectly sort before "30/08").
-function parseVnDateTime(value: string): number {
-  const [datePart, timePart] = value.split(' ');
-  const [day, month, year] = datePart.split('/').map(Number);
-  const [hour, minute] = (timePart ?? '00:00').split(':').map(Number);
-  return new Date(year, month - 1, day, hour, minute).getTime();
-}
+import { loadSupportChats, saveSupportChats, type SupportChatEntry } from '../../../lib/support-chat-store';
 
 export default function AdminSupportChatPage() {
-  const [chats, setChats] = useState(mockSupportChats);
-  const [activeChat, setActiveChat] = useState<(typeof mockSupportChats)[number] | null>(null);
+  const [chats, setChats] = useState<SupportChatEntry[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setChats(loadSupportChats());
+    setLoaded(true);
+  }, []);
 
   const sorted = useMemo(
-    () => [...chats].sort((a, b) => parseVnDateTime(b.time) - parseVnDateTime(a.time)),
+    () => [...chats].sort((a, b) => b.createdAt - a.createdAt),
     [chats]
   );
 
-  const openChat = (chat: (typeof mockSupportChats)[number]) => {
-    setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unread: false } : c)));
-    setActiveChat(chat);
+  const activeChat = chats.find((c) => c.id === activeChatId) ?? null;
+
+  const persist = (next: SupportChatEntry[]) => {
+    setChats(next);
+    saveSupportChats(next);
   };
 
-  const replyMailto = activeChat
-    ? `mailto:${activeChat.email}?subject=${encodeURIComponent('Hỗ trợ Cashback Platform')}&body=${encodeURIComponent(
-        `Chào ${activeChat.name},\n\nVề nội dung bạn gửi: "${activeChat.message}"\n\n`
-      )}`
-    : '#';
+  const openChat = (chat: SupportChatEntry) => {
+    persist(chats.map((c) => (c.id === chat.id ? { ...c, unread: false } : c)));
+    setActiveChatId(chat.id);
+    setReplyText('');
+  };
+
+  const sendReply = () => {
+    if (!activeChat || !replyText.trim()) return;
+    const next = chats.map((c) =>
+      c.id === activeChat.id
+        ? { ...c, replies: [...c.replies, { text: replyText.trim(), createdAt: Date.now() }] }
+        : c
+    );
+    persist(next);
+    setReplyText('');
+  };
 
   return (
     <AdminShell>
@@ -45,36 +55,44 @@ export default function AdminSupportChatPage() {
       </div>
 
       <p className="mock-note" style={{ marginTop: -8 }}>
-        Dữ liệu minh họa (mock) — đây là giao diện nền tảng cho hộp thư hỗ trợ. Khi kết nối cơ sở dữ liệu thật
-        (ví dụ Firebase), tin nhắn khách gửi qua bong bóng chat trên web sẽ hiện tại đây theo thời gian thực,
-        đồng thời vẫn được đẩy thông báo qua Telegram như hiện tại.
+        Tin nhắn được lưu trên trình duyệt này (tự động xoá sau 3 ngày). Trả lời ở đây hiện <strong>chỉ lưu lại
+        làm nhật ký trên trình duyệt của bạn</strong> — chưa đồng bộ tới thiết bị khách hàng theo thời gian thực,
+        vì việc đó cần cơ sở dữ liệu thật (sẽ hoạt động đầy đủ khi kết nối Firebase). Tin nhắn khách gửi vẫn
+        được đẩy thông báo qua Telegram song song như hiện tại.
       </p>
 
       <div className="panel admin-table-panel">
-        <div className="support-chat-inbox">
-          {sorted.map((chat) => (
-            <button
-              key={chat.id}
-              className={`support-chat-inbox-row${chat.unread ? ' unread' : ''}`}
-              onClick={() => openChat(chat)}
-            >
-              <div className="support-chat-inbox-avatar">👤</div>
-              <div className="support-chat-inbox-body">
-                <div className="support-chat-inbox-top">
-                  <strong>{chat.name}</strong>
-                  {chat.unread && <span className="badge badge-danger">Mới</span>}
+        {!loaded ? (
+          <p className="muted-copy">Đang tải...</p>
+        ) : (
+          <div className="support-chat-inbox">
+            {sorted.map((chat) => (
+              <button
+                key={chat.id}
+                className={`support-chat-inbox-row${chat.unread ? ' unread' : ''}`}
+                onClick={() => openChat(chat)}
+              >
+                <div className="support-chat-inbox-avatar">👤</div>
+                <div className="support-chat-inbox-body">
+                  <div className="support-chat-inbox-top">
+                    <strong>{chat.name}</strong>
+                    {chat.unread && <span className="badge badge-danger">Mới</span>}
+                    {chat.replies.length > 0 && (
+                      <span className="badge badge-success">Đã trả lời</span>
+                    )}
+                  </div>
+                  <span className="support-chat-inbox-email">{chat.email}</span>
+                  <p className="support-chat-inbox-message">{chat.message}</p>
+                  <span className="support-chat-inbox-time">{chat.time}</span>
                 </div>
-                <span className="support-chat-inbox-email">{chat.email}</span>
-                <p className="support-chat-inbox-message">{chat.message}</p>
-                <span className="support-chat-inbox-time">{chat.time}</span>
-              </div>
-            </button>
-          ))}
-          {sorted.length === 0 && <p className="muted-copy">Chưa có tin nhắn hỗ trợ nào.</p>}
-        </div>
+              </button>
+            ))}
+            {sorted.length === 0 && <p className="muted-copy">Chưa có tin nhắn hỗ trợ nào.</p>}
+          </div>
+        )}
       </div>
 
-      <Modal open={!!activeChat} onClose={() => setActiveChat(null)}>
+      <Modal open={!!activeChat} onClose={() => setActiveChatId(null)}>
         {activeChat && (
           <>
             <div className="modal-header-row">
@@ -85,21 +103,34 @@ export default function AdminSupportChatPage() {
               </div>
             </div>
 
-            <div className="modal-field-list">
-              <div className="modal-field-row">
-                <span>Thời gian</span>
+            <div className="support-chat-thread">
+              <div className="support-chat-bubble customer">
+                <p>{activeChat.message}</p>
                 <span>{activeChat.time}</span>
               </div>
+              {activeChat.replies.map((reply, index) => (
+                <div key={index} className="support-chat-bubble admin">
+                  <p>{reply.text}</p>
+                  <span>{new Date(reply.createdAt).toLocaleString('vi-VN')}</span>
+                </div>
+              ))}
             </div>
 
-            <p className="support-chat-detail-message">{activeChat.message}</p>
-
-            <a href={replyMailto} className="button button-primary modal-cta">
-              ✉️ Trả lời qua Email
-            </a>
-            <p className="mock-note" style={{ marginTop: 10 }}>
-              Mở ứng dụng email mặc định của bạn với sẵn địa chỉ khách hàng để trả lời trực tiếp.
-            </p>
+            <textarea
+              className="support-chat-textarea"
+              placeholder="Nhập nội dung trả lời..."
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              rows={3}
+              style={{ marginTop: 12 }}
+            />
+            <button
+              className="button button-primary modal-cta"
+              onClick={sendReply}
+              disabled={!replyText.trim()}
+            >
+              📨 Gửi trả lời
+            </button>
           </>
         )}
       </Modal>

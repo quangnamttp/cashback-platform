@@ -23,7 +23,10 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
 
-  if (!body || typeof body.message !== 'string' || !body.message.trim()) {
+  const hasText = body && typeof body.message === 'string' && body.message.trim();
+  const hasImage = body && typeof body.imageBase64 === 'string' && body.imageBase64.length > 0;
+
+  if (!body || (!hasText && !hasImage)) {
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
   }
 
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : 'Khách (chưa rõ tên)';
   const contact = typeof body.contact === 'string' && body.contact.trim() ? body.contact.trim() : 'Không cung cấp';
-  const message = body.message.trim();
+  const message = hasText ? body.message.trim() : '(gửi kèm ảnh, không có nội dung chữ)';
 
   const text = [
     '🆘 Tin nhắn hỗ trợ mới — Cashback Platform',
@@ -47,14 +50,39 @@ export async function POST(request: NextRequest) {
   ].join('\n');
 
   try {
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text }),
-    });
+    if (hasImage) {
+      // imageBase64 is expected as a data URL, e.g. "data:image/png;base64,...."
+      const commaIndex = body.imageBase64.indexOf(',');
+      const base64Data = commaIndex >= 0 ? body.imageBase64.slice(commaIndex + 1) : body.imageBase64;
+      const buffer = Buffer.from(base64Data, 'base64');
 
-    if (!res.ok) {
-      return NextResponse.json({ error: 'telegram_send_failed' }, { status: 502 });
+      if (buffer.byteLength > 10 * 1024 * 1024) {
+        return NextResponse.json({ error: 'image_too_large' }, { status: 413 });
+      }
+
+      const form = new FormData();
+      form.append('chat_id', chatId);
+      form.append('caption', text.slice(0, 1024));
+      form.append('photo', new Blob([buffer]), 'support-image.jpg');
+
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+        method: 'POST',
+        body: form,
+      });
+
+      if (!res.ok) {
+        return NextResponse.json({ error: 'telegram_send_failed' }, { status: 502 });
+      }
+    } else {
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      });
+
+      if (!res.ok) {
+        return NextResponse.json({ error: 'telegram_send_failed' }, { status: 502 });
+      }
     }
 
     return NextResponse.json({ ok: true });
