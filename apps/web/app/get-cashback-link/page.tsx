@@ -8,6 +8,7 @@ import { RequireAuth } from '../../components/layout/RequireAuth';
 import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
+import { usePageTitle } from '../../lib/use-page-title';
 
 const PLATFORM_DOMAINS: { match: RegExp; platform: string; rate: number }[] = [
   { match: /shopee\.(vn|com)/i, platform: 'Shopee', rate: 0.04 },
@@ -23,6 +24,7 @@ type CheckResult =
 
 export default function GetCashbackLinkPage() {
   const { t, lang } = useLanguage();
+  usePageTitle(t('get_link_title'));
   const [link, setLink] = useState('');
   const [result, setResult] = useState<CheckResult | null>(null);
   const [copied, setCopied] = useState(false);

@@ -5,6 +5,7 @@ import { mockCashbackRows } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 const statusBadge: Record<string, string> = {
   AVAILABLE: 'badge-success',
@@ -15,6 +16,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminCashbackPage() {
+  usePageTitle('Quản lý cashback toàn hệ thống');
   const { lang } = useLanguage();
   const [rows, setRows] = useState(mockCashbackRows);
 

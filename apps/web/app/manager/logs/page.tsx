@@ -1,7 +1,11 @@
+'use client';
+
 import { mockAdminLogs } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 export default function AdminLogsPage() {
+  usePageTitle('Nhật ký hoạt động');
   return (
     <AdminShell>
       <div className="page-header">

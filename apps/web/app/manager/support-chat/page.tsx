@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { Modal } from '../../../components/ui/Modal';
 import { loadSupportChats, saveSupportChats, type SupportChatEntry } from '../../../lib/support-chat-store';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 export default function AdminSupportChatPage() {
+  usePageTitle('Tin nhắn hỗ trợ');
   const [chats, setChats] = useState<SupportChatEntry[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');

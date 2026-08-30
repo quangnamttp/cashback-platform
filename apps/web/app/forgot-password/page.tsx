@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '../../lib/i18n';
+import { usePageTitle } from '../../lib/use-page-title';
 
 export default function ForgotPasswordPage() {
   const { t } = useLanguage();
+  usePageTitle(t('forgot_title'));
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
 

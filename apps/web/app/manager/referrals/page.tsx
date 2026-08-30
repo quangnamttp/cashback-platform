@@ -3,6 +3,7 @@
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 const rows = [
   { referrer: 'minh.nguyen@gmail.com', referred: 'lan.hoa', purchase: 680000, commission: 34000, status: 'CONFIRMED' },
@@ -17,6 +18,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminReferralsPage() {
+  usePageTitle('Theo dõi giới thiệu bạn bè');
   const { lang } = useLanguage();
 
   return (

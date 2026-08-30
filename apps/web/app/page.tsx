@@ -8,6 +8,7 @@ import { EventCarousel } from '../components/ui/EventCarousel';
 import { useLanguage } from '../lib/i18n';
 import { formatCurrency } from '../lib/currency';
 import { mockHomeEvents, mockPlatforms } from '../lib/mock-data';
+import { usePageTitle } from '../lib/use-page-title';
 
 const MOCK_LOGGED_IN = true;
 
@@ -26,6 +27,7 @@ const guideSteps = {
 
 export default function HomePage() {
   const { t, lang } = useLanguage();
+  usePageTitle(t('nav_home'));
   const [guideTab, setGuideTab] = useState<'mobile' | 'desktop'>('mobile');
 
   return (

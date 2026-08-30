@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { DEFAULT_AUTO_REPLY, loadAutoReplyMessage, saveAutoReplyMessage } from '../../../lib/auto-reply-store';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 export default function AdminSettingsPage() {
+  usePageTitle('Cấu hình hệ thống');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');

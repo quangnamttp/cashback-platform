@@ -5,9 +5,11 @@ import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
 import { useAuth } from '../../lib/auth';
 import { RequireAuth } from '../../components/layout/RequireAuth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 export default function AccountPage() {
   const { t } = useLanguage();
+  usePageTitle(t('account_title'));
   const { isLoggedIn, login, logout } = useAuth();
 
   return (

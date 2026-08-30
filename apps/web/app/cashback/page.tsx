@@ -7,6 +7,7 @@ import { ShipmentTracker } from '../../components/ui/ShipmentTracker';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
 import { mockOrderRows } from '../../lib/mock-data';
+import { usePageTitle } from '../../lib/use-page-title';
 
 const shippingStatusKeyMap: Record<number, string> = {
   0: 'ship_stage_ordered',
@@ -24,6 +25,7 @@ const shippingStatusPillClass: Record<number, string> = {
 
 export default function CashbackPage() {
   const { t, lang } = useLanguage();
+  usePageTitle(t('sidebar_order_status'));
 
   return (
     <RequireAuth>

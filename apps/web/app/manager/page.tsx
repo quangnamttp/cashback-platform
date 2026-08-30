@@ -2,6 +2,7 @@
 
 import { mockAdminStats, mockFraudSignals } from '../../lib/mock-data';
 import { AdminShell } from '../../components/layout/AdminShell';
+import { usePageTitle } from '../../lib/use-page-title';
 
 function exportStatsCsv() {
   const rows = [
@@ -19,6 +20,7 @@ function exportStatsCsv() {
 }
 
 export default function AdminPage() {
+  usePageTitle('Admin dashboard');
   return (
     <AdminShell>
       <div className="page-header">

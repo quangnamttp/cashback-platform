@@ -7,6 +7,7 @@ import { Modal } from '../../components/ui/Modal';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
 import { RequireAuth } from '../../components/layout/RequireAuth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 const MIN_WITHDRAW = 20000;
 
@@ -33,6 +34,7 @@ type BankAccount = { id: string; bank: string; accountNumber: string; accountHol
 
 export default function CashbackWalletPage() {
   const { t, lang } = useLanguage();
+  usePageTitle(t('wallet_eyebrow'));
 
   // Bank accounts (mock, starts empty)
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);

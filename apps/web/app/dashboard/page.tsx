@@ -5,6 +5,7 @@ import { mockCashbackRows, mockDashboardStats, mockOrderRows } from '../../lib/m
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
+import { usePageTitle } from '../../lib/use-page-title';
 
 const statusKeyMap: Record<string, string> = {
   CONFIRMED: 'status_confirmed',
@@ -15,6 +16,7 @@ const statusKeyMap: Record<string, string> = {
 
 export default function DashboardPage() {
   const { t, lang } = useLanguage();
+  usePageTitle(t('dashboard_title'));
 
   return (
     <AppShell>

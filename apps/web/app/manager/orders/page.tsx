@@ -4,6 +4,7 @@ import { mockOrderRows } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 const statusBadge: Record<string, string> = {
   CONFIRMED: 'badge-success',
@@ -13,6 +14,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminOrdersPage() {
+  usePageTitle('Tất cả đơn hàng');
   const { lang } = useLanguage();
 
   return (

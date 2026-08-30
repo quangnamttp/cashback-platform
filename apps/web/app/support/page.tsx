@@ -5,9 +5,11 @@ import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
 import { mockFaq } from '../../lib/mock-data';
 import { RequireAuth } from '../../components/layout/RequireAuth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 export default function SupportPage() {
   const { t } = useLanguage();
+  usePageTitle(t('support_title'));
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (

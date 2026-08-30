@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { mockFraudSignals } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 export default function AdminFraudPage() {
+  usePageTitle('Cảnh báo gian lận');
   const [signals, setSignals] = useState(mockFraudSignals.map((s) => ({ ...s, resolved: false })));
 
   const resolve = (user: string) => {

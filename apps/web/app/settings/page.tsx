@@ -5,9 +5,11 @@ import { AppShell } from '../../components/layout/AppShell';
 import { LANGS, useLanguage } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme';
 import { RequireAuth } from '../../components/layout/RequireAuth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 export default function SettingsPage() {
   const { lang, setLang, t } = useLanguage();
+  usePageTitle(t('settings_title'));
   const { theme, toggleTheme } = useTheme();
   const [showPasswordForm, setShowPasswordForm] = useState(false);
 

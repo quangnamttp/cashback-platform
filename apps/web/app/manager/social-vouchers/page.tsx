@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { mockSocialVouchers } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { Modal } from '../../../components/ui/Modal';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 type Voucher = (typeof mockSocialVouchers)[number];
 
@@ -20,6 +21,7 @@ const emptyForm: Voucher = {
 };
 
 export default function AdminSocialVouchersPage() {
+  usePageTitle('Quản lý voucher mạng xã hội');
   const [vouchers, setVouchers] = useState(mockSocialVouchers);
   const [showForm, setShowForm] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);

@@ -1,7 +1,11 @@
+'use client';
+
 import { mockPlatforms } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 export default function AdminAffiliatePage() {
+  usePageTitle('Nền tảng affiliate');
   return (
     <AdminShell>
       <div className="page-header">

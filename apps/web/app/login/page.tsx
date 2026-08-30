@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '../../lib/i18n';
 import { useAuth } from '../../lib/auth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 function LoginPageInner() {
   const { t } = useLanguage();
@@ -14,6 +15,7 @@ function LoginPageInner() {
   const next = searchParams.get('next') || '/';
 
   const [tab, setTab] = useState<'login' | 'register'>('login');
+  usePageTitle(tab === 'login' ? t('header_login') : t('login_register'));
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [referralCode, setReferralCode] = useState('');

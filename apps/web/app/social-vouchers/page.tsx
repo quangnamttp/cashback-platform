@@ -6,6 +6,7 @@ import { VoucherTicket } from '../../components/ui/VoucherTicket';
 import { useLanguage } from '../../lib/i18n';
 import { mockSocialVouchers } from '../../lib/mock-data';
 import { RequireAuth } from '../../components/layout/RequireAuth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 const REFRESH_SLOTS = ['00:00', '09:00', '12:00', '15:00', '18:00', '20:00'];
 
@@ -41,6 +42,7 @@ const platformGroups = [
 
 export default function SocialVouchersPage() {
   const { t } = useLanguage();
+  usePageTitle(t('sidebar_social_vouchers'));
   const [activeGroup, setActiveGroup] = useState('fb-ig');
   const [link, setLink] = useState('');
   const [revealed, setRevealed] = useState(false);

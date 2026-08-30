@@ -6,6 +6,7 @@ import { CopyCodeButton } from '../../components/ui/CopyCodeButton';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
 import { RequireAuth } from '../../components/layout/RequireAuth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 const commissionHistory = [
   { user: 'lan.hoa', platform: 'Shopee', amount: 157, rate: '5%', base: 3143, date: '22/08/2026 07:01' },
@@ -22,6 +23,7 @@ const invitedMembers = [
 
 export default function ReferralsPage() {
   const { t, lang } = useLanguage();
+  usePageTitle(t('referral_hero_title'));
   const [tab, setTab] = useState<'history' | 'members'>('history');
   const referralLink = 'https://cashback-platform.example/r/REF-MINH-2026';
 

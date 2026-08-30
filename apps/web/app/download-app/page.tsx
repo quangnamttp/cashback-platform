@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { AppShell } from '../../components/layout/AppShell';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { useLanguage } from '../../lib/i18n';
+import { usePageTitle } from '../../lib/use-page-title';
 
 export default function DownloadAppPage() {
   const { t } = useLanguage();
+  usePageTitle(t('download_title'));
   const [platform, setPlatform] = useState<'ios' | 'android'>('ios');
 
   return (

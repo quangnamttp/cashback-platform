@@ -5,6 +5,7 @@ import { mockWithdrawalRequests } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
+import { usePageTitle } from '../../../lib/use-page-title';
 
 const statusBadge: Record<string, string> = {
   PENDING: 'badge-warning',
@@ -13,6 +14,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function AdminWithdrawalsPage() {
+  usePageTitle('Yêu cầu rút tiền');
   const { lang } = useLanguage();
   const [rows, setRows] = useState(mockWithdrawalRequests);
   const pendingCount = rows.filter((row) => row.status === 'PENDING').length;

@@ -7,6 +7,7 @@ import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { Modal } from '../../components/ui/Modal';
 import { useLanguage } from '../../lib/i18n';
 import { RequireAuth } from '../../components/layout/RequireAuth';
+import { usePageTitle } from '../../lib/use-page-title';
 
 const statusKeyMap: Record<string, string> = {
   CONFIRMED: 'status_confirmed',
@@ -24,6 +25,7 @@ const statusPillClass: Record<string, string> = {
 
 export default function OrdersPage() {
   const { t, lang } = useLanguage();
+  usePageTitle(t('orders_title'));
   const [query, setQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [activeOrder, setActiveOrder] = useState<(typeof mockOrderRows)[number] | null>(null);
