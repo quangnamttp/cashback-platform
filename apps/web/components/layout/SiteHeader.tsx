@@ -9,7 +9,7 @@ import { useAuth } from '../../lib/auth';
 export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { lang, setLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const { isLoggedIn, userName, userEmail, login, logout } = useAuth();
+  const { isLoggedIn, userName, userEmail, logout } = useAuth();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -132,60 +132,56 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
             )}
           </div>
 
-          <div className="account-menu-container">
-            <button
-              className="account-menu-button"
-              onClick={() => {
-                setIsAccountMenuOpen((open) => !open);
-                setIsLangMenuOpen(false);
-              }}
-              aria-expanded={isAccountMenuOpen}
-              aria-haspopup="menu"
-              title={t('header_account')}
-            >
-              👤
-            </button>
+          {isLoggedIn ? (
+            <div className="account-menu-container">
+              <button
+                className="account-menu-button"
+                onClick={() => {
+                  setIsAccountMenuOpen((open) => !open);
+                  setIsLangMenuOpen(false);
+                }}
+                aria-expanded={isAccountMenuOpen}
+                aria-haspopup="menu"
+                title={t('header_account')}
+              >
+                👤
+              </button>
 
-            {isAccountMenuOpen && (
-              <div className="account-menu-dropdown active account-dropdown-v2" role="menu">
-                {isLoggedIn ? (
-                  <>
-                    <div className="account-dropdown-user">
-                      <span className="account-dropdown-avatar">👤</span>
-                      <div>
-                        <strong>{userName}</strong>
-                        <span>{userEmail}</span>
-                      </div>
+              {isAccountMenuOpen && (
+                <div className="account-menu-dropdown active account-dropdown-v2" role="menu">
+                  <div className="account-dropdown-user">
+                    <span className="account-dropdown-avatar">👤</span>
+                    <div>
+                      <strong>{userName}</strong>
+                      <span>{userEmail}</span>
                     </div>
-                    <Link href="/account" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
-                      👤 {t('account_profile')}
-                    </Link>
-                    <button
-                      role="menuitem"
-                      className="account-dropdown-logout"
-                      onClick={() => {
-                        logout();
-                        setIsAccountMenuOpen(false);
-                      }}
-                    >
-                      🚪 {t('account_sign_out')}
-                    </button>
-                  </>
-                ) : (
+                  </div>
+                  <Link href="/account" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
+                    👤 {t('account_profile')}
+                  </Link>
                   <button
                     role="menuitem"
-                    className="account-dropdown-login"
+                    className="account-dropdown-logout"
                     onClick={() => {
-                      login();
+                      logout();
                       setIsAccountMenuOpen(false);
                     }}
                   >
-                    🔑 {t('header_login')}
+                    🚪 {t('account_sign_out')}
                   </button>
-                )}
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="auth-buttons-row">
+              <Link href="/login" className="auth-btn-login">
+                ➡️ {t('header_login')}
+              </Link>
+              <Link href="/login" className="auth-btn-register hide-on-mobile">
+                👤➕ {t('login_register')}
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </header>

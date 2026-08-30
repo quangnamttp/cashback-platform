@@ -6,6 +6,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { Modal } from '../../components/ui/Modal';
 import { useLanguage } from '../../lib/i18n';
+import { RequireAuth } from '../../components/layout/RequireAuth';
 
 const statusKeyMap: Record<string, string> = {
   CONFIRMED: 'status_confirmed',
@@ -49,7 +50,8 @@ export default function OrdersPage() {
   };
 
   return (
-    <AppShell showRightPanel={false}>
+    <RequireAuth>
+      <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -172,5 +174,6 @@ export default function OrdersPage() {
         )}
       </Modal>
     </AppShell>
+    </RequireAuth>
   );
 }

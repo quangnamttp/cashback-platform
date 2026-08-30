@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
+import { RequireAuth } from '../../components/layout/RequireAuth';
 
 export default function AccountPage() {
   const { t } = useLanguage();
 
   return (
-    <AppShell showRightPanel={false}>
+    <RequireAuth>
+      <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -53,5 +55,6 @@ export default function AccountPage() {
         </section>
       </div>
     </AppShell>
+    </RequireAuth>
   );
 }

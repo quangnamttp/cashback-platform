@@ -6,6 +6,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { Modal } from '../../components/ui/Modal';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
+import { RequireAuth } from '../../components/layout/RequireAuth';
 
 const MIN_WITHDRAW = 20000;
 
@@ -83,7 +84,8 @@ export default function CashbackWalletPage() {
   };
 
   return (
-    <AppShell showRightPanel={false}>
+    <RequireAuth>
+      <AppShell showRightPanel={false}>
       <div className="page-shell">
         {/* Premium wallet hero card */}
         <section className="welcome-card-v2">
@@ -304,5 +306,6 @@ export default function CashbackWalletPage() {
         )}
       </Modal>
     </AppShell>
+    </RequireAuth>
   );
 }

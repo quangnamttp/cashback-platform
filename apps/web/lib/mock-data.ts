@@ -33,10 +33,10 @@ export const mockBenefits = [
 ];
 
 export const mockOrderRows = [
-  { id: 'ORD-2401', product: 'Máy lọc không khí cao cấp', platform: 'Shopee', date: '12/08/2026', time: '08:00', value: 6200000, commission: 186000, cashback: 93000, status: 'PENDING', linkUrl: 'https://shopee.vn/product/2401' },
-  { id: 'ORD-2389', product: 'Đồng hồ thông minh', platform: 'TikTok Shop', date: '09/08/2026', time: '07:31', value: 4200000, commission: 126000, cashback: 98000, status: 'CONFIRMED', linkUrl: 'https://shop.tiktok.com/product/2389' },
-  { id: 'ORD-2364', product: 'Sữa rửa mặt chuyên dụng', platform: 'Lazada', date: '04/08/2026', time: '07:30', value: 520000, commission: 31200, cashback: 15600, status: 'REFUNDED', linkUrl: 'https://lazada.vn/product/2364' },
-  { id: 'ORD-2332', product: 'Bàn phím cơ', platform: 'Shopee', date: '31/07/2026', time: '07:30', value: 2100000, commission: 63000, cashback: 48000, status: 'CANCELLED', linkUrl: 'https://shopee.vn/product/2332' },
+  { id: 'ORD-2401', product: 'Máy lọc không khí cao cấp', platform: 'Shopee', date: '12/08/2026', time: '08:00', value: 6200000, commission: 186000, cashback: 93000, status: 'PENDING', linkUrl: 'https://shopee.vn/product/2401', shippingStage: 1 },
+  { id: 'ORD-2389', product: 'Đồng hồ thông minh', platform: 'TikTok Shop', date: '09/08/2026', time: '07:31', value: 4200000, commission: 126000, cashback: 98000, status: 'CONFIRMED', linkUrl: 'https://shop.tiktok.com/product/2389', shippingStage: 2 },
+  { id: 'ORD-2364', product: 'Sữa rửa mặt chuyên dụng', platform: 'Lazada', date: '04/08/2026', time: '07:30', value: 520000, commission: 31200, cashback: 15600, status: 'REFUNDED', linkUrl: 'https://lazada.vn/product/2364', shippingStage: 3 },
+  { id: 'ORD-2332', product: 'Bàn phím cơ', platform: 'Shopee', date: '31/07/2026', time: '07:30', value: 2100000, commission: 63000, cashback: 48000, status: 'CANCELLED', linkUrl: 'https://shopee.vn/product/2332', shippingStage: 3 },
 ];
 
 export const mockCashbackRows = [

@@ -3,13 +3,15 @@
 import { AppShell } from '../../components/layout/AppShell';
 import { LANGS, useLanguage } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme';
+import { RequireAuth } from '../../components/layout/RequireAuth';
 
 export default function SettingsPage() {
   const { lang, setLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <AppShell showRightPanel={false}>
+    <RequireAuth>
+      <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -75,5 +77,6 @@ export default function SettingsPage() {
         </section>
       </div>
     </AppShell>
+    </RequireAuth>
   );
 }

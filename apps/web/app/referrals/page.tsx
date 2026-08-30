@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { CopyCodeButton } from '../../components/ui/CopyCodeButton';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
+import { RequireAuth } from '../../components/layout/RequireAuth';
 
 const commissionHistory = [
   { user: 'lan.hoa', platform: 'Shopee', amount: 157, rate: '5%', base: 3143, date: '22/08/2026 07:01' },
@@ -25,7 +26,8 @@ export default function ReferralsPage() {
   const referralLink = 'https://cashback-platform.example/r/REF-MINH-2026';
 
   return (
-    <AppShell showRightPanel={false}>
+    <RequireAuth>
+      <AppShell showRightPanel={false}>
       <div className="page-shell">
         <section className="referral-hero">
           <span className="promo-badge light">👥 {t('referrals_eyebrow')}</span>
@@ -108,5 +110,6 @@ export default function ReferralsPage() {
         <p className="mock-note">{t('mock_notice')}</p>
       </div>
     </AppShell>
+    </RequireAuth>
   );
 }
