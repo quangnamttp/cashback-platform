@@ -1,125 +1,189 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  Timestamp,
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import { useLanguage } from '../../lib/i18n';
 import { useAuth } from '../../lib/auth';
+import { getFirebaseDb } from '../../lib/firebase';
 import { loadAutoReplyMessage } from '../../lib/auto-reply-store';
+import { forwardChatMessageToTelegram } from '../../lib/telegram';
 
 type ChatMessage = {
-  from: 'user' | 'admin';
-  text?: string;
-  imageDataUrl?: string;
-  time: number;
+  id: string;
+  sender: 'user' | 'admin';
+  text?: string | null;
+  imageUrl?: string | null;
+  createdAt?: Timestamp;
 };
 
-const THREAD_KEY = 'cb_my_chat_thread';
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-
-function loadThread(): ChatMessage[] {
-  try {
-    const raw = window.localStorage.getItem(THREAD_KEY);
-    const all: ChatMessage[] = raw ? JSON.parse(raw) : [];
-    const cutoff = Date.now() - THREE_DAYS_MS;
-    return all.filter((m) => m.time >= cutoff);
-  } catch {
-    return [];
-  }
-}
-
-function saveThread(thread: ChatMessage[]) {
-  try {
-    window.localStorage.setItem(THREAD_KEY, JSON.stringify(thread));
-  } catch {
-    // ignore storage errors
-  }
-}
+// Firestore documents cap at 1MB; base64 inflates by ~33%, so this leaves
+// comfortable headroom for the rest of the message doc's fields.
+const MAX_IMAGE_BYTES = 650 * 1024;
 
 export function SupportChatWidget() {
   const { t } = useLanguage();
-  const { isLoggedIn, userName, userEmail } = useAuth();
+  const { isLoggedIn, userName, userEmail, uid } = useAuth();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [thread, setThread] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasUnread, setHasUnread] = useState(false);
   const [sending, setSending] = useState(false);
-  const [errorState, setErrorState] = useState<'not_configured' | 'error' | null>(null);
+  const [errorState, setErrorState] = useState<'error' | 'too_large' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sweepDoneRef = useRef(false);
+
+  // Watches the unread flag regardless of open/closed so the FAB can carry
+  // a notification dot the moment an admin reply lands (Telegram-style),
+  // not only after the customer happens to reopen the widget.
+  useEffect(() => {
+    if (!uid) return undefined;
+    const unsubscribe = onSnapshot(doc(getFirebaseDb(), 'supportChats', uid), (snap) => {
+      setHasUnread(!!snap.data()?.hasUnreadForUser);
+    });
+    return unsubscribe;
+  }, [uid]);
 
   useEffect(() => {
-    if (open) setThread(loadThread());
-  }, [open]);
+    if (!open || !uid) return undefined;
+
+    const messagesQuery = query(
+      collection(getFirebaseDb(), 'supportChats', uid, 'messages'),
+      orderBy('createdAt', 'asc'),
+    );
+    const unsubscribe = onSnapshot(messagesQuery, (snap) => {
+      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChatMessage));
+    });
+
+    updateDoc(doc(getFirebaseDb(), 'supportChats', uid), { hasUnreadForUser: false }).catch(() => undefined);
+
+    // No shared server-side storage anymore (each person's Google Drive is
+    // personal to them, not visible to the admin) — chat images always ride
+    // inline in Firestore, so history always self-prunes after 3 days.
+    if (!sweepDoneRef.current) {
+      sweepDoneRef.current = true;
+      const cutoff = Timestamp.fromMillis(Date.now() - THREE_DAYS_MS);
+      getDocs(query(collection(getFirebaseDb(), 'supportChats', uid, 'messages'), where('createdAt', '<', cutoff)))
+        .then((snap) => Promise.all(snap.docs.map((d) => deleteDoc(d.ref))))
+        .catch(() => undefined);
+    }
+
+    return unsubscribe;
+  }, [open, uid]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [thread]);
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages]);
 
-  if (!isLoggedIn) {
+  if (!isLoggedIn || !uid) {
     return null;
   }
 
   const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      setErrorState('too_large');
+      return;
+    }
+    setErrorState(null);
     const reader = new FileReader();
     reader.onload = () => setImagePreview(reader.result as string);
     reader.readAsDataURL(file);
   };
 
+  const clearImage = () => setImagePreview(null);
+
   const handleSend = async () => {
-    if (!message.trim() && !imagePreview) return;
+    if ((!message.trim() && !imagePreview) || sending) return;
     setSending(true);
     setErrorState(null);
 
-    const isFirstMessage = thread.length === 0;
-    const userMsg: ChatMessage = {
-      from: 'user',
-      text: message.trim() || undefined,
-      imageDataUrl: imagePreview || undefined,
-      time: Date.now(),
-    };
-
     try {
-      const res = await fetch('/api/support-chat/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: userName,
-          contact: userEmail,
-          message: message.trim(),
-          imageBase64: imagePreview || undefined,
-        }),
+      const db = getFirebaseDb();
+      const threadRef = doc(db, 'supportChats', uid);
+      const isFirstMessage = messages.length === 0;
+      const trimmedText = message.trim();
+
+      await addDoc(collection(threadRef, 'messages'), {
+        sender: 'user',
+        text: trimmedText || null,
+        imageUrl: imagePreview,
+        createdAt: serverTimestamp(),
       });
 
-      if (res.ok) {
-        let nextThread = [...thread, userMsg];
-        setThread(nextThread);
-        saveThread(nextThread);
-        setMessage('');
-        setImagePreview(null);
-
-        if (isFirstMessage) {
-          setTimeout(() => {
-            const autoReply: ChatMessage = {
-              from: 'admin',
-              text: loadAutoReplyMessage(),
-              time: Date.now(),
-            };
-            setThread((prev) => {
-              const updated = [...prev, autoReply];
-              saveThread(updated);
-              return updated;
-            });
-          }, 1200);
-        }
+      const preview = trimmedText || (imagePreview ? '📷 Hình ảnh' : '');
+      const threadSnap = await getDoc(threadRef);
+      if (threadSnap.exists()) {
+        await updateDoc(threadRef, {
+          userName,
+          userEmail,
+          lastMessageAt: serverTimestamp(),
+          lastMessagePreview: preview,
+          hasUnreadForAdmin: true,
+        });
       } else {
-        const data = await res.json().catch(() => ({}));
-        setErrorState(data.error === 'telegram_not_configured' ? 'not_configured' : 'error');
+        await setDoc(threadRef, {
+          userId: uid,
+          userName,
+          userEmail,
+          createdAt: serverTimestamp(),
+          lastMessageAt: serverTimestamp(),
+          lastMessagePreview: preview,
+          hasUnreadForAdmin: true,
+          hasUnreadForUser: false,
+        });
       }
-    } catch {
+
+      forwardChatMessageToTelegram({
+        userName,
+        userEmail,
+        text: trimmedText,
+        hasImage: !!imagePreview,
+      });
+
+      setMessage('');
+      clearImage();
+
+      if (isFirstMessage) {
+        setTimeout(() => {
+          addDoc(collection(threadRef, 'messages'), {
+            sender: 'admin',
+            text: loadAutoReplyMessage(),
+            imageUrl: null,
+            createdAt: serverTimestamp(),
+          }).catch(() => undefined);
+        }, 1200);
+      }
+    } catch (err) {
+      console.error('send chat message failed', err);
       setErrorState('error');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
   };
 
@@ -132,76 +196,94 @@ export function SupportChatWidget() {
         aria-label={t('chat_widget_title')}
       >
         {open ? '✕' : '💬'}
+        {!open && hasUnread && <span className="support-chat-fab-dot" aria-hidden="true" />}
       </button>
 
       {open && (
         <div className="support-chat-panel">
           <div className="support-chat-header">
-            <strong>💬 {t('chat_widget_title')}</strong>
-            <button className="support-chat-close" onClick={() => setOpen(false)} aria-label="Close">✕</button>
-          </div>
-
-          {thread.length === 0 && <p className="support-chat-desc">{t('chat_widget_desc')}</p>}
-
-          <div className="support-chat-messages" ref={scrollRef}>
-            {thread.map((msg, index) => (
-              <div key={index} className={`support-chat-bubble ${msg.from === 'user' ? 'admin' : 'customer'}`}>
-                {msg.imageDataUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={msg.imageDataUrl} alt="attachment" className="support-chat-bubble-image" />
-                )}
-                {msg.text && <p>{msg.text}</p>}
-                <span>{new Date(msg.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+            <div className="support-chat-header-info">
+              <span className="support-chat-header-avatar">🎧</span>
+              <div>
+                <strong>{t('chat_widget_title')}</strong>
+                <span className="support-chat-header-status">● {t('chat_widget_online')}</span>
               </div>
-            ))}
+            </div>
+            <button className="support-chat-close" onClick={() => setOpen(false)} aria-label="Đóng">✕</button>
           </div>
 
-          {imagePreview && (
-            <div className="support-chat-image-preview">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imagePreview} alt="preview" />
-              <button onClick={() => setImagePreview(null)} aria-label="Remove image">✕</button>
+          <div className="support-chat-body" ref={scrollRef}>
+            {messages.length === 0 && <p className="support-chat-desc">{t('chat_widget_desc')}</p>}
+
+            {messages.map((msg, idx) => {
+              const prev = messages[idx - 1];
+              const showTail = !prev || prev.sender !== msg.sender;
+              return (
+                <div
+                  key={msg.id}
+                  className={`support-chat-bubble ${msg.sender === 'user' ? 'admin' : 'customer'}${showTail ? ' tail' : ''}`}
+                >
+                  {msg.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={msg.imageUrl} alt="attachment" className="support-chat-bubble-image" />
+                  )}
+                  {msg.text && <p>{msg.text}</p>}
+                  <span>
+                    {msg.createdAt
+                      ? msg.createdAt.toDate().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                      : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="support-chat-composer">
+            {imagePreview && (
+              <div className="support-chat-image-preview">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imagePreview} alt="preview" />
+                <button onClick={clearImage} aria-label="Xóa ảnh">✕</button>
+              </div>
+            )}
+
+            {errorState === 'error' && <p className="admin-gate-error">{t('chat_widget_error')}</p>}
+            {errorState === 'too_large' && <p className="admin-gate-error">{t('chat_widget_image_too_large')}</p>}
+
+            <div className="support-chat-input-row">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={handleImagePick}
+              />
+              <button
+                type="button"
+                className="support-chat-attach-btn"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Đính kèm ảnh"
+                title="Đính kèm ảnh"
+              >
+                +
+              </button>
+              <textarea
+                className="support-chat-textarea"
+                placeholder={t('chat_widget_message_placeholder')}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+              />
+              <button
+                className="support-chat-send-btn"
+                onClick={handleSend}
+                disabled={(!message.trim() && !imagePreview) || sending}
+                aria-label="Gửi"
+              >
+                {sending ? '…' : '➤'}
+              </button>
             </div>
-          )}
-
-          {errorState === 'not_configured' && (
-            <p className="admin-gate-error">{t('chat_widget_not_configured')}</p>
-          )}
-          {errorState === 'error' && (
-            <p className="admin-gate-error">{t('chat_widget_error')}</p>
-          )}
-
-          <div className="support-chat-input-row">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={handleImagePick}
-            />
-            <button
-              type="button"
-              className="support-chat-attach-btn"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach image"
-            >
-              🖼️
-            </button>
-            <textarea
-              className="support-chat-textarea"
-              placeholder={t('chat_widget_message_placeholder')}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={1}
-            />
-            <button
-              className="support-chat-send-btn"
-              onClick={handleSend}
-              disabled={(!message.trim() && !imagePreview) || sending}
-              aria-label="Send"
-            >
-              {sending ? '…' : '➤'}
-            </button>
           </div>
         </div>
       )}

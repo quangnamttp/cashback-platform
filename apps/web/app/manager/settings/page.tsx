@@ -4,19 +4,21 @@ import { useEffect, useState } from 'react';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { DEFAULT_AUTO_REPLY, loadAutoReplyMessage, saveAutoReplyMessage } from '../../../lib/auto-reply-store';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { useAuth, BOOTSTRAP_ADMIN_EMAILS } from '../../../lib/auth';
+import { isGoogleDriveConfigured } from '../../../lib/googleDrive';
+import { backupOldAuditLogs } from '../../../lib/backupLogs';
 
 export default function AdminSettingsPage() {
   usePageTitle('Cấu hình hệ thống');
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' });
-  const [submitting, setSubmitting] = useState(false);
+  const { userEmail } = useAuth();
 
   const [showAutoReplyForm, setShowAutoReplyForm] = useState(false);
   const [autoReply, setAutoReply] = useState(DEFAULT_AUTO_REPLY);
   const [autoReplySaved, setAutoReplySaved] = useState(false);
+
+  const [backupDays, setBackupDays] = useState(30);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupResult, setBackupResult] = useState<{ count: number; webViewLink: string } | 'error' | null>(null);
 
   useEffect(() => {
     setAutoReply(loadAutoReplyMessage());
@@ -28,45 +30,17 @@ export default function AdminSettingsPage() {
     setTimeout(() => setAutoReplySaved(false), 2000);
   };
 
-  const handleChangePassword = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setStatus({ type: 'idle', message: '' });
-
-    if (newPassword.length < 6) {
-      setStatus({ type: 'error', message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setStatus({ type: 'error', message: 'Xác nhận mật khẩu không khớp.' });
-      return;
-    }
-
-    setSubmitting(true);
+  const handleBackup = async () => {
+    setBackingUp(true);
+    setBackupResult(null);
     try {
-      const res = await fetch('/api/manager-auth/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-
-      if (res.ok) {
-        setStatus({ type: 'success', message: 'Đổi mật khẩu thành công. Lần đăng nhập sau sẽ dùng mật khẩu mới.' });
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        setTimeout(() => setShowPasswordForm(false), 2000);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        if (data.error === 'wrong_current_password') {
-          setStatus({ type: 'error', message: 'Mật khẩu hiện tại không đúng.' });
-        } else {
-          setStatus({ type: 'error', message: 'Có lỗi xảy ra, vui lòng thử lại.' });
-        }
-      }
-    } catch {
-      setStatus({ type: 'error', message: 'Không thể kết nối máy chủ, vui lòng thử lại.' });
+      const result = await backupOldAuditLogs(backupDays);
+      setBackupResult(result);
+    } catch (err) {
+      console.error('backup failed', err);
+      setBackupResult('error');
     } finally {
-      setSubmitting(false);
+      setBackingUp(false);
     }
   };
 
@@ -130,68 +104,68 @@ export default function AdminSettingsPage() {
       </section>
 
       <section className="panel">
-        <div className="panel-header">
-          <h3>🔒 Đổi mật khẩu quản trị</h3>
-          <button className="button button-secondary" onClick={() => setShowPasswordForm((v) => !v)}>
-            {showPasswordForm ? 'Đóng' : 'Đổi mật khẩu'}
+        <h3>🔒 Tài khoản quản trị</h3>
+        <p className="muted-copy">
+          Đang đăng nhập với <strong>{userEmail || 'chưa xác định'}</strong> qua Google. Khu vực quản trị chỉ chấp
+          nhận đăng nhập Google từ đúng 2 địa chỉ được cấp phép cứng trong mã nguồn và Firestore Rules:
+        </p>
+        <ul style={{ margin: '10px 0 0', paddingLeft: 20 }} className="muted-copy">
+          {BOOTSTRAP_ADMIN_EMAILS.map((email) => (
+            <li key={email}><code>{email}</code></li>
+          ))}
+        </ul>
+        <p className="muted-copy" style={{ marginTop: 10 }}>
+          Không có mật khẩu nào để đổi (không dùng đăng nhập email/mật khẩu cho Admin nữa), và không có nút cấp quyền
+          Admin cho tài khoản khác ở bất kỳ đâu trong hệ thống — vai trò <code>role</code> bị khoá vĩnh viễn ngay từ
+          lúc tài khoản được tạo, không ai (kể cả Admin) có thể sửa lại sau đó.
+        </p>
+      </section>
+
+      <section className="panel">
+        <h3>💾 Backup log cũ lên Google Drive</h3>
+        <p className="muted-copy">
+          Không còn Cloud Scheduler nên việc dọn dữ liệu cũ chỉ chạy khi bạn bấm nút này. Xuất các bản ghi{' '}
+          <code>adminAuditLogs</code> cũ hơn số ngày bên dưới thành file CSV, tải thẳng vào Google Drive cá nhân của
+          bạn (yêu cầu đăng nhập Google lần đầu), rồi xoá khỏi Firestore để cơ sở dữ liệu luôn nhẹ.
+        </p>
+
+        {!isGoogleDriveConfigured() && (
+          <p className="admin-gate-error" style={{ marginTop: 10 }}>
+            Chưa cấu hình Google OAuth Client ID (<code>NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID</code>) — xem hướng dẫn kết nối Drive.
+          </p>
+        )}
+
+        <div className="admin-action-row" style={{ marginTop: 10, alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            Cũ hơn
+            <input
+              type="number"
+              min={1}
+              value={backupDays}
+              onChange={(e) => setBackupDays(Number(e.target.value) || 30)}
+              style={{ width: 70 }}
+            />
+            ngày
+          </label>
+          <button className="button button-primary" onClick={handleBackup} disabled={backingUp || !isGoogleDriveConfigured()}>
+            {backingUp ? 'Đang backup...' : '☁️ Backup & dọn dẹp'}
           </button>
         </div>
 
-        {showPasswordForm && (
-          <>
-            <p className="muted-copy">
-              Mật khẩu dùng để đăng nhập trang <code>/manager</code>. Đổi mật khẩu ở đây sẽ lưu qua cookie an toàn
-              (httpOnly) trên trình duyệt này — <strong>chưa phải hệ thống tài khoản admin đầy đủ</strong> (chưa có
-              nhiều tài khoản riêng biệt, chưa có nhật ký ai đổi mật khẩu). Nếu xoá cookie trình duyệt hoặc đổi máy khác,
-              mật khẩu sẽ quay về giá trị mặc định đã cấu hình trên server.
-            </p>
-
-            <form onSubmit={handleChangePassword} className="bank-add-form" style={{ maxWidth: 420, marginTop: 18 }}>
-              <label>
-                <span className="field-label">Mật khẩu hiện tại</span>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                <span className="field-label">Mật khẩu mới</span>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  minLength={6}
-                  required
-                />
-              </label>
-              <label>
-                <span className="field-label">Xác nhận mật khẩu mới</span>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  minLength={6}
-                  required
-                />
-              </label>
-
-              {status.type !== 'idle' && (
-                <p className={status.type === 'error' ? 'admin-gate-error' : 'muted-copy'} style={status.type === 'success' ? { color: 'var(--success)' } : undefined}>
-                  {status.message}
-                </p>
-              )}
-
-              <button type="submit" className="button button-primary" disabled={submitting}>
-                {submitting ? 'Đang lưu...' : 'Đổi mật khẩu'}
-              </button>
-            </form>
-          </>
+        {backupResult === 'error' && <p className="admin-gate-error" style={{ marginTop: 8 }}>Backup thất bại, vui lòng thử lại.</p>}
+        {backupResult && backupResult !== 'error' && (
+          <p className="muted-copy" style={{ marginTop: 8 }}>
+            {backupResult.count === 0
+              ? 'Không có bản ghi nào đủ cũ để backup.'
+              : `✓ Đã backup và xoá ${backupResult.count} bản ghi. `}
+            {backupResult.webViewLink && (
+              <a href={backupResult.webViewLink} target="_blank" rel="noreferrer">Xem file trên Drive</a>
+            )}
+          </p>
         )}
       </section>
 
-      <p className="mock-note">Đây là giao diện nền tảng (foundation) cho Admin — logic backend cấu hình đầy đủ (RBAC, nhiều tài khoản) sẽ triển khai ở phase sau.</p>
+      <p className="mock-note">Cấu hình tỷ lệ hoàn tiền và ngưỡng rút tiền phía trên vẫn là dữ liệu minh họa (mock) — chưa nối vào cấu hình thật.</p>
     </AdminShell>
   );
 }

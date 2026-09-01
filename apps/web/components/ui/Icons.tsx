@@ -49,35 +49,6 @@ export function TicketIcon({ size = 22 }: IconProps) {
   );
 }
 
-export function ShoppingBagIcon({ size = 22 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 8h12l1 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L6 8Z" />
-      <path d="M9 8V6a3 3 0 0 1 6 0v2" />
-    </svg>
-  );
-}
-
-export function CartIcon({ size = 22 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none" />
-      <circle cx="18" cy="20" r="1.4" fill="currentColor" stroke="none" />
-      <path d="M2.5 3h2l2.2 11.6a2 2 0 0 0 2 1.6h8a2 2 0 0 0 2-1.6L21 7H6" />
-    </svg>
-  );
-}
-
-export function MusicNoteIcon({ size = 22 }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 18V5l11-2v13" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="17" cy="16" r="3" />
-    </svg>
-  );
-}
-
 export function UsersIcon({ size = 22 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -216,6 +187,65 @@ export function CashIcon({ size = 22 }: IconProps) {
       <rect x="2" y="6" width="20" height="12" rx="2" />
       <circle cx="12" cy="12" r="3" />
       <path d="M6 9v.01M18 15v.01" />
+    </svg>
+  );
+}
+
+export function DevicesIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="14" height="10" rx="1.5" />
+      <path d="M6 18h6" />
+      <rect x="15" y="10" width="7" height="11" rx="1.5" />
+      <path d="M18 18v.01" />
+    </svg>
+  );
+}
+
+export function LoginIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+      <path d="M10 17l5-5-5-5" />
+      <path d="M15 12H3" />
+    </svg>
+  );
+}
+
+export function UserPlusIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="4" />
+      <path d="M2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1" />
+      <path d="M19 8v6" />
+      <path d="M16 11h6" />
+    </svg>
+  );
+}
+
+export function EyeIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function EyeOffIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.9 10.9 0 0 1 12 20c-6.5 0-10-7-10-7a18.4 18.4 0 0 1 4.22-5.06M9.9 4.24A10.4 10.4 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19" />
+      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      <path d="M2 2l20 20" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }

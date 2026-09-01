@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { getFirebaseAuth } from '../../lib/firebase';
 import { useLanguage } from '../../lib/i18n';
 import { usePageTitle } from '../../lib/use-page-title';
 
@@ -10,11 +12,27 @@ export default function ForgotPasswordPage() {
   usePageTitle(t('forgot_title'));
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    // Mock only — no real email/backend wired yet.
-    setSent(true);
+    setSubmitting(true);
+    try {
+      // handleCodeInApp:true sends the reset link straight to our own
+      // /reset-password page (with the oobCode in the URL) instead of
+      // Firebase's generic hosted action page — same free link-based
+      // mechanism, just handled in our own branded UI end to end.
+      await sendPasswordResetEmail(getFirebaseAuth(), email, {
+        url: `${window.location.origin}/reset-password`,
+        handleCodeInApp: true,
+      });
+    } catch {
+      // Deliberately don't disclose whether the email exists — always show
+      // the same "sent" confirmation either way.
+    } finally {
+      setSubmitting(false);
+      setSent(true);
+    }
   };
 
   return (
@@ -44,8 +62,9 @@ export default function ForgotPasswordPage() {
                 required
               />
             </label>
-            <button type="submit" className="button button-primary wide-button">{t('forgot_submit')}</button>
-            <p className="login-mock-note">{t('login_mock_note')}</p>
+            <button type="submit" className="button button-primary wide-button" disabled={submitting}>
+              {submitting ? t('login_submitting') : t('forgot_submit')}
+            </button>
           </form>
         )}
 

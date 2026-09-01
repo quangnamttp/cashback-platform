@@ -1,0 +1,174 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // No Cloud Functions / Admin SDK in this architecture — every write is
+    // either the account owner touching their own non-sensitive data, or an
+    // admin whose privilege is established by their OWN users/ doc (there is
+    // no custom claim to check anymore). BOOTSTRAP_ADMIN_EMAIL is the only
+    // account allowed to self-promote to admin, exactly once, at signup.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    // Hard email allowlist, checked on EVERY admin-gated read/write — not
+    // just at account-creation time. This is deliberate belt-and-suspenders:
+    // even if a users/{uid} doc somehow ends up with role=='admin' (stale
+    // test data, a bug elsewhere), it grants nothing unless the signed-in
+    // token's own email is also one of these two. Combined with users/update
+    // below forbidding anyone from ever writing the `role` field again,
+    // there is no path — UI or direct Firestore write — for a third email to
+    // ever become admin. Must match BOOTSTRAP_ADMIN_EMAILS in
+    // apps/web/lib/auth.tsx exactly.
+    function isBootstrapAdminEmail(email) {
+      return email == 'quangnamttp@gmail.com' || email == 'hoantiendv@gmail.com';
+    }
+    function isAdmin() {
+      return isSignedIn()
+        && isBootstrapAdminEmail(request.auth.token.email)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /users/{uid} {
+      // Also readable by whoever referred this account — /referrals shows
+      // "who signed up with my code" by querying where('referredBy','==',
+      // myCode); Firestore evaluates that per returned document, so this
+      // looks up the requester's OWN referralCode via get() and compares.
+      allow read: if isOwner(uid) || isAdmin()
+        || (isSignedIn()
+            && resource.data.referredBy != null
+            && resource.data.referredBy == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.referralCode);
+      allow create: if isOwner(uid)
+        && request.resource.data.role == (isBootstrapAdminEmail(request.auth.token.email) ? 'admin' : 'user')
+        && request.resource.data.status == 'ACTIVE';
+      // `role` is permanently immutable after creation — there is no
+      // "promote to admin" path for anyone, including isAdmin() itself.
+      // Admin status is decided ONLY once, by isBootstrapAdminEmail() at
+      // account-creation time above. `status` (ACTIVE/LOCKED) stays
+      // admin-only to change.
+      allow update: if !('role' in request.resource.data.diff(resource.data).affectedKeys())
+        && (isAdmin()
+            || (isOwner(uid) && !('status' in request.resource.data.diff(resource.data).affectedKeys())));
+      allow delete: if false;
+    }
+
+    // Optional admin-maintained cache only (e.g. quick header display) — the
+    // wallet page itself always computes the real, trustworthy balance by
+    // summing cashbackLedger, never by trusting a mutable counter.
+    match /walletBalances/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Doc id is `${uid}_${deviceId}` — deviceId is a random id persisted in
+    // that browser/app's own localStorage (lib/device.ts), so each browser
+    // or app install gets its own independent session slot and logging in
+    // from a second browser never overwrites (and therefore never kicks)
+    // a different one. Admin can still see/force-close any session from
+    // /manager/devices.
+    match /sessions/{sessionId} {
+      allow read: if isAdmin() || (isSignedIn() && sessionId.matches(request.auth.uid + '_.*'));
+      allow write: if isAdmin()
+        || (isSignedIn()
+            && sessionId.matches(request.auth.uid + '_.*')
+            && request.resource.data.userId == request.auth.uid);
+    }
+
+    match /redirectCache/{code} {
+      // /go/<code> is a public affiliate redirect link — anyone who has the
+      // code (a 32^10-combination random string, not enumerable) can follow
+      // it without being signed into this site, same as any link-shortener.
+      // Only creating/retargeting a code is restricted to its owner.
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid)
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastHitAt', 'expiresAt', 'hitCount']);
+      allow delete: if false;
+
+      match /hits/{hitId} {
+        allow read: if isAdmin();
+        allow create: if true;
+        allow update, delete: if false;
+      }
+    }
+
+    // Admin-only writes: orders/ledger/fraud are entered manually by the
+    // admin (writeBatch, done together with the linked order) instead of a
+    // server trigger reacting automatically.
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // No time gate — admin has full discretion on when to release a
+    // held commission to the user's withdrawable balance (deliberate
+    // choice: a hard-coded wait risks losing customers who feel stalled,
+    // so the human judgment call replaces the rule here).
+    match /cashbackLedger/{ledgerId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    match /withdrawalRequests/{requestId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      // Two allowed shapes: a regular user withdrawing their own cashback,
+      // or the admin withdrawing the platform's 20% share out of the
+      // virtual ADMIN_WALLET (never the admin's own personal uid, so it can
+      // never be confused with — or accidentally merged into — a personal
+      // withdrawal request).
+      allow create: if isSignedIn()
+        && request.resource.data.status == 'PENDING_ADMIN'
+        && ((request.resource.data.userId == request.auth.uid)
+            || (isAdmin() && request.resource.data.userId == 'ADMIN_WALLET'));
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /fraudSignals/{signalId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Social-platform voucher codes shown on /social-vouchers — public to
+    // any signed-in user (it's marketing content, not per-user data), only
+    // Admin manages them from /manager/social-vouchers.
+    match /socialVouchers/{voucherId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Registry of files each user/admin uploaded to their OWN personal
+    // Google Drive (client-side OAuth, see lib/googleDrive.ts) — Firestore
+    // only ever stores the resulting public URL, never file bytes.
+    match /driveFiles/{fileId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.ownerUserId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // One thread per user (doc id == uid), written directly by both sides
+    // for lowest-latency real-time delivery.
+    match /supportChats/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update: if isOwner(uid) || isAdmin();
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create: if (isOwner(uid) && request.resource.data.sender == 'user')
+          || (isAdmin() && request.resource.data.sender == 'admin');
+        allow delete: if isOwner(uid) || isAdmin();
+        allow update: if false;
+      }
+    }
+
+    match /adminAuditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}

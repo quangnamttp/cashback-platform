@@ -1,26 +1,46 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { mockWithdrawalHistory, mockBalanceLedger, balanceLedgerTypeKeyMap, bankList } from '../../lib/mock-data';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  addDoc,
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { bankList } from '../../lib/mock-data';
 import { AppShell } from '../../components/layout/AppShell';
 import { Modal } from '../../components/ui/Modal';
+import { CopyIdChip } from '../../components/ui/CopyIdChip';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
+import { useAuth } from '../../lib/auth';
+import { getFirebaseDb } from '../../lib/firebase';
+import { validateAccountNumber } from '../../lib/bankValidation';
+import { notifyWithdrawalRequestToTelegram } from '../../lib/telegram';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { usePageTitle } from '../../lib/use-page-title';
 
 const MIN_WITHDRAW = 20000;
 
 const wdStatusKeyMap: Record<string, string> = {
-  DONE: 'wd_status_done',
-  PENDING: 'wd_status_pending',
-  CANCELLED: 'wd_status_cancelled',
+  PAID: 'wd_status_done',
+  APPROVED: 'wd_status_pending',
+  PENDING_ADMIN: 'wd_status_pending',
+  REJECTED: 'wd_status_cancelled',
 };
 
 const wdStatusPillClass: Record<string, string> = {
-  DONE: 'order-pill success',
-  PENDING: 'order-pill warning',
-  CANCELLED: 'order-pill danger',
+  PAID: 'order-pill success',
+  APPROVED: 'order-pill warning',
+  PENDING_ADMIN: 'order-pill warning',
+  REJECTED: 'order-pill danger',
 };
 
 const filterTabs = [
@@ -32,11 +52,33 @@ const filterTabs = [
 
 type BankAccount = { id: string; bank: string; accountNumber: string; accountHolder: string };
 
+type LedgerEntry = {
+  id: string;
+  userId: string;
+  orderId?: string;
+  amount: number;
+  status: 'FROZEN' | 'RELEASED' | 'REJECTED';
+  confirmedAt?: { toDate: () => Date };
+  releasedAt?: { toDate: () => Date };
+};
+
+type WithdrawalDoc = {
+  id: string;
+  userId: string;
+  amount: number;
+  method: string;
+  status: 'PENDING_ADMIN' | 'APPROVED' | 'REJECTED' | 'PAID';
+  requestedAt?: { toDate: () => Date };
+  decidedAt?: { toDate: () => Date };
+};
+
 export default function CashbackWalletPage() {
   const { t, lang } = useLanguage();
+  const { uid, userName, userEmail } = useAuth();
   usePageTitle(t('wallet_eyebrow'));
 
-  // Bank accounts (mock, starts empty)
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalDoc[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [showAddBankModal, setShowAddBankModal] = useState(false);
   const [showManageBankModal, setShowManageBankModal] = useState(false);
@@ -48,28 +90,112 @@ export default function CashbackWalletPage() {
   // Withdraw request
   const [amount, setAmount] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submitted, setSubmitted] = useState(false);
 
   // History
   const [filter, setFilter] = useState('all');
-  const [activeItem, setActiveItem] = useState<(typeof mockWithdrawalHistory)[number] | null>(null);
+  const [activeItem, setActiveItem] = useState<WithdrawalDoc | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Ledger search
   const [ledgerQuery, setLedgerQuery] = useState('');
 
+  useEffect(() => {
+    if (!uid) {
+      setLedger([]);
+      setWithdrawals([]);
+      setBankAccounts([]);
+      return;
+    }
+    const db = getFirebaseDb();
+    const unsubLedger = onSnapshot(query(collection(db, 'cashbackLedger'), where('userId', '==', uid)), (snap) => {
+      setLedger(snap.docs.map((d) => ({ id: d.id, ...d.data() } as LedgerEntry)));
+    });
+    const unsubWithdrawals = onSnapshot(
+      query(collection(db, 'withdrawalRequests'), where('userId', '==', uid), orderBy('requestedAt', 'desc')),
+      (snap) => setWithdrawals(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WithdrawalDoc))),
+    );
+    const unsubUser = onSnapshot(doc(db, 'users', uid), (snap) => {
+      setBankAccounts((snap.data()?.bankAccounts as BankAccount[]) ?? []);
+    });
+    return () => {
+      unsubLedger();
+      unsubWithdrawals();
+      unsubUser();
+    };
+  }, [uid]);
+
+  // No stored balance counter anywhere — always summed live from the
+  // ledger + paid withdrawals, same rule the admin side already follows.
+  const { available, pending } = useMemo(() => {
+    let released = 0;
+    let frozen = 0;
+    ledger.forEach((entry) => {
+      if (entry.status === 'RELEASED') released += entry.amount;
+      else if (entry.status === 'FROZEN') frozen += entry.amount;
+    });
+    const paidOut = withdrawals.filter((w) => w.status === 'PAID').reduce((sum, w) => sum + w.amount, 0);
+    return { available: released - paidOut, pending: frozen };
+  }, [ledger, withdrawals]);
+
+  // Combines released cashback + paid withdrawals into one chronological
+  // transaction feed with a running balance — the closest honest
+  // equivalent of the old mock "before/after" ledger, built from data that
+  // actually exists rather than a separate invented "affiliate" ledger.
+  const ledgerFeed = useMemo(() => {
+    type Row = { id: string; content: string; type: 'CASHBACK' | 'WITHDRAW'; change: number; time: Date };
+    const rows: Row[] = [];
+    ledger
+      .filter((e) => e.status === 'RELEASED' && e.releasedAt)
+      .forEach((e) => {
+        rows.push({
+          id: e.id,
+          content: `Hoàn tiền đơn hàng${e.orderId ? ` #${e.orderId}` : ''}`,
+          type: 'CASHBACK',
+          change: e.amount,
+          time: e.releasedAt!.toDate(),
+        });
+      });
+    withdrawals
+      .filter((w) => w.status === 'PAID' && w.decidedAt)
+      .forEach((w) => {
+        rows.push({
+          id: w.id,
+          content: `Rút tiền #${w.id}`,
+          type: 'WITHDRAW',
+          change: -w.amount,
+          time: w.decidedAt!.toDate(),
+        });
+      });
+    rows.sort((a, b) => a.time.getTime() - b.time.getTime());
+    let running = 0;
+    const withBalance = rows.map((row) => {
+      const before = running;
+      running += row.change;
+      return { ...row, before, after: running };
+    });
+    return withBalance.reverse();
+  }, [ledger, withdrawals]);
+
   const filtered = useMemo(() => {
-    if (filter === 'all') return mockWithdrawalHistory;
-    return mockWithdrawalHistory.filter((row) => row.status === filter);
-  }, [filter]);
+    const statusFor = (key: string): WithdrawalDoc['status'][] => {
+      if (key === 'PENDING') return ['PENDING_ADMIN', 'APPROVED'];
+      if (key === 'DONE') return ['PAID'];
+      if (key === 'CANCELLED') return ['REJECTED'];
+      return [];
+    };
+    if (filter === 'all') return withdrawals;
+    const wanted = statusFor(filter);
+    return withdrawals.filter((row) => wanted.includes(row.status));
+  }, [withdrawals, filter]);
 
   const filteredLedger = useMemo(() => {
-    if (!ledgerQuery) return mockBalanceLedger;
-    return mockBalanceLedger.filter(
-      (row) =>
-        row.content.toLowerCase().includes(ledgerQuery.toLowerCase()) ||
-        row.id.toLowerCase().includes(ledgerQuery.toLowerCase())
-    );
-  }, [ledgerQuery]);
+    if (!ledgerQuery) return ledgerFeed;
+    const q = ledgerQuery.toLowerCase();
+    return ledgerFeed.filter((row) => row.content.toLowerCase().includes(q) || row.id.toLowerCase().includes(q));
+  }, [ledgerFeed, ledgerQuery]);
 
   const copyCode = async (code: string) => {
     try {
@@ -82,28 +208,71 @@ export default function CashbackWalletPage() {
   };
 
   const amountNum = Number(amount.replace(/\D/g, '')) || 0;
-  const isValidAmount = amountNum >= MIN_WITHDRAW;
+  const isValidAmount = amountNum >= MIN_WITHDRAW && amountNum <= available;
   const selectedAccount = bankAccounts.find((a) => a.id === selectedAccountId);
+  const newAccNumberError = newBank && newAccNumber ? validateAccountNumber(newBank, newAccNumber) : null;
 
-  const handleAddBank = () => {
-    if (!newBank || !newAccNumber || !newAccHolder) return;
+  const handleAddBank = async () => {
+    if (!newBank || !newAccNumber || !newAccHolder || !uid) return;
+    if (validateAccountNumber(newBank, newAccNumber)) return;
     const acc: BankAccount = {
       id: `${Date.now()}`,
       bank: newBank,
       accountNumber: newAccNumber,
       accountHolder: newAccHolder.toUpperCase(),
     };
-    setBankAccounts((prev) => [...prev, acc]);
-    setSelectedAccountId(acc.id);
-    setNewBank('');
-    setNewAccNumber('');
-    setNewAccHolder('');
-    setShowAddBankModal(false);
+    try {
+      await updateDoc(doc(getFirebaseDb(), 'users', uid), { bankAccounts: arrayUnion(acc) });
+      setSelectedAccountId(acc.id);
+      setNewBank('');
+      setNewAccNumber('');
+      setNewAccHolder('');
+      setShowAddBankModal(false);
+    } catch (err) {
+      console.error('add bank account failed', err);
+    }
   };
 
-  const handleDeleteBank = (id: string) => {
-    setBankAccounts((prev) => prev.filter((a) => a.id !== id));
-    if (selectedAccountId === id) setSelectedAccountId('');
+  const handleDeleteBank = async (acc: BankAccount) => {
+    if (!uid) return;
+    try {
+      await updateDoc(doc(getFirebaseDb(), 'users', uid), { bankAccounts: arrayRemove(acc) });
+      if (selectedAccountId === acc.id) setSelectedAccountId('');
+    } catch (err) {
+      console.error('delete bank account failed', err);
+    }
+  };
+
+  const handleSubmitWithdrawal = async () => {
+    if (!uid || !selectedAccount || !isValidAmount) return;
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await addDoc(collection(getFirebaseDb(), 'withdrawalRequests'), {
+        userId: uid,
+        amount: amountNum,
+        bank: selectedAccount.bank,
+        accountNumber: selectedAccount.accountNumber,
+        accountHolder: selectedAccount.accountHolder,
+        method: `${selectedAccount.bank} • ${selectedAccount.accountNumber} (${selectedAccount.accountHolder})`,
+        status: 'PENDING_ADMIN',
+        requestedAt: serverTimestamp(),
+      });
+      notifyWithdrawalRequestToTelegram({
+        requesterLabel: `${userName || 'Khách hàng'} (${userEmail || uid})`,
+        amountLabel: formatCurrency(amountNum, lang),
+        method: `${selectedAccount.bank} • ${selectedAccount.accountNumber} (${selectedAccount.accountHolder})`,
+      });
+      setAmount('');
+      setSelectedAccountId('');
+      setSubmitted(true);
+      setTimeout(() => setSubmitted(false), 3000);
+    } catch (err) {
+      console.error('create withdrawal request failed', err);
+      setSubmitError('Gửi yêu cầu thất bại, vui lòng thử lại.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -120,12 +289,12 @@ export default function CashbackWalletPage() {
             <div className="welcome-balance-row-v2">
               <div>
                 <div className="wc-label">{t('wallet_available')}</div>
-                <div className="wc-value-v2">{formatCurrency(890000, lang)}</div>
+                <div className="wc-value-v2">{formatCurrency(available, lang)}</div>
               </div>
               <div className="wc-divider" />
               <div>
                 <div className="wc-label">{t('wallet_pending')}</div>
-                <div className="wc-value-v2 secondary">{formatCurrency(790000, lang)}</div>
+                <div className="wc-value-v2 secondary">{formatCurrency(pending, lang)}</div>
               </div>
             </div>
 
@@ -169,8 +338,11 @@ export default function CashbackWalletPage() {
                   onChange={(e) => setAmount(e.target.value)}
                 />
               </div>
-              {amount && !isValidAmount && (
+              {amount && amountNum < MIN_WITHDRAW && (
                 <p className="admin-gate-error" style={{ marginTop: 6 }}>{t('wd_min_error').replace('{min}', formatCurrency(MIN_WITHDRAW, lang))}</p>
+              )}
+              {amount && amountNum >= MIN_WITHDRAW && amountNum > available && (
+                <p className="admin-gate-error" style={{ marginTop: 6 }}>Số dư của bạn không đủ để thực hiện lệnh rút này (khả dụng: {formatCurrency(available, lang)}).</p>
               )}
 
               <div className="wd-bank-select-header">
@@ -195,8 +367,14 @@ export default function CashbackWalletPage() {
                 <div className="wd-bank-select wd-bank-select-empty">🏦 {t('bank_accounts_empty')}</div>
               )}
 
-              <button className="button button-primary get-link-cta" disabled={!isValidAmount || !selectedAccountId}>
-                ⬇️ {t('wd_submit_btn')}
+              {submitError && <p className="admin-gate-error" style={{ marginTop: 6 }}>{submitError}</p>}
+
+              <button
+                className="button button-primary get-link-cta"
+                disabled={!isValidAmount || !selectedAccountId || submitting}
+                onClick={handleSubmitWithdrawal}
+              >
+                {submitting ? 'Đang gửi...' : submitted ? '✓ Đã gửi yêu cầu' : `⬇️ ${t('wd_submit_btn')}`}
               </button>
             </section>
 
@@ -224,20 +402,28 @@ export default function CashbackWalletPage() {
 
               <div className="wd-history-list scrollable-list">
                 {filtered.map((item) => (
-                  <button key={item.id} className="wd-history-item" onClick={() => setActiveItem(item)}>
+                  <div
+                    key={item.id}
+                    className="wd-history-item"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setActiveItem(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') setActiveItem(item);
+                    }}
+                  >
                     <div className="wd-history-top">
                       <strong>{formatCurrency(item.amount, lang)}</strong>
                       <span className={wdStatusPillClass[item.status] ?? 'order-pill'}>
                         ● {t(wdStatusKeyMap[item.status] as any) || item.status}
                       </span>
                     </div>
-                    <p>{item.bank}</p>
-                    <span className="wd-history-meta">{item.accountNumber} · {item.accountHolder}</span>
+                    <p>{item.method}</p>
                     <div className="wd-history-bottom">
-                      <span className="modal-code-row-small">{item.id}</span>
+                      <CopyIdChip value={item.id} />
                       <span>{t('wd_view_detail')} ›</span>
                     </div>
-                  </button>
+                  </div>
                 ))}
                 {filtered.length === 0 && <p className="muted-copy">{t('order_empty')}</p>}
               </div>
@@ -263,16 +449,8 @@ export default function CashbackWalletPage() {
 
               <div className="modal-field-list">
                 <div className="modal-field-row">
-                  <span>{t('bank_field_bank_name')}</span>
-                  <span>{activeItem.bank}</span>
-                </div>
-                <div className="modal-field-row">
-                  <span>{t('bank_field_account_number')}</span>
-                  <span>{activeItem.accountNumber}</span>
-                </div>
-                <div className="modal-field-row">
-                  <span>{t('bank_field_account_holder')}</span>
-                  <span>{activeItem.accountHolder}</span>
+                  <span>{t('wd_receiving_bank')}</span>
+                  <span>{activeItem.method}</span>
                 </div>
                 <div className="modal-field-row">
                   <span>{t('wd_amount_label')}</span>
@@ -280,11 +458,11 @@ export default function CashbackWalletPage() {
                 </div>
                 <div className="modal-field-row">
                   <span>{t('wd_created_at')}</span>
-                  <span>{activeItem.createdAt}</span>
+                  <span>{activeItem.requestedAt ? activeItem.requestedAt.toDate().toLocaleString('vi-VN') : '—'}</span>
                 </div>
                 <div className="modal-field-row">
                   <span>{t('wd_updated_at')}</span>
-                  <span>{activeItem.updatedAt}</span>
+                  <span>{activeItem.decidedAt ? activeItem.decidedAt.toDate().toLocaleString('vi-VN') : '—'}</span>
                 </div>
                 <div className="modal-field-row">
                   <span>{t('wd_code_label')}</span>
@@ -322,6 +500,7 @@ export default function CashbackWalletPage() {
             <span className="get-link-input-icon">💳</span>
             <input placeholder={t('bank_account_number_placeholder')} value={newAccNumber} onChange={(e) => setNewAccNumber(e.target.value)} />
           </div>
+          {newAccNumberError && <p className="admin-gate-error" style={{ marginTop: 6 }}>{newAccNumberError}</p>}
 
           <label className="field-label" style={{ display: 'block', marginTop: 14 }}>{t('bank_field_account_holder')}</label>
           <div className="get-link-input-row" style={{ marginTop: 6 }}>
@@ -329,13 +508,11 @@ export default function CashbackWalletPage() {
             <input placeholder={t('bank_holder_placeholder')} value={newAccHolder} onChange={(e) => setNewAccHolder(e.target.value)} />
           </div>
 
-          <p className="mock-note" style={{ marginTop: 10 }}>{t('bank_accounts_note')}</p>
-
           <button
             type="button"
             className="button button-primary modal-cta"
             onClick={handleAddBank}
-            disabled={!newBank || !newAccNumber || !newAccHolder}
+            disabled={!newBank || !newAccNumber || !newAccHolder || !!newAccNumberError}
           >
             ➕ {t('bank_accounts_add')}
           </button>
@@ -374,7 +551,7 @@ export default function CashbackWalletPage() {
                     <strong>{acc.bank}</strong>
                     <span>{acc.accountNumber} · {acc.accountHolder}</span>
                   </div>
-                  <button className="btn-reject" onClick={() => handleDeleteBank(acc.id)}>🗑 {t('bank_delete')}</button>
+                  <button className="btn-reject" onClick={() => handleDeleteBank(acc)}>🗑 {t('bank_delete')}</button>
                 </div>
               ))}
             </div>
@@ -404,16 +581,16 @@ export default function CashbackWalletPage() {
               <div key={row.id} className="ledger-row">
                 <div className="ledger-row-top">
                   <span className={`ledger-type-badge ${row.type.toLowerCase()}`}>
-                    {t(balanceLedgerTypeKeyMap[row.type] as any)}
+                    {row.type === 'CASHBACK' ? t('ledger_type_cashback') : t('ledger_type_withdraw')}
                   </span>
                   <span className={row.change >= 0 ? 'ledger-change positive' : 'ledger-change negative'}>
-                    {row.change >= 0 ? '+' : ''}{row.change.toLocaleString('vi-VN')} xu
+                    {row.change >= 0 ? '+' : ''}{formatCurrency(row.change, lang)}
                   </span>
                 </div>
                 <p className="ledger-content">{row.content}</p>
                 <div className="ledger-row-bottom">
-                  <span>{row.before.toLocaleString('vi-VN')} → {row.after.toLocaleString('vi-VN')} xu</span>
-                  <span>{row.time}</span>
+                  <span>{formatCurrency(row.before, lang)} → {formatCurrency(row.after, lang)}</span>
+                  <span>{row.time.toLocaleString('vi-VN')}</span>
                 </div>
               </div>
             ))}

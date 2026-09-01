@@ -1,22 +1,37 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { mockOrderRows } from '../../lib/mock-data';
+import { useEffect, useMemo, useState } from 'react';
+import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { AppShell } from '../../components/layout/AppShell';
-import { PlatformBadge } from '../../components/ui/PlatformBadge';
+import { OrderThumb } from '../../components/ui/OrderThumb';
 import { Modal } from '../../components/ui/Modal';
+import { CopyIdChip } from '../../components/ui/CopyIdChip';
 import { useLanguage } from '../../lib/i18n';
+import { useAuth } from '../../lib/auth';
+import { getFirebaseDb } from '../../lib/firebase';
+import { computeCommissionSplit, PLATFORM_LABEL, type OrderStatus, type Platform } from '../../lib/orderEntry';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { usePageTitle } from '../../lib/use-page-title';
 
-const statusKeyMap: Record<string, string> = {
+type OrderDoc = {
+  id: string;
+  platform: Platform;
+  productName: string;
+  productUrl?: string | null;
+  imageUrl?: string | null;
+  commissionAmount: number;
+  status: OrderStatus;
+  orderDate?: { toDate: () => Date };
+};
+
+const statusKeyMap: Record<OrderStatus, string> = {
   CONFIRMED: 'status_confirmed',
   PENDING: 'status_pending',
   REFUNDED: 'status_rejected',
   CANCELLED: 'status_rejected',
 };
 
-const statusPillClass: Record<string, string> = {
+const statusPillClass: Record<OrderStatus, string> = {
   CONFIRMED: 'order-pill success',
   PENDING: 'order-pill warning',
   REFUNDED: 'order-pill danger',
@@ -25,21 +40,68 @@ const statusPillClass: Record<string, string> = {
 
 export default function OrdersPage() {
   const { t, lang } = useLanguage();
+  const { uid } = useAuth();
   usePageTitle(t('orders_title'));
-  const [query, setQuery] = useState('');
+  const [orders, setOrders] = useState<OrderDoc[]>([]);
+  const [ledgerByOrder, setLedgerByOrder] = useState<Record<string, number>>({});
+  const [hasReferrer, setHasReferrer] = useState(false);
+  const [query_, setQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
-  const [activeOrder, setActiveOrder] = useState<(typeof mockOrderRows)[number] | null>(null);
+  const [activeOrder, setActiveOrder] = useState<OrderDoc | null>(null);
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    if (!uid) {
+      setOrders([]);
+      return;
+    }
+    const q = query(collection(getFirebaseDb(), 'orders'), where('userId', '==', uid), orderBy('orderDate', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc)));
+    });
+    return unsubscribe;
+  }, [uid]);
+
+  useEffect(() => {
+    if (!uid) {
+      setLedgerByOrder({});
+      setHasReferrer(false);
+      return;
+    }
+    const db = getFirebaseDb();
+    const unsubLedger = onSnapshot(
+      query(collection(db, 'cashbackLedger'), where('userId', '==', uid), where('type', '==', 'CUSTOMER_CASHBACK')),
+      (snap) => {
+        const map: Record<string, number> = {};
+        snap.docs.forEach((d) => {
+          const data = d.data() as { orderId: string; amount: number };
+          map[data.orderId] = (map[data.orderId] ?? 0) + data.amount;
+        });
+        setLedgerByOrder(map);
+      },
+    );
+    const unsubUser = onSnapshot(doc(db, 'users', uid), (snap) => {
+      setHasReferrer(!!snap.data()?.referredBy);
+    });
+    return () => {
+      unsubLedger();
+      unsubUser();
+    };
+  }, [uid]);
+
+  const cashbackFor = (order: OrderDoc) =>
+    ledgerByOrder[order.id] ?? computeCommissionSplit(order.commissionAmount, hasReferrer).customerAmount;
+
   const filtered = useMemo(() => {
-    return mockOrderRows.filter((row) => {
+    return orders.filter((row) => {
+      const platformName = PLATFORM_LABEL[row.platform] ?? row.platform;
       const matchesQuery =
-        row.product.toLowerCase().includes(query.toLowerCase()) ||
-        row.id.toLowerCase().includes(query.toLowerCase());
-      const matchesPlatform = platformFilter === 'all' || row.platform === platformFilter;
+        row.productName.toLowerCase().includes(query_.toLowerCase()) ||
+        row.id.toLowerCase().includes(query_.toLowerCase());
+      const matchesPlatform = platformFilter === 'all' || platformName === platformFilter;
       return matchesQuery && matchesPlatform;
     });
-  }, [query, platformFilter]);
+  }, [orders, query_, platformFilter]);
 
   const copyCode = async (code: string) => {
     try {
@@ -67,7 +129,7 @@ export default function OrdersPage() {
             <span>🔍</span>
             <input
               placeholder={t('order_search_placeholder')}
-              value={query}
+              value={query_}
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
@@ -77,42 +139,69 @@ export default function OrdersPage() {
             <option value="TikTok Shop">TikTok Shop</option>
             <option value="Lazada">Lazada</option>
           </select>
+          <button type="button" className="button button-primary order-search-btn">🔍 Tìm kiếm</button>
         </div>
 
-        <div className="order-card-list">
-          {filtered.map((item) => (
-            <div key={item.id} className="order-card">
-              <div className="order-card-main">
-                <PlatformBadge name={item.platform} size={44} />
-                <div className="order-card-info">
-                  <div className="order-card-tags">
-                    <span className="order-card-platform">{item.platform}</span>
-                    <span className="order-card-id">#{item.id}</span>
-                  </div>
-                  <h3>{item.product}</h3>
-                  <a href={item.linkUrl} target="_blank" rel="noreferrer" className="order-card-link">
-                    {t('order_product_link')} ↗
-                  </a>
-                </div>
-              </div>
+        <div className="panel order-table-panel">
+          <div className="table-scroll">
+            <table className="data-table order-data-table">
+              <thead>
+                <tr>
+                  <th>Thông tin sản phẩm</th>
+                  <th>Tiền hoàn</th>
+                  <th>Trạng thái &amp; Ngày tạo</th>
+                  <th>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item) => {
+                  const platformName = PLATFORM_LABEL[item.platform] ?? item.platform;
+                  const date = item.orderDate?.toDate();
+                  return (
+                    <tr key={item.id}>
+                      <td className="order-table-product-cell">
+                        <div className="order-table-product">
+                          <OrderThumb imageUrl={item.imageUrl} platform={platformName} size={48} />
+                          <div className="order-table-product-info">
+                            <div className="order-card-tags">
+                              <span className="order-card-platform">{platformName}</span>
+                              <CopyIdChip value={item.id} />
+                            </div>
+                            <strong className="order-table-product-name">{item.productName}</strong>
+                            {item.productUrl && (
+                              <a href={item.productUrl} target="_blank" rel="noreferrer" className="order-card-link">
+                                {t('order_product_link')} ↗
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="order-table-cashback-cell">
+                        <strong className="order-card-cashback">+{cashbackFor(item).toLocaleString('vi-VN')} đ</strong>
+                      </td>
+                      <td className="order-table-status-cell">
+                        <span className={statusPillClass[item.status] ?? 'order-pill'}>
+                          ● {t(statusKeyMap[item.status] as any) || item.status}
+                        </span>
+                        <div className="order-table-date">{date ? date.toLocaleString('vi-VN') : '—'}</div>
+                      </td>
+                      <td>
+                        <button className="button button-secondary order-card-view" onClick={() => setActiveOrder(item)}>
+                          👁 {t('order_view')}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
 
-              <div className="order-card-side">
-                <div className="order-card-cashback">+{item.cashback.toLocaleString('vi-VN')} xu</div>
-                <span className={statusPillClass[item.status] ?? 'order-pill'}>
-                  ● {t(statusKeyMap[item.status] as any) || item.status}
-                </span>
-                <span className="order-card-date">{item.date} {item.time}</span>
-              </div>
-
-              <button className="button button-secondary order-card-view" onClick={() => setActiveOrder(item)}>
-                👁 {t('order_view')}
-              </button>
-            </div>
-          ))}
-
-          {filtered.length === 0 && (
-            <p className="muted-copy">{t('order_empty')}</p>
-          )}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="muted-copy">{t('order_empty')}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -120,14 +209,14 @@ export default function OrdersPage() {
         {activeOrder && (
           <>
             <div className="modal-header-row">
-              <span className="order-card-platform">{activeOrder.platform}</span>
+              <span className="order-card-platform">{PLATFORM_LABEL[activeOrder.platform] ?? activeOrder.platform}</span>
               <span className="order-card-id">#{activeOrder.id}</span>
             </div>
 
             <div className="modal-amount-box">
               <div>
-                <div className="amount-label">{t('order_product_link') === 'Link mua hàng' ? 'Hoàn tiền' : 'Cashback'}</div>
-                <div className="amount-value">+{activeOrder.cashback.toLocaleString('vi-VN')} xu</div>
+                <div className="amount-label">Hoàn tiền</div>
+                <div className="amount-value">+{cashbackFor(activeOrder).toLocaleString('vi-VN')} đ</div>
               </div>
               <span style={{ fontSize: '1.6rem' }}>💰</span>
             </div>
@@ -154,7 +243,7 @@ export default function OrdersPage() {
                 <div className="modal-timeline-dot">＋</div>
                 <div className="modal-timeline-content">
                   <strong>{t('modal_timeline_recorded')}</strong>
-                  <span>{activeOrder.date} {activeOrder.time}</span>
+                  <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
                 </div>
               </div>
               <div style={{ display: 'flex' }}>
@@ -164,14 +253,16 @@ export default function OrdersPage() {
                 <div className="modal-timeline-dot">✓</div>
                 <div className="modal-timeline-content">
                   <strong>{t(statusKeyMap[activeOrder.status] as any) || activeOrder.status}</strong>
-                  <span>{activeOrder.date} {activeOrder.time}</span>
+                  <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
                 </div>
               </div>
             </div>
 
-            <a href={activeOrder.linkUrl} target="_blank" rel="noreferrer" className="button button-primary modal-cta">
-              🛒 {t('modal_buy_again')}
-            </a>
+            {activeOrder.productUrl && (
+              <a href={activeOrder.productUrl} target="_blank" rel="noreferrer" className="button button-primary modal-cta">
+                🛒 {t('modal_buy_again')}
+              </a>
+            )}
           </>
         )}
       </Modal>

@@ -1,17 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { AppShell } from '../components/layout/AppShell';
 import { PlatformBadge } from '../components/ui/PlatformBadge';
+import { PlatformIcon } from '../components/ui/PlatformIcons';
 import { EventCarousel } from '../components/ui/EventCarousel';
 import { useLanguage } from '../lib/i18n';
 import { formatCurrency } from '../lib/currency';
+import { useAuth } from '../lib/auth';
+import { getFirebaseDb } from '../lib/firebase';
 import { mockHomeEvents, mockPlatforms } from '../lib/mock-data';
 import { usePageTitle } from '../lib/use-page-title';
-import { ShoppingBagIcon, MusicNoteIcon, CartIcon, LinkIcon, BoxIcon, WalletIcon, TicketIcon, UsersIcon, HeadsetIcon, BookIcon, GearIcon } from '../components/ui/Icons';
+import { LinkIcon, BoxIcon, WalletIcon, UsersIcon, HeadsetIcon, BookIcon, GearIcon } from '../components/ui/Icons';
 
-const MOCK_LOGGED_IN = true;
+type LedgerEntry = { amount: number; status: 'FROZEN' | 'RELEASED' | 'REJECTED' };
+type WithdrawalDoc = { amount: number; status: string };
+
+const GUIDE_STEP_ICONS = ['🔗', '🛍️', '💰'];
 
 const guideSteps = {
   mobile: [
@@ -28,8 +35,43 @@ const guideSteps = {
 
 export default function HomePage() {
   const { t, lang } = useLanguage();
+  const { isLoggedIn, uid } = useAuth();
   usePageTitle(t('nav_home'));
   const [guideTab, setGuideTab] = useState<'mobile' | 'desktop'>('mobile');
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalDoc[]>([]);
+
+  useEffect(() => {
+    if (!uid) {
+      setLedger([]);
+      setWithdrawals([]);
+      return;
+    }
+    const db = getFirebaseDb();
+    const unsubLedger = onSnapshot(query(collection(db, 'cashbackLedger'), where('userId', '==', uid)), (snap) => {
+      setLedger(snap.docs.map((d) => d.data() as LedgerEntry));
+    });
+    const unsubWithdrawals = onSnapshot(query(collection(db, 'withdrawalRequests'), where('userId', '==', uid)), (snap) => {
+      setWithdrawals(snap.docs.map((d) => d.data() as WithdrawalDoc));
+    });
+    return () => {
+      unsubLedger();
+      unsubWithdrawals();
+    };
+  }, [uid]);
+
+  // Same computed-not-stored balance rule used everywhere else in the app
+  // (see /manager/users, /cashback-wallet) — never a mutable counter.
+  const { available, pending, received } = useMemo(() => {
+    let released = 0;
+    let frozen = 0;
+    ledger.forEach((entry) => {
+      if (entry.status === 'RELEASED') released += entry.amount;
+      else if (entry.status === 'FROZEN') frozen += entry.amount;
+    });
+    const paidOut = withdrawals.filter((w) => w.status === 'PAID').reduce((sum, w) => sum + w.amount, 0);
+    return { available: released - paidOut, pending: frozen, received: released };
+  }, [ledger, withdrawals]);
 
   return (
     <AppShell showRightPanel={false}>
@@ -44,17 +86,17 @@ export default function HomePage() {
           <Link href="/account" className="welcome-card-v2-avatar">👤</Link>
         </div>
 
-        {MOCK_LOGGED_IN ? (
+        {isLoggedIn ? (
           <>
             <div className="welcome-balance-row-v2">
               <div>
                 <div className="wc-label">{t('panel_balance_title')}</div>
-                <div className="wc-value-v2">{formatCurrency(24693, lang)}</div>
+                <div className="wc-value-v2">{formatCurrency(available, lang)}</div>
               </div>
               <div className="wc-divider" />
               <div>
                 <div className="wc-label">{t('welcome_saved')}</div>
-                <div className="wc-value-v2 secondary">{formatCurrency(21218, lang)}</div>
+                <div className="wc-value-v2 secondary">{formatCurrency(received, lang)}</div>
               </div>
             </div>
 
@@ -64,24 +106,26 @@ export default function HomePage() {
             </div>
           </>
         ) : (
-          <p className="rp-login-hint">{t('panel_balance_login_hint')}</p>
+          <Link href="/login" className="button button-primary wc-btn welcome-login-cta">
+            🔑 {t('welcome_login_cta')}
+          </Link>
         )}
       </section>
 
       <section className="mini-stats-row">
         <div className="mini-stat-card">
           <span className="mini-stat-icon">🛍️</span>
-          <div className="mini-stat-value">{formatCurrency(40335, lang)}</div>
+          <div className="mini-stat-value">{formatCurrency(pending + received, lang)}</div>
           <div className="mini-stat-label">{t('welcome_total_orders')}</div>
         </div>
         <div className="mini-stat-card">
           <span className="mini-stat-icon">⏳</span>
-          <div className="mini-stat-value">{formatCurrency(19118, lang)}</div>
+          <div className="mini-stat-value">{formatCurrency(pending, lang)}</div>
           <div className="mini-stat-label">{t('panel_pending')}</div>
         </div>
         <div className="mini-stat-card">
           <span className="mini-stat-icon">✅</span>
-          <div className="mini-stat-value">{formatCurrency(21218, lang)}</div>
+          <div className="mini-stat-value">{formatCurrency(received, lang)}</div>
           <div className="mini-stat-label">{t('panel_received')}</div>
         </div>
       </section>
@@ -93,15 +137,15 @@ export default function HomePage() {
         </div>
         <div className="quick-utility-grid">
           <Link href="/#stores" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#ee4d2d' }}><ShoppingBagIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><PlatformIcon name="Shopee" size={44} /></span>
             Shopee
           </Link>
           <Link href="/#stores" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#111827' }}><MusicNoteIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><PlatformIcon name="TikTok Shop" size={44} /></span>
             TikTok Shop
           </Link>
           <Link href="/#stores" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0f146d' }}><CartIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><PlatformIcon name="Lazada" size={44} /></span>
             Lazada
           </Link>
           <Link href="/get-cashback-link" className="quick-utility-item">
@@ -115,10 +159,6 @@ export default function HomePage() {
           <Link href="/cashback-wallet" className="quick-utility-item">
             <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#16a34a' }}><WalletIcon size={20} /></span></span>
             {t('sidebar_wallet')}
-          </Link>
-          <Link href="/social-vouchers" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#c13584' }}><TicketIcon size={20} /></span></span>
-            {t('sidebar_social_vouchers')}
           </Link>
           <Link href="/referrals" className="quick-utility-item">
             <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#8b5cf6' }}><UsersIcon size={20} /></span></span>
@@ -146,20 +186,22 @@ export default function HomePage() {
         </div>
         <div className="platform-grid">
           {mockPlatforms.map((platform) => (
-            <div key={platform.name} className="platform-card">
-              <div className="platform-card-top">
-                <PlatformBadge name={platform.name} size={40} />
-                <span className="platform-rate-badge">
-                  {platform.name === 'Lazada' ? '5%' : platform.name === 'TikTok Shop' ? '3%' : '4%'} {t('stores_cashback_label')}
-                </span>
+            <div
+              key={platform.name}
+              className="platform-card store-card"
+              style={{ ['--store-accent' as any]: platform.accent }}
+            >
+              <div className="store-card-icon-badge">
+                <PlatformBadge name={platform.name} size={32} />
               </div>
               <h3>{platform.name}</h3>
               <p className="platform-card-desc">{platform.description}</p>
-              <Link href="/get-cashback-link" className="button button-secondary wide-button">{t('stores_cta')}</Link>
+              <Link href="/get-cashback-link" className="button wide-button store-card-cta">
+                🛍️ {t('stores_cta')}
+              </Link>
             </div>
           ))}
         </div>
-        <p className="mock-note">{t('mock_notice')}</p>
       </section>
 
       {/* How to get the link — desktop vs mobile */}
@@ -181,11 +223,12 @@ export default function HomePage() {
         <div className="guide-steps">
           {guideSteps[guideTab].map((step, i) => (
             <div key={step.title} className="guide-step">
-              <div className="guide-step-number">{i + 1}</div>
-              <div>
-                <h3>{t(step.title as any)}</h3>
-                <p>{t(step.desc as any)}</p>
+              <div className="guide-step-icon-frame">
+                <span className="guide-step-icon">{GUIDE_STEP_ICONS[i]}</span>
+                <span className="guide-step-number">{i + 1}</span>
               </div>
+              <h3>{t(step.title as any)}</h3>
+              <p>{t(step.desc as any)}</p>
             </div>
           ))}
         </div>
@@ -199,7 +242,7 @@ export default function HomePage() {
         </div>
 
         <div className="process-timeline-v2">
-          <div className="process-step-v2">
+          <div className="process-step-card">
             <div className="process-icon-v2 step1">🛍️</div>
             <span className="process-step-label">{t('process_step1_label')}</span>
             <h3>{t('process_step1_title')}</h3>
@@ -207,9 +250,7 @@ export default function HomePage() {
             <p>{t('process_step1_desc')}</p>
           </div>
 
-          <div className="process-connector-v2 line1" />
-
-          <div className="process-step-v2">
+          <div className="process-step-card">
             <div className="process-icon-v2 step2">🔄</div>
             <span className="process-step-label">{t('process_step2_label')}</span>
             <h3>{t('process_step2_title')}</h3>
@@ -217,9 +258,7 @@ export default function HomePage() {
             <p>{t('process_step2_desc')}</p>
           </div>
 
-          <div className="process-connector-v2 line2" />
-
-          <div className="process-step-v2">
+          <div className="process-step-card">
             <div className="process-icon-v2 step3">👛</div>
             <span className="process-step-label">{t('process_step3_label')}</span>
             <h3>{t('process_step3_title')}</h3>

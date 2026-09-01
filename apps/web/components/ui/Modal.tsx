@@ -6,10 +6,12 @@ export function Modal({
   open,
   onClose,
   children,
+  panelClassName,
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  panelClassName?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -28,7 +30,7 @@ export function Modal({
 
   return (
     <div className="app-modal-overlay" onClick={onClose}>
-      <div className="app-modal-panel" onClick={(e) => e.stopPropagation()}>
+      <div className={`app-modal-panel${panelClassName ? ` ${panelClassName}` : ''}`} onClick={(e) => e.stopPropagation()}>
         <button className="app-modal-close" onClick={onClose} aria-label="Close">
           ✕
         </button>

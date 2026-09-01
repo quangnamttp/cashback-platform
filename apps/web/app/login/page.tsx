@@ -3,30 +3,99 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { FirebaseError } from 'firebase/app';
 import { useLanguage } from '../../lib/i18n';
 import { useAuth } from '../../lib/auth';
 import { usePageTitle } from '../../lib/use-page-title';
+import { CheckIcon, EyeIcon, EyeOffIcon, LoginIcon, UserPlusIcon } from '../../components/ui/Icons';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function LoginPageInner() {
   const { t } = useLanguage();
-  const { login } = useAuth();
+  const { loginWithEmail, registerWithEmail, loginWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next') || '/';
 
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const refFromLink = searchParams.get('ref') || '';
+  const [tab, setTab] = useState<'login' | 'register'>(refFromLink ? 'register' : 'login');
   usePageTitle(tab === 'login' ? t('header_login') : t('login_register'));
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
-  const [referralCode, setReferralCode] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [referralCode, setReferralCode] = useState(refFromLink);
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const mapFirebaseError = (err: unknown): string => {
+    if (err instanceof Error && err.message === 'firebase-not-configured') {
+      return t('login_error_not_configured');
+    }
+    if (err instanceof FirebaseError) {
+      switch (err.code) {
+        case 'auth/invalid-email':
+          return t('login_error_invalid_email');
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+          return t('login_error_wrong_password');
+        case 'auth/email-already-in-use':
+          return t('login_error_email_in_use');
+        case 'auth/weak-password':
+          return t('login_error_weak_password');
+        case 'auth/popup-closed-by-user':
+        case 'auth/cancelled-popup-request':
+          return t('login_error_popup_closed');
+        default:
+          return t('login_error_generic');
+      }
+    }
+    return t('login_error_generic');
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    // Mock login: no real backend/credential check yet. See lib/auth.tsx.
-    login();
-    router.push(next);
+    setError('');
+
+    if (!EMAIL_PATTERN.test(account)) {
+      setError(t('login_error_invalid_email'));
+      return;
+    }
+
+    if (tab === 'register' && !fullName.trim()) {
+      setError(t('login_error_fullname_required'));
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (tab === 'login') {
+        await loginWithEmail(account, password, remember);
+      } else {
+        await registerWithEmail(account, password, { referralCode, fullName: fullName.trim() }, remember);
+      }
+      router.push(next);
+    } catch (err) {
+      setError(mapFirebaseError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    setError('');
+    setSubmitting(true);
+    try {
+      await loginWithGoogle();
+      router.push(next);
+    } catch (err) {
+      setError(mapFirebaseError(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -38,18 +107,32 @@ function LoginPageInner() {
         </div>
 
         <div className="login-tabs">
-          <button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
-            ➡️ {t('header_login')}
+          <button className={tab === 'login' ? 'active' : ''} onClick={() => { setTab('login'); setError(''); }}>
+            <LoginIcon size={16} /> {t('header_login')}
           </button>
-          <button className={tab === 'register' ? 'active' : ''} onClick={() => setTab('register')}>
-            👤➕ {t('login_register')}
+          <button className={tab === 'register' ? 'active' : ''} onClick={() => { setTab('register'); setError(''); }}>
+            <UserPlusIcon size={16} /> {t('login_register')}
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
+          {tab === 'register' && (
+            <label>
+              <span className="field-label">{t('login_fullname_label')}</span>
+              <input
+                type="text"
+                placeholder={t('login_fullname_placeholder')}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+              />
+            </label>
+          )}
+
           <label>
             <span className="field-label">{t('login_account_label')}</span>
             <input
+              type="email"
               placeholder={t('login_account_placeholder')}
               value={account}
               onChange={(e) => setAccount(e.target.value)}
@@ -65,21 +148,32 @@ function LoginPageInner() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                minLength={6}
                 required
               />
-              <button type="button" className="login-eye-btn" onClick={() => setShowPassword((v) => !v)}>
-                {showPassword ? '🙈' : '👁️'}
+              <button
+                type="button"
+                className="login-eye-btn"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              >
+                {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
               </button>
             </div>
           </label>
 
           {tab === 'login' && (
             <div className="login-options-row">
-              <label className="login-checkbox">
-                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <button
+                type="button"
+                className={`login-checkbox${remember ? ' checked' : ''}`}
+                onClick={() => setRemember((v) => !v)}
+                aria-pressed={remember}
+              >
+                <span className="login-checkbox-box">{remember && <CheckIcon size={13} />}</span>
                 {t('login_remember')}
-              </label>
-              <a href="/forgot-password" className="text-link">{t('login_forgot')}</a>
+              </button>
+              <Link href="/forgot-password" className="text-link">{t('login_forgot')}</Link>
             </div>
           )}
 
@@ -94,20 +188,25 @@ function LoginPageInner() {
             </label>
           )}
 
-          <button type="submit" className="button button-primary wide-button">
-            {tab === 'login' ? `➡️ ${t('header_login')}` : `👤➕ ${t('login_register')}`}
+          {error && <p className="admin-gate-error">{error}</p>}
+
+          <button type="submit" className="button button-primary wide-button" disabled={submitting}>
+            {submitting ? (
+              t('login_submitting')
+            ) : tab === 'login' ? (
+              <><LoginIcon size={18} /> {t('header_login')}</>
+            ) : (
+              <><UserPlusIcon size={18} /> {t('login_register')}</>
+            )}
           </button>
         </form>
 
         <div className="login-divider"><span>{t('login_or')}</span></div>
 
-        <button type="button" className="login-google-btn" onClick={handleSubmit}>
+        <button type="button" className="login-google-btn" onClick={handleGoogle} disabled={submitting}>
           <span className="login-google-icon">G</span>
           {t('continue_google')}
         </button>
-
-        <p className="login-mock-note">{t('login_mock_note')}</p>
-        <p className="login-mock-note">{t('login_google_link_note')}</p>
 
         <Link href="/" className="text-link login-back-home">← {t('back_home')}</Link>
       </div>

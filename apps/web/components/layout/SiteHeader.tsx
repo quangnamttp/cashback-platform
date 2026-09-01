@@ -5,11 +5,12 @@ import { useEffect, useRef, useState } from 'react';
 import { LANGS, useLanguage } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme';
 import { useAuth } from '../../lib/auth';
+import { BrandMark } from '../ui/BrandMark';
 
 export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { lang, setLang, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
-  const { isLoggedIn, userName, userEmail, logout } = useAuth();
+  const { isLoggedIn, userName, userEmail, avatarUrl, logout } = useAuth();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -32,7 +33,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const navItems = [
     { label: t('nav_home'), href: '/' },
     { label: t('nav_stores'), href: '/#stores' },
-    { label: t('sidebar_social_vouchers'), href: '/social-vouchers' },
+    { label: t('sidebar_get_link'), href: '/get-cashback-link' },
     { label: t('sidebar_referrals'), href: '/referrals' },
   ];
 
@@ -46,7 +47,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
         </button>
 
         <Link href="/" className="brand-block">
-          <div className="brand-mark">H</div>
+          <div className="brand-mark"><BrandMark size={46} /></div>
           <div className="brand-name">Hoàn Tiền DV</div>
         </Link>
 
@@ -144,13 +145,25 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                 aria-haspopup="menu"
                 title={t('header_account')}
               >
-                👤
+                {avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl} alt={userName} className="account-menu-button-avatar" />
+                ) : (
+                  '👤'
+                )}
               </button>
 
               {isAccountMenuOpen && (
                 <div className="account-menu-dropdown active account-dropdown-v2" role="menu">
                   <div className="account-dropdown-user">
-                    <span className="account-dropdown-avatar">👤</span>
+                    <span className="account-dropdown-avatar">
+                      {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={avatarUrl} alt={userName} />
+                      ) : (
+                        '👤'
+                      )}
+                    </span>
                     <div>
                       <strong>{userName}</strong>
                       <span>{userEmail}</span>

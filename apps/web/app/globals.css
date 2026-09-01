@@ -31,9 +31,19 @@ html, body {
   max-width: 100%;
 }
 
-img, svg, video, canvas, iframe {
+img, video, canvas, iframe {
   max-width: 100%;
   height: auto;
+}
+
+/* Icon SVGs are always explicitly sized via their own width/height props —
+   they're never meant to fluidly resize like a content image, and
+   `height: auto` on a percentage-constrained flex/table child can collapse
+   an SVG to 0x0 (no definite containing size to resolve the intrinsic
+   ratio against). Give them a floor instead of a responsive cap. */
+svg {
+  max-width: 100%;
+  flex-shrink: 0;
 }
 
 input, textarea, select {
@@ -87,10 +97,12 @@ html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -161,21 +173,32 @@ p {
 }
 
 .brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
   display: grid;
   place-items: center;
-  background: var(--primary);
-  color: white;
-  font-weight: 700;
-  font-size: 1.15rem;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .brand-name {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.brand-block.compact .brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+}
+
+.brand-block.compact .brand-name {
   font-size: 1rem;
   font-weight: 700;
-  color: var(--text);
+  letter-spacing: normal;
 }
 
 .brand-subtitle {
@@ -251,6 +274,18 @@ p {
 .account-menu-button:hover {
   background: var(--bg-accent);
   color: var(--primary);
+}
+
+/* A signed-in user's real avatar photo replaces the 👤 fallback — the pill
+   background/border was designed for that emoji, not a circular photo, so
+   drop it here and let the photo stand plain (matches the "no halo" ask). */
+.account-menu-button:has(.account-menu-button-avatar) {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
 }
 
 .account-menu-dropdown {
@@ -697,6 +732,19 @@ p {
   margin-bottom: 20px;
 }
 
+/* Title block on the left, primary action on the right, same row — was
+   missing a base (desktop) rule entirely, so every admin page's header
+   fell back to default block stacking (title, then button, on separate
+   lines) until the mobile breakpoint's grid override kicked in. */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
 .coupon-meta,
 .deal-tag,
 .social-platform {
@@ -970,8 +1018,13 @@ p {
 .data-table thead th {
   position: sticky;
   top: 0;
-  background: var(--surface);
+  background: var(--bg-secondary);
   z-index: 1;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
 }
 
 .data-table {
@@ -985,6 +1038,14 @@ p {
   padding: 12px 10px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+}
+
+.data-table tbody tr {
+  transition: background 0.12s ease;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-accent);
 }
 
 .form-panel {
@@ -1492,6 +1553,11 @@ p {
   font-weight: 800;
   flex-shrink: 0;
   line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.platform-badge-icon img {
+  border-radius: inherit;
 }
 
 .hero-platform-pill {
@@ -1809,6 +1875,151 @@ p {
   min-width: 220px;
 }
 
+/* ==========================================================
+   ADMIN SMART SEARCH TOOLBAR (search + status filter + count)
+   Shared across every sensitive admin list — withdrawals, orders,
+   vouchers, support chat — so lookups behave identically everywhere.
+   ========================================================== */
+.admin-search-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  padding: 10px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+  /* Guards against the whole row's natural min-content width (input +
+     dropdown + button + count, each with their own floor width) ever
+     exceeding the panel and pushing the last child past the edge — every
+     item here is allowed to size down to 0 first, so wrapping (not
+     overflow) is always what happens when space runs out. */
+  min-width: 0;
+}
+
+.admin-search-toolbar-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+}
+
+/* Filter + search button + count badge wrap as ONE unit onto their own
+   line on narrow widths, instead of the row silently overflowing or the
+   count badge splitting off past the visible edge on its own. */
+.admin-search-toolbar-trailing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.admin-search-toolbar-input input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.admin-search-toolbar-filter {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 160px;
+  cursor: pointer;
+}
+
+.admin-search-toolbar-filter:focus {
+  border-color: #22c55e;
+  outline: none;
+}
+
+.admin-search-toolbar-btn {
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 10px;
+  border: none;
+  background: #16a34a;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-search-toolbar-btn:hover {
+  background: #15803d;
+}
+
+.admin-search-toolbar-count {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* At narrow phone widths the trailing group (filter + search button +
+   count badge) wraps onto its own line as a whole, but the filter's
+   160px floor plus the button and badge still didn't fit within that
+   line's own width, causing a small overflow contained inside the
+   toolbar. Let the filter shrink here and let the group wrap internally
+   as a last resort. */
+@media (max-width: 480px) {
+  .admin-search-toolbar-filter {
+    min-width: 0;
+    flex: 1 1 100px;
+  }
+
+  .admin-search-toolbar-trailing {
+    width: 100%;
+  }
+}
+
+.copy-id-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.copy-id-chip:hover {
+  background: var(--bg-accent);
+  border-color: var(--primary-light);
+  color: var(--primary-dark);
+}
+
+.copy-id-chip-code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.76rem;
+}
+
+.copy-id-chip-icon {
+  font-size: 0.72rem;
+}
+
 @media (max-width: 900px) {
   .admin-page-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -1882,6 +2093,16 @@ p {
   color: var(--primary);
   font-size: 0.85rem;
   font-weight: 600;
+  /* This class is applied to plain <button> elements in several places
+     (not just <a>) for a "text-styled" action — without an explicit reset
+     a bare <button> keeps the browser's native chrome (border/background/
+     padding) on top of the color/size above, and stretches to fill a flex
+     column's full width by default, both of which made it look like a
+     large boxed button instead of an inline text link. */
+  background: none;
+  border: none;
+  padding: 0;
+  align-self: flex-start;
 }
 
 .text-link:hover {
@@ -2281,8 +2502,8 @@ p {
 .mini-stats-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .mini-stat-card {
@@ -2313,7 +2534,7 @@ p {
 }
 
 .quick-utility-section {
-  margin-top: 28px;
+  margin-top: 20px;
 }
 
 .quick-utility-grid {
@@ -2423,31 +2644,69 @@ p {
 
 /* Process timeline v2 — horizontal, gradient icon circles + connecting line */
 .process-timeline-v2 {
-  display: flex;
-  align-items: flex-start;
-  gap: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
   margin-top: 28px;
-  flex-wrap: wrap;
 }
 
-.process-step-v2 {
-  flex: 1;
-  min-width: 200px;
+.process-step-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 26px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 6px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* Connects each step to the next across the grid gap — a short segment per
+   gap rather than one long line, so it survives responsive column changes
+   without brittle percentage math. */
+.process-step-card:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 56px;
+  right: -16px;
+  width: 16px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--border), var(--primary-light));
+  border-radius: 999px;
+  z-index: 0;
+}
+
+@media (max-width: 720px) {
+  .process-step-card:not(:last-child)::after {
+    content: none;
+  }
+}
+
+.process-step-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+}
+
+@media (max-width: 720px) {
+  .process-timeline-v2 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .process-icon-v2 {
-  width: 60px;
-  height: 60px;
-  border-radius: 18px;
+  position: relative;
+  z-index: 1;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   color: #fff;
   box-shadow: var(--shadow-md);
   margin-bottom: 6px;
@@ -2455,20 +2714,21 @@ p {
   cursor: pointer;
 }
 
-.process-step-v2:hover .process-icon-v2.step1,
-.process-icon-v2.step1:hover {
+.process-icon-v2.step1 { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.16), var(--shadow-md); }
+.process-icon-v2.step2 { box-shadow: 0 0 0 5px rgba(249, 115, 22, 0.16), var(--shadow-md); }
+.process-icon-v2.step3 { box-shadow: 0 0 0 5px rgba(0, 150, 255, 0.16), var(--shadow-md); }
+
+.process-step-card:hover .process-icon-v2.step1 {
   box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.25), var(--shadow-md);
   transform: translateY(-3px);
 }
 
-.process-step-v2:hover .process-icon-v2.step2,
-.process-icon-v2.step2:hover {
+.process-step-card:hover .process-icon-v2.step2 {
   box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.25), var(--shadow-md);
   transform: translateY(-3px);
 }
 
-.process-step-v2:hover .process-icon-v2.step3,
-.process-icon-v2.step3:hover {
+.process-step-card:hover .process-icon-v2.step3 {
   box-shadow: 0 0 0 6px rgba(0, 150, 255, 0.25), var(--shadow-md);
   transform: translateY(-3px);
 }
@@ -2485,40 +2745,16 @@ p {
   background: linear-gradient(135deg, #0096ff, #2563eb);
 }
 
-.process-step-v2 h3 {
+.process-step-card h3 {
   margin: 2px 0 0;
   font-size: 1.05rem;
 }
 
-.process-step-v2 p {
+.process-step-card p {
   font-size: 0.82rem;
   color: var(--text-muted);
   max-width: 240px;
   line-height: 1.5;
-}
-
-.process-connector-v2 {
-  flex: 0 0 60px;
-  height: 3px;
-  margin-top: 36px;
-  border-radius: 999px;
-}
-
-.process-connector-v2.line1 {
-  background: linear-gradient(90deg, #22c55e, #f97316);
-}
-
-.process-connector-v2.line2 {
-  background: linear-gradient(90deg, #f97316, #0096ff);
-}
-
-@media (max-width: 720px) {
-  .process-connector-v2 {
-    display: none;
-  }
-  .process-timeline-v2 {
-    flex-direction: column;
-  }
 }
 
 .process-step-label {
@@ -2696,6 +2932,16 @@ p {
   gap: 14px;
 }
 
+.empty-state-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 40px 20px;
+}
+
 .promo-icon-badge {
   width: 52px;
   height: 52px;
@@ -2767,6 +3013,7 @@ p {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
@@ -2786,6 +3033,18 @@ p {
   background: transparent;
   font-size: 0.9rem;
   outline: none;
+}
+
+/* On narrow screens the trailing button (paste/clear/"tạo link khác")
+   doesn't have room to sit beside the link text without truncating both —
+   flex-wrap above lets it drop to its own full-width line while the icon
+   + input (which always fit together) stay put on the first line. */
+@media (max-width: 480px) {
+  .get-link-paste-btn {
+    flex: 1 1 100%;
+    height: 42px;
+    margin-bottom: 4px;
+  }
 }
 
 .get-link-paste-btn {
@@ -2827,10 +3086,15 @@ p {
 }
 
 .get-link-quicklinks {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
+}
+
+.get-link-quicklinks .quick-utility-item {
+  width: 96px;
 }
 
 /* Social vouchers page redesign */
@@ -2914,6 +3178,10 @@ p {
 
 .sv-platform-tabs button {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   padding: 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -2921,6 +3189,11 @@ p {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.sv-platform-tab-icons {
+  display: inline-flex;
+  gap: 4px;
 }
 
 .sv-platform-tabs button.active {
@@ -2965,6 +3238,152 @@ p {
   background: var(--surface);
   font-size: 0.85rem;
   color: var(--text-secondary);
+}
+
+.order-search-btn {
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.order-table-panel {
+  margin-top: 4px;
+}
+
+.order-table-product-cell {
+  white-space: normal;
+  min-width: 260px;
+}
+
+.order-table-product {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.order-table-product-info {
+  min-width: 0;
+}
+
+.order-table-product-name {
+  display: block;
+  margin: 4px 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.order-table-cashback-cell,
+.order-table-status-cell {
+  white-space: nowrap;
+}
+
+.order-table-date {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* Admin "Nhập đơn hàng" form — sectioned layout */
+.order-form {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.order-form-section {
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.order-form-section-title {
+  margin: 0 0 2px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.order-form-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 10px 0;
+}
+
+.order-form-platform-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Link + ảnh sản phẩm side by side (matches the Giá trị đơn/Hoa hồng
+   grid below it) instead of a lone 56px icon looming to the left of two
+   stacked fields it wasn't clearly tied to. */
+.order-form-tight-grid {
+  gap: 10px;
+}
+
+.order-form-image-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.order-form-image-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.order-form-image-preview {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.order-form-submit {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
+.order-form-split-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle, #f8fafc);
+  border: 1px solid var(--border-light);
+}
+
+.order-form-split-preview > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.order-form-split-preview span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.order-form-split-preview strong {
+  font-size: 0.92rem;
+}
+
+@media (max-width: 480px) {
+  .order-form-platform-picker {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .order-form-split-preview {
+    grid-template-columns: 1fr;
+  }
 }
 
 .order-card-list {
@@ -3102,96 +3521,131 @@ p {
    EVENT CAROUSEL (auto-rotating, homepage top)
    ========================================================== */
 .event-carousel {
-  background: linear-gradient(135deg, #eaf6ff 0%, #d3ecff 100%);
-  border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: 18px 22px;
-  margin-top: 20px;
-  box-shadow: var(--shadow-sm);
+  margin-top: 4px;
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
+  position: relative;
+  background: var(--bg-secondary);
+  width: 100%;
+  /* Moderate fixed height, not a tall aspect-ratio box — a shorter, more
+     "framed" strip like a real product's promo banner rather than a
+     dominant full-bleed hero. The image sits inset (object-fit: contain)
+     over a softly blurred copy of itself filling the rest of the frame,
+     so there's no dead flat-color letterbox on either side. */
+  height: 260px;
 }
 
-[data-theme='dark'] .event-carousel {
-  background: linear-gradient(135deg, #16324f 0%, #0f2436 100%);
+@media (max-width: 640px) {
+  .event-carousel {
+    height: 180px;
+  }
 }
 
-.event-carousel-track {
-  animation: eventFadeIn 0.4s ease;
+.event-carousel-backdrop {
+  position: absolute;
+  inset: -20px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(30px) saturate(1.2);
+  transform: scale(1.15);
+  z-index: 0;
+}
+
+.event-carousel-backdrop-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.28) 100%);
+  z-index: 1;
+}
+
+.event-carousel-slide {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  /* Zero vertical padding on purpose — the sharp image should touch the
+     top and bottom edges exactly (no visible backdrop strip above/below),
+     with the blurred bleed only ever showing on the sides. */
+  padding: 0 64px;
+  animation: eventFadeIn 0.5s ease;
 }
 
-.event-carousel-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.event-carousel-art {
-  width: 150px;
-  flex-shrink: 0;
-}
-
-.promo-illustration-svg {
-  width: 100%;
+.event-carousel-img {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
   height: auto;
+  object-fit: contain;
   display: block;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
 }
 
 @media (max-width: 560px) {
-  .event-carousel-art {
-    width: 100px;
+  .event-carousel-slide {
+    padding: 0 44px;
   }
 }
 
 @keyframes eventFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: scale(1.01); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-.event-carousel-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #fff;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.event-carousel-title {
-  margin-top: 10px;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.4;
-}
-
-.event-carousel-controls {
+.event-carousel-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  color: #0f172a;
+  font-size: 1.3rem;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  margin-top: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.event-carousel-controls > button {
-  background: transparent;
-  border: none;
-  font-size: 1.25rem;
-  color: var(--text-muted);
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+.event-carousel-nav:hover {
+  background: #fff;
+  transform: translateY(-50%) scale(1.06);
 }
 
-.event-carousel-controls > button:hover {
-  background: var(--bg-accent);
-  color: var(--primary);
+.event-carousel-nav.prev {
+  left: 14px;
+}
+
+.event-carousel-nav.next {
+  right: 14px;
+}
+
+@media (max-width: 560px) {
+  .event-carousel-slide {
+    padding: 6px 40px;
+  }
+  .event-carousel-nav {
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+  }
 }
 
 .event-carousel-dots {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
   display: flex;
   gap: 6px;
 }
@@ -3201,14 +3655,35 @@ p {
   height: 7px;
   border-radius: 50%;
   border: none;
-  background: var(--border);
+  background: rgba(255, 255, 255, 0.45);
   padding: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 .event-carousel-dots button.active {
-  background: var(--primary);
-  width: 18px;
+  width: 22px;
   border-radius: 4px;
+}
+
+.event-carousel-dot-progress {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  transform-origin: left center;
+  animation: dotProgress 5s linear;
+}
+
+@keyframes dotProgress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-carousel-dot-progress,
+  .event-carousel-slide {
+    animation: none;
+  }
 }
 
 /* ==========================================================
@@ -3220,7 +3695,7 @@ p {
   background: linear-gradient(160deg, var(--primary) 0%, var(--primary-dark) 100%);
   border-radius: var(--radius-lg);
   padding: 24px;
-  margin-top: 16px;
+  margin-top: 8px;
   color: #fff;
   box-shadow: var(--shadow-lg);
 }
@@ -3269,6 +3744,17 @@ p {
 
 .welcome-balance-row-v2 .wc-label {
   color: rgba(255, 255, 255, 0.75);
+}
+
+/* Logged-out state: a real CTA button instead of the old plain-text hint
+   (.rp-login-hint's muted-gray color has no contrast against this dark
+   blue gradient, and a single text line left the whole card looking
+   thin/empty next to the logged-in balance+actions layout). */
+.welcome-login-cta {
+  display: flex;
+  width: 100%;
+  margin-top: 18px;
+  position: relative;
 }
 
 .wc-value-v2 {
@@ -3327,43 +3813,78 @@ p {
 }
 
 .guide-steps {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   margin-top: 18px;
 }
 
+@media (max-width: 720px) {
+  .guide-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
 .guide-step {
   display: flex;
-  gap: 14px;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
   background: var(--surface);
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  padding: 16px;
+  border-radius: var(--radius-lg);
+  padding: 22px 18px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.guide-step:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+}
+
+.guide-step-icon-frame {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--bg-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.guide-step-icon {
+  font-size: 1.7rem;
 }
 
 .guide-step-number {
-  width: 30px;
-  height: 30px;
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--bg-accent);
-  color: var(--primary-dark);
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.7rem;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  border: 2px solid var(--surface);
 }
 
 .guide-step h3 {
   font-size: 0.95rem;
-  margin: 0 0 4px;
+  margin: 0;
   color: var(--text);
 }
 
 .guide-step p {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-secondary);
   line-height: 1.6;
 }
@@ -3543,7 +4064,92 @@ p {
 .profile-header-info span {
   font-size: 0.85rem;
   color: var(--text-muted);
-  overflow-wrap: break-word;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profile-avatar-wrap .profile-avatar {
+  overflow: hidden;
+}
+
+.profile-avatar-wrap .profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar-edit-btn {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  border: 2px solid var(--surface);
+}
+
+.profile-field-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+  flex-wrap: wrap;
+}
+
+.profile-field-row:last-child {
+  border-bottom: none;
+}
+
+.profile-field-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.profile-field-value {
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.profile-field-value input {
+  max-width: 170px;
+}
+
+.referral-code-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-accent);
+  color: var(--primary-dark);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 /* Professional store card rate badge */
@@ -3554,19 +4160,41 @@ p {
   width: 100%;
 }
 
-.platform-rate-badge {
-  background: var(--bg-accent);
-  color: var(--primary-dark);
-  font-size: 0.72rem;
-  font-weight: 800;
-  padding: 4px 9px;
-  border-radius: 999px;
-}
-
 .platform-card-desc {
   font-size: 0.8rem;
   color: var(--text-muted);
   line-height: 1.5;
+}
+
+/* Store cards on the homepage — each platform gets its own brand-accent
+   colour (already sitting unused in mockPlatforms.accent) instead of the
+   flat generic card shared with every other card type on the site. */
+.store-card {
+  border-top: 4px solid var(--store-accent, var(--primary));
+  display: flex;
+  flex-direction: column;
+}
+
+.store-card-icon-badge {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--store-accent, var(--primary)) 14%, white);
+  border: 1.5px solid color-mix(in srgb, var(--store-accent, var(--primary)) 35%, white);
+}
+
+.store-card-cta {
+  margin-top: auto;
+  background: var(--store-accent, var(--primary));
+  color: #fff;
+  font-weight: 700;
+}
+
+.store-card-cta:hover {
+  filter: brightness(0.92);
 }
 
 /* ==========================================================
@@ -3586,6 +4214,15 @@ p {
 
 .support-contact-card .wide-button {
   margin-top: 10px;
+}
+
+.support-email-fallback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 }
 
 .faq-list {
@@ -3732,6 +4369,40 @@ p {
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.voucher-ticket-v2.matched {
+  border-color: var(--voucher-glow, var(--primary));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--voucher-glow, var(--primary)) 22%, transparent),
+    0 8px 20px color-mix(in srgb, var(--voucher-glow, var(--primary)) 25%, transparent);
+  animation: voucherGlow 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes voucherGlow {
+  from { box-shadow: 0 0 0 2px color-mix(in srgb, var(--voucher-glow, var(--primary)) 15%, transparent), 0 6px 14px color-mix(in srgb, var(--voucher-glow, var(--primary)) 18%, transparent); }
+  to { box-shadow: 0 0 0 4px color-mix(in srgb, var(--voucher-glow, var(--primary)) 30%, transparent), 0 10px 24px color-mix(in srgb, var(--voucher-glow, var(--primary)) 32%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voucher-ticket-v2.matched {
+    animation: none;
+  }
+}
+
+/* Voucher doesn't apply to the marketplace of the currently pasted link —
+   dimmed and non-interactive rather than hidden, so the shopper can still
+   see it exists (just not usable right now). */
+.voucher-ticket-v2.disabled {
+  opacity: 0.5;
+  filter: grayscale(0.4);
+}
+
+.voucher-ticket-v2-disabled-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 2px;
 }
 
 .voucher-ticket-v2-ribbon {
@@ -3789,6 +4460,15 @@ p {
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+  /* Leaves room for the absolutely-positioned ribbon in the top-right
+     corner (featured / "Mới") so it doesn't overlap the exclusive badge. */
+  padding-right: 150px;
+}
+
+@media (max-width: 480px) {
+  .voucher-ticket-v2-top {
+    padding-right: 60px;
+  }
 }
 
 .voucher-ticket-v2-top h3 {
@@ -3804,6 +4484,13 @@ p {
   border-radius: 999px;
   padding: 3px 10px;
   white-space: nowrap;
+}
+
+.voucher-ticket-v2-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 2px 0 0;
 }
 
 .voucher-ticket-v2-condition {
@@ -4030,6 +4717,44 @@ p {
   gap: 14px;
 }
 
+.voucher-platform-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.voucher-platform-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.voucher-platform-option:hover {
+  border-color: var(--primary-light);
+}
+
+.voucher-platform-option.active {
+  border-color: var(--primary);
+  background: var(--bg-accent);
+  color: var(--primary);
+}
+
+@media (max-width: 420px) {
+  .voucher-platform-picker {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Simplified account dropdown v2 */
 .account-dropdown-v2 {
   min-width: 220px;
@@ -4055,6 +4780,23 @@ p {
   justify-content: center;
   font-size: 1.1rem;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.account-dropdown-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.account-menu-button-avatar {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
 }
 
 .account-dropdown-user div {
@@ -4345,6 +5087,7 @@ p {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   padding: 14px;
+  cursor: pointer;
 }
 
 .wd-history-item:hover {
@@ -4483,6 +5226,10 @@ p {
 
 .login-tabs button {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 10px;
   border-radius: 9px;
   border: none;
@@ -4490,6 +5237,7 @@ p {
   font-weight: 700;
   font-size: 0.85rem;
   color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .login-tabs button.active {
@@ -4519,28 +5267,75 @@ p {
   position: relative;
 }
 
+.login-password-row input {
+  padding-right: 44px;
+}
+
 .login-eye-btn {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: transparent;
   border: none;
-  font-size: 1rem;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.login-eye-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--primary);
 }
 
 .login-options-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   font-size: 0.8rem;
 }
 
+/* A bare <button> instead of a native <input type=checkbox> — the native
+   control has no consistent cross-platform size and was rendering
+   oversized enough to wrap "Ghi nhớ đăng nhập" across 3 lines in this
+   ~420px card. */
 .login-checkbox {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  white-space: nowrap;
   color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.login-checkbox-box {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.login-checkbox.checked .login-checkbox-box {
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .login-divider {
@@ -4785,14 +5580,364 @@ p {
   line-height: 1.5;
 }
 
+/* Sits BELOW the product/voucher grid (not confined to the left card),
+   so it always has the full card width to work with — centered as a
+   group instead of stretched edge-to-edge on wide screens. */
 .get-link-result-actions {
   display: flex;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .get-link-result-actions .button {
+  /* flex-basis: 0 (not auto/140px) so all buttons in the row split the
+     available width EQUALLY regardless of label length — a longer label
+     no longer grows its own button wider than its neighbours. */
+  flex: 1 1 0;
+  min-width: 130px;
+  padding-left: 10px;
+  padding-right: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Secondary action — a plain text line, not a button, sitting just above
+   the "Chưa biết cách lấy mã?" helper row below it. */
+.get-link-create-another-line {
+  display: block;
+  width: fit-content;
+  margin: 10px auto 0;
+}
+
+/* Phone widths: one comfortable full-width tap target per row instead of
+   three squeezed side by side. */
+@media (max-width: 480px) {
+  .get-link-result-actions {
+    flex-direction: column;
+  }
+
+  /* flex-basis:0 from the row layout above targets the CROSS axis once
+     the container turns into a column, collapsing each button to its
+     content-minimum height (~24px) instead of the intended 44px tap
+     target — reset to a natural auto-basis row so width/height apply
+     directly instead of being fought over by the flex algorithm. */
+  .get-link-result-actions .button {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 44px;
+  }
+}
+
+/* ==========================================================
+   QUICK RESULT: product card + scrollable matching-voucher panel,
+   side by side, shown the moment a supported link is detected.
+   ========================================================== */
+.quick-result-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+  /* Default `stretch` forced the shorter column to match the taller
+     one's height — an empty voucher panel next to a short product card
+     (or vice versa) left a big wasted blank block. Each column now sizes
+     to its own content instead. */
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .quick-result-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quick-product-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quick-product-card-top,
+.quick-product-info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.quick-product-info-text {
+  min-width: 0;
+}
+
+.quick-product-info-text h3 {
+  font-size: 0.88rem;
+  margin: 0 0 4px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.quick-product-cashback-inline {
+  font-size: 0.82rem;
+  color: #15803d;
+  font-weight: 600;
+}
+
+.quick-product-cashback-inline strong {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+/* "80% hoa hồng" framing — never shows the real, lower final rate (3-5%)
+   bare on its own, always paired with "hoa hồng tiếp thị" so it can't be
+   misread as 80% of the order value. The `title` tooltip carries the
+   fuller explanation of the mechanism for anyone who hovers/taps it. */
+.quick-product-commission-note {
+  font-size: 0.72rem;
+  color: #b45309;
+  font-weight: 600;
+  margin-top: 2px;
+  cursor: help;
+}
+
+.quick-product-note {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.quick-product-note.applied {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.quick-product-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: var(--bg-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7rem;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.quick-product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Real product name, truncated at 2 lines instead of growing the card. */
+.quick-product-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.quick-product-card-top h3 {
+  font-size: 0.9rem;
+  margin: 0 0 3px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.quick-product-cashback-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  background: #dcfce7;
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.quick-product-cashback-row span {
+  font-size: 0.76rem;
+  color: #15803d;
+  font-weight: 600;
+}
+
+.quick-product-cashback-row strong {
+  font-size: 1.2rem;
+  color: #15803d;
+  font-weight: 800;
+}
+
+.quick-voucher-panel {
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.quick-voucher-panel-header {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-voucher-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Caps at roughly 2 rows tall — a 3rd voucher (or a longer title
+     wrapping to 2 lines) now scrolls internally instead of growing the
+     whole panel taller than the product card next to it. */
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.quick-voucher-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.quick-voucher-row.selected {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.quick-voucher-row.ineligible {
+  opacity: 0.42;
+  filter: grayscale(0.5);
+}
+
+/* The social channel (Facebook/Instagram/...) a code came from — not the
+   marketplace it redeems on, which is already implied by the whole panel
+   only ever showing codes eligible for the product link just pasted, so
+   repeating a Shopee/Lazada badge on every single row was redundant. */
+.quick-voucher-row-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.quick-voucher-row-body {
   flex: 1;
+  min-width: 0;
+}
+
+.quick-voucher-row-body > strong,
+.quick-voucher-row-body > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Voucher title, when the admin filled one in — everything else the
+   admin entered (discount, condition, expiry) still shows below even
+   without a title, so no field the admin fills in ever silently
+   disappears on the customer side. */
+.quick-voucher-row-body .quick-voucher-row-title {
+  font-size: 0.74rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.quick-voucher-row-body .quick-voucher-row-discount {
+  font-size: 0.8rem;
+  color: #15803d;
+  font-weight: 800;
+}
+
+/* Nested inline inside .quick-voucher-row-discount (same line, " · "
+   separated) rather than its own block row — one fewer line per card. */
+.quick-voucher-row-discount .quick-voucher-row-condition {
+  display: inline;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.quick-voucher-row-body .quick-voucher-row-meta {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* Radio-style select at the trailing edge of each voucher row — a single
+   filled circle when chosen, matching a compact "pick one" pattern rather
+   than a full button label. */
+.quick-voucher-radio {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: transparent;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.quick-voucher-radio.checked {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
+
+.quick-voucher-radio:disabled {
+  border-color: var(--border-light);
+  cursor: not-allowed;
+}
+
+.quick-voucher-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 18px 8px;
+}
+
+.get-link-platform-detected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-accent);
+  color: var(--primary-dark);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.get-link-unsupported-note {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 10px;
+  line-height: 1.5;
 }
 
 .forgot-success {
@@ -4832,6 +5977,29 @@ p {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.support-chat-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(47, 127, 245, 0.5);
+}
+
+.support-chat-fab-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid var(--surface);
+  animation: chatDotPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes chatDotPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
 }
 
 @media (min-width: 861px) {
@@ -4844,14 +6012,21 @@ p {
   position: fixed;
   right: 20px;
   bottom: 156px;
-  width: min(340px, calc(100vw - 40px));
-  max-height: 60vh;
-  overflow-y: auto;
+  width: min(360px, calc(100vw - 32px));
+  height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  padding: 18px;
+  overflow: hidden;
   z-index: 250;
+  animation: chatPanelIn 0.18s ease;
+}
+
+@keyframes chatPanelIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (min-width: 861px) {
@@ -4860,25 +6035,136 @@ p {
   }
 }
 
+@media (max-width: 480px) {
+  .support-chat-panel {
+    height: min(72vh, 520px);
+  }
+}
+
+/* ==========================================================
+   BACK TO TOP (floating bottom-right, stacked above the chat FAB)
+   ========================================================== */
+.back-to-top-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 160px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
+  border: none;
+  box-shadow: var(--shadow-lg);
+  z-index: 240;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  /* Always mounted — visibility is a smooth opacity/transform transition,
+     not a mount/unmount snap, so it fades and slides in gently as the page
+     scrolls past the threshold instead of popping in abruptly. */
+  opacity: 0;
+  transform: translateY(10px) scale(0.9);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease, box-shadow 0.15s ease;
+}
+
+.back-to-top-btn.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.back-to-top-btn:hover {
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.back-to-top-ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.back-to-top-ring-track {
+  fill: none;
+  stroke: var(--border-light);
+  stroke-width: 2.5;
+}
+
+.back-to-top-ring-progress {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.1s linear;
+}
+
+.back-to-top-arrow {
+  position: relative;
+}
+
+@media (min-width: 861px) {
+  .back-to-top-btn {
+    bottom: 96px;
+  }
+}
+
 .support-chat-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: #fff;
+}
+
+.support-chat-header-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.support-chat-header-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.support-chat-header-info strong {
+  display: block;
+  font-size: 0.88rem;
+}
+
+.support-chat-header-status {
+  display: block;
+  font-size: 0.68rem;
+  color: #4ade80;
+  opacity: 0.9;
 }
 
 .support-chat-close {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: #fff;
+  opacity: 0.8;
   font-size: 1rem;
 }
 
 .support-chat-desc {
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-bottom: 14px;
   line-height: 1.5;
+  text-align: center;
+  margin: auto;
+  padding: 20px 10px;
 }
 
 .support-chat-input {
@@ -4904,13 +6190,18 @@ p {
   font-family: inherit;
 }
 
-.support-chat-messages {
+/* Only THIS section scrolls — header and composer stay pinned, fixing the
+   old layout where the whole panel (including header/input) scrolled as
+   one block. */
+.support-chat-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 320px;
+  gap: 3px;
   overflow-y: auto;
-  padding: 4px 2px 10px;
+  padding: 14px 14px 6px;
+  background: var(--bg-secondary);
 }
 
 .support-chat-bubble-image {
@@ -4918,6 +6209,13 @@ p {
   border-radius: 8px;
   display: block;
   margin-bottom: 6px;
+}
+
+.support-chat-composer {
+  flex-shrink: 0;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border-light);
+  background: var(--surface);
 }
 
 .support-chat-image-preview {
@@ -4975,6 +6273,14 @@ p {
 .support-chat-attach-btn {
   background: var(--bg-secondary);
   color: var(--text-secondary);
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.support-chat-attach-btn:hover {
+  background: var(--bg-accent);
+  color: var(--primary);
 }
 
 .support-chat-send-btn {
@@ -5118,35 +6424,78 @@ p {
   padding-right: 4px;
 }
 
+/* Admin reply modal — now reuses the same header/body/composer pieces as
+   the customer-facing floating widget (.support-chat-header/-body/
+   -composer), which already solved BOTH problems the old admin-only
+   markup had: the generic .app-modal-panel's own max-height+overflow-y
+   fought with the thread's inner scrollbar (two nested scrollbars — see
+   old note this replaced), and a bulky rows=3 textarea + full-width
+   button below it took far more vertical room than the widget's single
+   inline row + round send button. Padding/background are zeroed here
+   since the header/body/composer each carry their own — the outer panel
+   is just a fixed-height flex column wrapper now. */
+.app-modal-panel.support-chat-modal-panel {
+  height: 80vh;
+  max-height: 640px;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-modal-panel.support-chat-modal-panel .app-modal-close {
+  display: none;
+}
+
+.support-chat-header-email {
+  display: block;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .support-chat-bubble {
-  max-width: 85%;
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 14px;
   font-size: 0.85rem;
   line-height: 1.5;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 .support-chat-bubble p {
   margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .support-chat-bubble span {
   display: block;
-  font-size: 0.68rem;
-  margin-top: 4px;
+  font-size: 0.65rem;
+  margin-top: 3px;
   opacity: 0.7;
 }
 
 .support-chat-bubble.customer {
   align-self: flex-start;
-  background: var(--bg-secondary);
+  background: var(--surface);
   color: var(--text);
+  border: 1px solid var(--border-light);
+  border-bottom-left-radius: 4px;
+}
+
+.support-chat-bubble.customer.tail {
+  border-top-left-radius: 4px;
 }
 
 .support-chat-bubble.admin {
   align-self: flex-end;
   background: var(--primary);
   color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.support-chat-bubble.admin.tail {
+  border-top-right-radius: 4px;
 }
 
 .download-platform-tabs {

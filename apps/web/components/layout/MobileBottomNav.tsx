@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLanguage } from '../../lib/i18n';
-import { HomeIcon, BoxIcon, LinkIcon, WalletIcon, TicketIcon } from '../ui/Icons';
+import { HomeIcon, BoxIcon, LinkIcon, WalletIcon, HeadsetIcon } from '../ui/Icons';
 
 function isActive(pathname: string, href: string) {
   if (href === '/') return pathname === '/';
@@ -36,9 +36,9 @@ export function MobileBottomNav() {
         <span>{t('sidebar_wallet')}</span>
       </Link>
 
-      <Link href="/social-vouchers" className={`mbn-item${isActive(pathname, '/social-vouchers') ? ' active' : ''}`} style={{ ['--mbn-color' as any]: '#c13584' }}>
-        <span className="mbn-icon"><TicketIcon size={18} /></span>
-        <span>{t('sidebar_social_vouchers')}</span>
+      <Link href="/support" className={`mbn-item${isActive(pathname, '/support') ? ' active' : ''}`} style={{ ['--mbn-color' as any]: '#0ea5e9' }}>
+        <span className="mbn-icon"><HeadsetIcon size={18} /></span>
+        <span>{t('sidebar_support')}</span>
       </Link>
     </nav>
   );

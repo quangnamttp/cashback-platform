@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { FirebaseError } from 'firebase/app';
 import { AppShell } from '../../components/layout/AppShell';
 import { LANGS, useLanguage } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme';
+import { useAuth } from '../../lib/auth';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { usePageTitle } from '../../lib/use-page-title';
 
@@ -11,7 +13,44 @@ export default function SettingsPage() {
   const { lang, setLang, t } = useLanguage();
   usePageTitle(t('settings_title'));
   const { theme, toggleTheme } = useTheme();
+  const { hasPasswordProvider, changePassword } = useAuth();
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [pwSubmitting, setPwSubmitting] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPwError('');
+    setPwSuccess(false);
+    setPwSubmitting(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setPwSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+    } catch (err) {
+      if (err instanceof FirebaseError) {
+        switch (err.code) {
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential':
+            setPwError(t('settings_password_error_wrong_current'));
+            break;
+          case 'auth/weak-password':
+            setPwError(t('settings_password_error_weak'));
+            break;
+          default:
+            setPwError(t('settings_password_error_generic'));
+        }
+      } else {
+        setPwError(t('settings_password_error_generic'));
+      }
+    } finally {
+      setPwSubmitting(false);
+    }
+  };
 
   return (
     <RequireAuth>
@@ -19,7 +58,7 @@ export default function SettingsPage() {
       <div className="page-shell">
         <div className="page-header">
           <div>
-            <span className="eyebrow dark">{t('sidebar_settings')}</span>
+            <span className="eyebrow dark">{t('settings_eyebrow')}</span>
             <h1>{t('settings_title')}</h1>
           </div>
         </div>
@@ -69,24 +108,53 @@ export default function SettingsPage() {
               <h3>🔒 {t('settings_password_title')}</h3>
               <p className="muted-copy">{t('settings_password_desc')}</p>
             </div>
-            <button className="button button-secondary" onClick={() => setShowPasswordForm((v) => !v)}>
-              {showPasswordForm ? t('settings_password_close') : t('settings_password_title')}
-            </button>
+            {hasPasswordProvider && (
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setShowPasswordForm((v) => !v);
+                  setPwError('');
+                  setPwSuccess(false);
+                }}
+              >
+                {showPasswordForm ? t('settings_password_close') : t('settings_password_title')}
+              </button>
+            )}
           </div>
 
-          {showPasswordForm && (
-            <div className="bank-add-form" style={{ maxWidth: 420, marginTop: 18 }}>
+          {!hasPasswordProvider && (
+            <p className="mock-note" style={{ marginTop: 12 }}>{t('settings_password_google_note')}</p>
+          )}
+
+          {hasPasswordProvider && showPasswordForm && (
+            <form className="bank-add-form" style={{ maxWidth: 420, marginTop: 18 }} onSubmit={handleChangePassword}>
               <label>
                 <span className="field-label">{t('settings_password_current')}</span>
-                <input type="password" placeholder="••••••••" />
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
               </label>
               <label>
                 <span className="field-label">{t('settings_password_new')}</span>
-                <input type="password" placeholder="••••••••" />
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={6}
+                  required
+                />
               </label>
-              <button className="button button-primary">{t('bank_accounts_save')}</button>
-              <p className="mock-note">{t('settings_password_note')}</p>
-            </div>
+              {pwError && <p className="admin-gate-error">{pwError}</p>}
+              {pwSuccess && <p className="quick-product-note applied">✓ {t('settings_password_success')}</p>}
+              <button type="submit" className="button button-primary" disabled={pwSubmitting}>
+                {pwSubmitting ? t('settings_password_submitting') : t('settings_password_submit')}
+              </button>
+            </form>
           )}
         </section>
       </div>
