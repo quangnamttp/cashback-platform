@@ -152,7 +152,14 @@ export function SupportChatWidget() {
         });
       }
 
-      forwardChatMessageToTelegram({
+      // Awaited (not fire-and-forget) so the send action doesn't finish
+      // (and this component doesn't move on to clearing the composer /
+      // re-rendering) until the Telegram forward has actually completed —
+      // a dangling unawaited promise here is vulnerable to the user
+      // closing the widget or navigating away a moment later, which can
+      // abort an in-flight fetch before the request ever leaves the
+      // browser.
+      await forwardChatMessageToTelegram({
         userName,
         userEmail,
         text: trimmedText,
