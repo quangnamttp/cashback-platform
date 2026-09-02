@@ -1,6 +1,6 @@
 'use client';
 
-import { collection, doc, getDocs, increment, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { getFirebaseDb } from './firebase';
 import { generateShortCode } from './ids';
 
@@ -109,7 +109,60 @@ export function goUrl(code: string) {
 
 export type CreateRedirectResult =
   | { status: 'unsupported' }
-  | { status: 'supported'; code: string; redirectUrl: string; platform: Platform; cacheHit: boolean };
+  | { status: 'supported'; code: string; redirectUrl: string; destinationUrl: string; platform: Platform; cacheHit: boolean };
+
+/**
+ * Best-effort — called once fetchProductPreview (lib/productPreview.ts)
+ * resolves, which happens AFTER createOrReuseRedirect already created the
+ * doc (the scrape is async and must never block generating the tracking
+ * link itself). Lets /link-history render a real thumbnail/title/price
+ * for past links instead of only the moment they were first pasted.
+ */
+export async function savePreviewToRedirect(
+  code: string,
+  preview: { title?: string; image?: string; price?: number },
+): Promise<void> {
+  try {
+    const db = getFirebaseDb();
+    const update: Record<string, unknown> = {};
+    if (preview.title) update.title = preview.title;
+    if (preview.image) update.image = preview.image;
+    if (preview.price) update.price = preview.price;
+    if (Object.keys(update).length === 0) return;
+    await updateDoc(doc(db, 'redirectCache', code), update);
+  } catch {
+    // best-effort only
+  }
+}
+
+/**
+ * Best-effort hit tracking (sliding TTL refresh + hitCount), extracted so it
+ * can run from TWO places: /go/page.tsx (an externally-shared link opened
+ * with no live app state) AND a same-session "Mua ngay" click that now
+ * navigates straight to destinationUrl instead of bouncing through /go (see
+ * buildAffiliateUrl's flow below) — both need the exact same accounting.
+ * Never awaited by a navigation click; a failed write here must never block
+ * or delay the user actually reaching the marketplace.
+ */
+export async function recordRedirectHit(code: string): Promise<void> {
+  try {
+    const db = getFirebaseDb();
+    const ref = doc(db, 'redirectCache', code);
+    const snap = await getDoc(ref);
+    const data = snap.data();
+    if (!data) return;
+    const now = Date.now();
+    const createdAtMs: number = data.createdAt?.toMillis?.() ?? now;
+    const newExpiry = Math.min(now + REDIRECT_CACHE_TTL_MS, createdAtMs + REDIRECT_CACHE_MAX_LIFETIME_MS);
+    await updateDoc(ref, {
+      lastHitAt: serverTimestamp(),
+      expiresAt: Timestamp.fromMillis(newExpiry),
+      hitCount: increment(1),
+    });
+  } catch {
+    // best-effort only — never surfaced to the user
+  }
+}
 
 /**
  * Runs entirely in the browser now (was a Cloud Function). Same cache key
@@ -163,7 +216,14 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
         expiresAt: Timestamp.fromMillis(newExpiry),
         hitCount: increment(1),
       });
-      return { status: 'supported', code: existingDoc.id, redirectUrl: goUrl(existingDoc.id), platform, cacheHit: true };
+      return {
+        status: 'supported',
+        code: existingDoc.id,
+        redirectUrl: goUrl(existingDoc.id),
+        destinationUrl: existing.destinationUrl,
+        platform,
+        cacheHit: true,
+      };
     }
 
     await updateDoc(existingDoc.ref, { status: 'SUPERSEDED' });
@@ -186,5 +246,5 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     hitCount: 0,
   });
 
-  return { status: 'supported', code, redirectUrl: goUrl(code), platform, cacheHit: false };
+  return { status: 'supported', code, redirectUrl: goUrl(code), destinationUrl, platform, cacheHit: false };
 }

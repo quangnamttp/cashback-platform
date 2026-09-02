@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, updateDoc, writeBatch } from 'firebase/firestore';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/adminAudit';
@@ -15,6 +15,8 @@ const DEVICE_FILTER_OPTIONS = [
   { value: 'ACTIVE', label: 'Đang hoạt động' },
   { value: 'REVOKED', label: 'Đã đăng xuất' },
 ];
+
+const STALE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type Session = {
   id: string;
@@ -32,6 +34,7 @@ export default function AdminDevicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [cleaning, setCleaning] = useState(false);
 
   useEffect(() => {
     const q = query(collection(getFirebaseDb(), 'sessions'), orderBy('lastSeenAt', 'desc'));
@@ -60,6 +63,44 @@ export default function AdminDevicesPage() {
     }
   };
 
+  const staleSessions = useMemo(
+    () =>
+      sessions.filter((s) => {
+        if (s.status !== 'ACTIVE') return false;
+        const millis = s.lastSeenAt?.toDate?.().getTime();
+        return typeof millis === 'number' && Date.now() - millis > STALE_WINDOW_MS;
+      }),
+    [sessions],
+  );
+
+  // Session docs never expire on their own (see lib/auth.tsx) — every test
+  // login (including QA runs) leaves a permanent ACTIVE row unless someone
+  // revokes it by hand. One-click bulk revoke for everything that hasn't
+  // been seen in 24h, instead of clicking "Đăng xuất" one row at a time.
+  const cleanupStaleSessions = async () => {
+    if (staleSessions.length === 0) return;
+    setCleaning(true);
+    try {
+      const db = getFirebaseDb();
+      const batch = writeBatch(db);
+      staleSessions.forEach((s) => batch.update(doc(db, 'sessions', s.id), { status: 'REVOKED', sessionToken: null }));
+      await batch.commit();
+      if (uid) {
+        await logAdminAction({
+          actorUid: uid,
+          actorEmail: userEmail,
+          action: `bulkCleanupStaleSessions:${staleSessions.length}`,
+          targetType: 'session',
+          targetId: 'bulk',
+        });
+      }
+    } catch (err) {
+      console.error('bulk cleanup stale sessions failed', err);
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   const filteredSessions = useMemo(() => {
     return sessions.filter((session) => {
       if (statusFilter !== 'all' && session.status !== statusFilter) return false;
@@ -80,6 +121,11 @@ export default function AdminDevicesPage() {
           <span className="eyebrow dark">Kiểm soát phiên thiết bị</span>
           <h1>Phiên đăng nhập thiết bị</h1>
         </div>
+        {staleSessions.length > 0 && (
+          <button className="button button-secondary" disabled={cleaning} onClick={cleanupStaleSessions}>
+            {cleaning ? 'Đang dọn...' : `🧹 Dọn ${staleSessions.length} phiên quá 24h không hoạt động`}
+          </button>
+        )}
       </div>
 
       <AdminSearchToolbar

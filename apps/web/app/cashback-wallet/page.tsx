@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  addDoc,
   arrayRemove,
   arrayUnion,
   collection,
@@ -11,10 +10,12 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
 import { bankList } from '../../lib/mock-data';
+import { subscribeSystemRates, DEFAULT_RATES } from '../../lib/systemConfig';
 import { AppShell } from '../../components/layout/AppShell';
 import { Modal } from '../../components/ui/Modal';
 import { CopyIdChip } from '../../components/ui/CopyIdChip';
@@ -26,8 +27,6 @@ import { validateAccountNumber } from '../../lib/bankValidation';
 import { notifyWithdrawalRequestToTelegram } from '../../lib/telegram';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { usePageTitle } from '../../lib/use-page-title';
-
-const MIN_WITHDRAW = 20000;
 
 const wdStatusKeyMap: Record<string, string> = {
   PAID: 'wd_status_done',
@@ -80,6 +79,9 @@ export default function CashbackWalletPage() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalDoc[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [minWithdraw, setMinWithdraw] = useState(DEFAULT_RATES.minWithdraw);
+
+  useEffect(() => subscribeSystemRates((rates) => setMinWithdraw(rates.minWithdraw)), []);
   const [showAddBankModal, setShowAddBankModal] = useState(false);
   const [showManageBankModal, setShowManageBankModal] = useState(false);
   const [showLedgerModal, setShowLedgerModal] = useState(false);
@@ -128,7 +130,16 @@ export default function CashbackWalletPage() {
   }, [uid]);
 
   // No stored balance counter anywhere — always summed live from the
-  // ledger + paid withdrawals, same rule the admin side already follows.
+  // ledger + withdrawals, same rule the admin side already follows.
+  //
+  // Reserves PENDING_ADMIN and APPROVED requests too, not just PAID ones —
+  // otherwise "available" stays unchanged the instant a request is
+  // submitted, and nothing stops the same money being requested again in a
+  // second withdrawal before admin gets to the first one (a real double-
+  // withdrawal risk with more than one request open at once). Excluding
+  // REJECTED specifically is what still makes a rejected request release
+  // its reserved amount back automatically — no manual refund step needed,
+  // exactly like before.
   const { available, pending } = useMemo(() => {
     let released = 0;
     let frozen = 0;
@@ -136,8 +147,8 @@ export default function CashbackWalletPage() {
       if (entry.status === 'RELEASED') released += entry.amount;
       else if (entry.status === 'FROZEN') frozen += entry.amount;
     });
-    const paidOut = withdrawals.filter((w) => w.status === 'PAID').reduce((sum, w) => sum + w.amount, 0);
-    return { available: released - paidOut, pending: frozen };
+    const reserved = withdrawals.filter((w) => w.status !== 'REJECTED').reduce((sum, w) => sum + w.amount, 0);
+    return { available: released - reserved, pending: frozen };
   }, [ledger, withdrawals]);
 
   // Combines released cashback + paid withdrawals into one chronological
@@ -208,7 +219,7 @@ export default function CashbackWalletPage() {
   };
 
   const amountNum = Number(amount.replace(/\D/g, '')) || 0;
-  const isValidAmount = amountNum >= MIN_WITHDRAW && amountNum <= available;
+  const isValidAmount = amountNum >= minWithdraw && amountNum <= available;
   const selectedAccount = bankAccounts.find((a) => a.id === selectedAccountId);
   const newAccNumberError = newBank && newAccNumber ? validateAccountNumber(newBank, newAccNumber) : null;
 
@@ -248,20 +259,38 @@ export default function CashbackWalletPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      await addDoc(collection(getFirebaseDb(), 'withdrawalRequests'), {
+      const requesterName = userName || 'Khách hàng';
+      const requesterEmail = userEmail || uid;
+      // Pre-generated so the id is known BEFORE the doc is written — needed
+      // to send it as the Telegram "✅ Xác nhận đã thanh toán" button's
+      // callback_data and to fold the Telegram message's own chat/message
+      // id back into this same create call (a plain customer can create
+      // their own request, but firestore.rules only lets admin/the payment
+      // bot UPDATE one afterwards — see workers/telegram-bot).
+      const ref = doc(collection(getFirebaseDb(), 'withdrawalRequests'));
+      const telegramRef = await notifyWithdrawalRequestToTelegram({
+        requestId: ref.id,
+        requesterName,
+        requesterEmail,
+        bank: selectedAccount.bank,
+        accountNumber: selectedAccount.accountNumber,
+        accountHolder: selectedAccount.accountHolder,
+        amount: amountNum,
+        amountLabel: formatCurrency(amountNum, lang),
+      });
+      await setDoc(ref, {
         userId: uid,
         amount: amountNum,
         bank: selectedAccount.bank,
         accountNumber: selectedAccount.accountNumber,
         accountHolder: selectedAccount.accountHolder,
         method: `${selectedAccount.bank} • ${selectedAccount.accountNumber} (${selectedAccount.accountHolder})`,
+        requesterName,
+        requesterEmail,
         status: 'PENDING_ADMIN',
         requestedAt: serverTimestamp(),
-      });
-      notifyWithdrawalRequestToTelegram({
-        requesterLabel: `${userName || 'Khách hàng'} (${userEmail || uid})`,
-        amountLabel: formatCurrency(amountNum, lang),
-        method: `${selectedAccount.bank} • ${selectedAccount.accountNumber} (${selectedAccount.accountHolder})`,
+        telegramChatId: telegramRef?.chatId ?? null,
+        telegramMessageId: telegramRef?.messageId ?? null,
       });
       setAmount('');
       setSelectedAccountId('');
@@ -313,7 +342,7 @@ export default function CashbackWalletPage() {
 
           <div className="wd-notice">
             ⚠️ {t('wd_notice_title')}
-            <p>{t('wd_notice_desc').replace('{min}', formatCurrency(MIN_WITHDRAW, lang))}</p>
+            <p>{t('wd_notice_desc').replace('{min}', formatCurrency(minWithdraw, lang))}</p>
           </div>
 
           <div className="two-column-grid">
@@ -323,7 +352,7 @@ export default function CashbackWalletPage() {
                 <span className="promo-icon-badge" style={{ background: '#dcfce7', color: '#15803d' }}>⬇️</span>
                 <div>
                   <h3>{t('wd_create_title')}</h3>
-                  <p className="muted-copy">{t('wd_create_min').replace('{min}', formatCurrency(MIN_WITHDRAW, lang))}</p>
+                  <p className="muted-copy">{t('wd_create_min').replace('{min}', formatCurrency(minWithdraw, lang))}</p>
                 </div>
               </div>
 
@@ -338,10 +367,10 @@ export default function CashbackWalletPage() {
                   onChange={(e) => setAmount(e.target.value)}
                 />
               </div>
-              {amount && amountNum < MIN_WITHDRAW && (
-                <p className="admin-gate-error" style={{ marginTop: 6 }}>{t('wd_min_error').replace('{min}', formatCurrency(MIN_WITHDRAW, lang))}</p>
+              {amount && amountNum < minWithdraw && (
+                <p className="admin-gate-error" style={{ marginTop: 6 }}>{t('wd_min_error').replace('{min}', formatCurrency(minWithdraw, lang))}</p>
               )}
-              {amount && amountNum >= MIN_WITHDRAW && amountNum > available && (
+              {amount && amountNum >= minWithdraw && amountNum > available && (
                 <p className="admin-gate-error" style={{ marginTop: 6 }}>Số dư của bạn không đủ để thực hiện lệnh rút này (khả dụng: {formatCurrency(available, lang)}).</p>
               )}
 
@@ -376,6 +405,7 @@ export default function CashbackWalletPage() {
               >
                 {submitting ? 'Đang gửi...' : submitted ? '✓ Đã gửi yêu cầu' : `⬇️ ${t('wd_submit_btn')}`}
               </button>
+              <p className="muted-copy" style={{ fontSize: '0.78rem', marginTop: 8 }}>{t('wd_processing_time')}</p>
             </section>
 
             {/* History */}

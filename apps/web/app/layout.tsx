@@ -4,6 +4,7 @@ import './globals.css';
 import { LanguageProvider } from '../lib/i18n';
 import { ThemeProvider } from '../lib/theme';
 import { AuthProvider } from '../lib/auth';
+import { PwaInstallProvider } from '../lib/pwaInstall';
 import { BackToTop } from '../components/ui/BackToTop';
 
 // Be Vietnam Pro — built specifically for Vietnamese diacritics (sharper
@@ -19,6 +20,7 @@ const beVietnamPro = Be_Vietnam_Pro({
 export const metadata: Metadata = {
   title: 'Hoàn Tiền DV',
   description: 'Multi-marketplace affiliate cashback platform for Shopee, TikTok Shop and Lazada',
+  manifest: '/manifest.json',
 };
 
 export const viewport: Viewport = {
@@ -27,6 +29,7 @@ export const viewport: Viewport = {
   minimumScale: 1,
   maximumScale: 5,
   userScalable: true,
+  themeColor: '#0096ff',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -35,8 +38,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider>
           <LanguageProvider>
-            <AuthProvider>{children}</AuthProvider>
-            <BackToTop />
+            <PwaInstallProvider>
+              <AuthProvider>{children}</AuthProvider>
+              <BackToTop />
+            </PwaInstallProvider>
           </LanguageProvider>
         </ThemeProvider>
       </body>

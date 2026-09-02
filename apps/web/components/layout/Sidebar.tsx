@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLanguage, type DictKey } from '../../lib/i18n';
-import { HomeIcon, LinkIcon, WalletIcon, BoxIcon, ReceiptIcon, UsersIcon, HeadsetIcon, GearIcon } from '../ui/Icons';
+import { HomeIcon, LinkIcon, WalletIcon, BoxIcon, ReceiptIcon, TicketIcon, UsersIcon, HeadsetIcon, GearIcon } from '../ui/Icons';
 
 type SidebarItem = {
   icon: React.ReactNode;
@@ -20,6 +20,7 @@ const topItems: SidebarItem[] = [
 const bottomItems: SidebarItem[] = [
   { icon: <WalletIcon size={16} />, color: '#16a34a', labelKey: 'sidebar_wallet', href: '/cashback-wallet' },
   { icon: <BoxIcon size={16} />, color: '#f59e0b', labelKey: 'sidebar_orders', href: '/orders' },
+  { icon: <TicketIcon size={16} />, color: '#0d9488', labelKey: 'sidebar_link_history', href: '/link-history' },
   { icon: <ReceiptIcon size={16} />, color: '#8b5cf6', labelKey: 'sidebar_order_status', href: '/cashback' },
   { icon: <UsersIcon size={16} />, color: '#6366f1', labelKey: 'sidebar_referrals', href: '/referrals' },
   { icon: <HeadsetIcon size={16} />, color: '#0ea5e9', labelKey: 'sidebar_support', href: '/support' },

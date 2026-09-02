@@ -11,6 +11,24 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Build project
+        # Next.js bakes NEXT_PUBLIC_* values into the static bundle at BUILD
+        # time (not read at runtime) — so they must be present as real env
+        # vars for this exact step, sourced from GitHub Actions Secrets
+        # instead of an .env.local file (which only ever exists on a local
+        # machine and is gitignored on purpose). Add each of these under
+        # this repo's Settings → Secrets and variables → Actions.
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+          NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID }}
+          NEXT_PUBLIC_TELEGRAM_BOT_TOKEN: ${{ secrets.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN }}
+          NEXT_PUBLIC_TELEGRAM_CHAT_ID: ${{ secrets.NEXT_PUBLIC_TELEGRAM_CHAT_ID }}
+          NEXT_PUBLIC_SCRAPER_WORKER_URL: ${{ secrets.NEXT_PUBLIC_SCRAPER_WORKER_URL }}
         run: npm run build
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:

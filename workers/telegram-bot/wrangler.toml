@@ -1,0 +1,13 @@
+name = "hoantiendv-telegram-bot"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+FIREBASE_PROJECT_ID = "hoantiendv"
+
+# Secrets (never put these here — set via `wrangler secret put <NAME>`):
+#   TELEGRAM_BOT_TOKEN      same bot token as apps/web's NEXT_PUBLIC_TELEGRAM_BOT_TOKEN
+#   TELEGRAM_WEBHOOK_SECRET random string you invent — also passed to setWebhook's secret_token
+#   FIREBASE_API_KEY        same as apps/web's NEXT_PUBLIC_FIREBASE_API_KEY
+#   BOT_EMAIL               email of the dedicated Firebase Auth "payment bot" account
+#   BOT_PASSWORD            password of that same account

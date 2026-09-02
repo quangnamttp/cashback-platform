@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { mockPlatforms } from '../../lib/mock-data';
-import { createOrReuseRedirect, voucherMatchesMarketplace, type Platform } from '../../lib/redirectLink';
+import { createOrReuseRedirect, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type Platform } from '../../lib/redirectLink';
 import { COMMISSION_SPLIT } from '../../lib/orderEntry';
-import { fetchProductPreview, type ProductPreview } from '../../lib/productPreview';
+import { subscribeSystemRates, DEFAULT_RATES, ASSUMED_ORDER_VALUE, type SystemRates } from '../../lib/systemConfig';
+import { fetchProductPreview, extractProductNameFromUrl, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
 import { AppShell } from '../../components/layout/AppShell';
@@ -14,16 +15,10 @@ import { RequireAuth } from '../../components/layout/RequireAuth';
 import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { SocialPlatformIcon } from '../../components/ui/SocialPlatformIcons';
 import { VoucherTicket, PLATFORM_ACCENT } from '../../components/ui/VoucherTicket';
-import { ReceiptIcon, UsersIcon } from '../../components/ui/Icons';
+import { ReceiptIcon, UsersIcon, LinkIcon } from '../../components/ui/Icons';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
 import { usePageTitle } from '../../lib/use-page-title';
-
-const PLATFORM_RATE: Record<Platform, number> = {
-  SHOPEE: 0.04,
-  TIKTOK_SHOP: 0.03,
-  LAZADA: 0.05,
-};
 
 const PLATFORM_LABEL: Record<Platform, string> = {
   SHOPEE: 'Shopee',
@@ -31,12 +26,24 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   LAZADA: 'Lazada',
 };
 
-const ASSUMED_ORDER_VALUE = 100000;
+// Reference order sizes shown when we couldn't read a real price — spans
+// cheap-item to appliance-tier so a customer with a 500k+ cart isn't left
+// staring at a single "3.000đ" that looks like the site is worthless for
+// anything but small orders.
+const CASHBACK_ESTIMATE_TIERS = [100_000, 500_000, 1_000_000];
 
 type CheckResult =
   | { status: 'unsupported' }
   | { status: 'error' }
-  | { status: 'supported'; platformCode: Platform; platform: string; estimatedCashback: number; redirectUrl: string; cacheHit: boolean };
+  | {
+      status: 'supported';
+      platformCode: Platform;
+      platform: string;
+      code: string;
+      redirectUrl: string;
+      destinationUrl: string;
+      cacheHit: boolean;
+    };
 
 type Voucher = {
   id: string;
@@ -100,6 +107,14 @@ export default function GetCashbackLinkPage() {
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<ProductPreview | null>(null);
   const previewRequestRef = useRef(0);
+  const [rates, setRates] = useState<SystemRates>(DEFAULT_RATES);
+  const platformRate: Record<Platform, number> = {
+    SHOPEE: rates.shopeeRate,
+    TIKTOK_SHOP: rates.tiktokRate,
+    LAZADA: rates.lazadaRate,
+  };
+
+  useEffect(() => subscribeSystemRates(setRates), []);
 
   useEffect(() => {
     setCountdown(getNextSlotInfo());
@@ -116,6 +131,16 @@ export default function GetCashbackLinkPage() {
   }, []);
 
   const detectedPlatform = result?.status === 'supported' ? result.platformCode : null;
+
+  // Recomputed live (not fixed at the moment the link was checked) so it
+  // updates the instant a real price resolves from the scraper — using the
+  // real price when we have one, the same reference order value as before
+  // otherwise.
+  const hasRealPrice = typeof productPreview?.price === 'number';
+  const estimatedCashback =
+    result?.status === 'supported'
+      ? Math.round((productPreview?.price ?? ASSUMED_ORDER_VALUE) * (platformRate[result.platformCode] ?? 0))
+      : 0;
 
   const filteredVouchers = useMemo(() => {
     const group = platformGroups.find((g) => g.key === activeGroup) ?? platformGroups[0];
@@ -155,28 +180,58 @@ export default function GetCashbackLinkPage() {
     setSelectedVoucherId(null);
     setProductPreview(null);
     try {
-      const data = await createOrReuseRedirect(uid, link);
+      // A share/shortlink (s.shopee.vn, vt.tiktok.com, ...) isn't itself a
+      // product URL — normalizeProductUrl only strips/sorts query params,
+      // it doesn't follow redirects, so tagging the bare shortlink with our
+      // own tracking param instead of the real resolved product URL would
+      // generate a "Mua ngay" link the marketplace can't attribute a
+      // purchase against. Resolve it first when the Worker is configured;
+      // on failure fall back to the original link rather than block link
+      // creation entirely — a link generated from the unresolved shortlink
+      // still works for the customer, it just won't track properly.
+      const targetLink = isShortlink(link) ? (await resolveShortlink(link)) || link : link;
+      const data = await createOrReuseRedirect(uid, targetLink);
       if (data.status === 'unsupported') {
         setResult({ status: 'unsupported' });
         return;
       }
-      const rate = PLATFORM_RATE[data.platform] ?? 0;
       setResult({
         status: 'supported',
         platformCode: data.platform,
         platform: PLATFORM_LABEL[data.platform] ?? data.platform,
-        estimatedCashback: Math.round(ASSUMED_ORDER_VALUE * rate),
+        code: data.code,
         redirectUrl: data.redirectUrl,
+        destinationUrl: data.destinationUrl,
         cacheHit: data.cacheHit,
       });
 
-      // Best-effort real product title/thumbnail — never blocks the flow
-      // above; if it resolves after the user already changed the link,
-      // the request id guard drops the stale response on the floor.
+      // Immediate, network-free title from the URL's own slug — shows the
+      // instant the check completes instead of a generic "Sản phẩm liên kết
+      // qua X" placeholder. fetchProductPreview below may still replace it
+      // with a real og:title + thumbnail (+ price, when the page's own
+      // structured data has one) if that resolves; if it doesn't
+      // (rate-limited, no preview available, etc.), this stays as the title
+      // instead of silently reverting to the generic fallback.
+      const localTitle = extractProductNameFromUrl(targetLink);
+      if (localTitle) setProductPreview({ title: localTitle });
+
+      // Best-effort real product title/thumbnail/price — never blocks the
+      // flow above; if it resolves after the user already changed the
+      // link, the request id guard drops the stale response on the floor.
+      // Reuses targetLink (already resolved above if it was a shortlink)
+      // instead of re-resolving the same redirect a second time here.
       const requestId = ++previewRequestRef.current;
-      fetchProductPreview(link).then((preview) => {
-        if (previewRequestRef.current === requestId) {
-          setProductPreview(preview);
+      fetchProductPreview(targetLink).then((preview) => {
+        if (previewRequestRef.current === requestId && preview) {
+          setProductPreview((prev) => ({
+            title: preview.title || prev?.title,
+            image: preview.image || prev?.image,
+            price: preview.price,
+          }));
+          // Persisted onto the redirectCache doc so /link-history can show
+          // a real thumbnail/title/price for this link later, not just at
+          // the moment it was first pasted.
+          savePreviewToRedirect(data.code, preview);
         }
       });
     } catch {
@@ -226,9 +281,19 @@ export default function GetCashbackLinkPage() {
   const handleApplyVoucherStandalone = async () => {
     if (!uid || !link.trim()) return;
     try {
-      const r = await createOrReuseRedirect(uid, link.trim());
+      const trimmed = link.trim();
+      const targetLink = isShortlink(trimmed) ? (await resolveShortlink(trimmed)) || trimmed : trimmed;
+      const r = await createOrReuseRedirect(uid, targetLink);
       if (r.status === 'supported') {
-        window.open(r.redirectUrl, '_blank', 'noopener,noreferrer');
+        // Open the marketplace URL directly rather than the intermediate
+        // /go?code= redirector — installed as a PWA in standalone mode, an
+        // in-app *script-driven* navigation (what /go's window.location.
+        // replace() does) tends to stay trapped inside the PWA's own webview
+        // instead of escaping to the system browser/native app the way a
+        // direct, real user-gesture click on an external URL does. /go
+        // itself stays in place for links copied/shared outside the app.
+        window.open(r.destinationUrl, '_blank', 'noopener,noreferrer');
+        recordRedirectHit(r.code);
       }
     } catch (err) {
       console.error('apply voucher redirect failed', err);
@@ -322,9 +387,40 @@ export default function GetCashbackLinkPage() {
                     </div>
                     <div className="quick-product-info-text">
                       <h3 className="quick-product-title">{productPreview?.title || `Sản phẩm liên kết qua ${result.platform}`}</h3>
-                      <div className="quick-product-cashback-inline">
-                        Hoàn tiền dự kiến: <strong>{formatCurrency(result.estimatedCashback, lang)}</strong>
-                      </div>
+                      {hasRealPrice ? (
+                        <div className="quick-product-cashback-inline">
+                          Hoàn tiền dự kiến: <strong>{formatCurrency(estimatedCashback, lang)}</strong>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Shopee/TikTok/Lazada product pages don't publish
+                              real price anywhere a scraper (or even a
+                              JS-rendering proxy — tried, got CAPTCHA'd on
+                              TikTok, empty on Shopee) can read it without
+                              their official affiliate API, so a single fixed
+                              VND number here is always either misleadingly
+                              low (a 500k+ product showing "3.000đ") or high
+                              (a 20k product showing the same "3.000đ" as if
+                              expensive). Showing how it scales across a
+                              couple of realistic order sizes is the honest
+                              version of this estimate — never a `title`
+                              tooltip either, since that never shows on
+                              mobile (no hover on touchscreens). */}
+                          <div className="quick-product-cashback-inline">
+                            Hoàn tiền dự kiến (theo giá trị đơn hàng thật của bạn):
+                          </div>
+                          <div className="quick-product-cashback-tiers">
+                            {CASHBACK_ESTIMATE_TIERS.map((tier) => (
+                              <span key={tier} className="quick-product-cashback-tier">
+                                Đơn {formatCurrency(tier, lang)} → <strong>{formatCurrency(Math.round(tier * (platformRate[result.platformCode] ?? 0)), lang)}</strong>
+                              </span>
+                            ))}
+                          </div>
+                          <p className="quick-product-cashback-note">
+                            Hệ thống chưa đọc được giá thật của sản phẩm này — số tiền hoàn thật được tính lại chính xác theo hoa hồng sàn trả khi đơn hàng được đối soát.
+                          </p>
+                        </>
+                      )}
                       <div
                         className="quick-product-commission-note"
                         title="Đây là % hoa hồng mà sàn thương mại điện tử trả cho chúng tôi trên mỗi đơn hàng — không phải % giá trị đơn hàng. Số tiền hoàn thực tế tùy theo mức hoa hồng thực tế sàn trả cho từng sản phẩm."
@@ -392,7 +488,13 @@ export default function GetCashbackLinkPage() {
                 <button type="button" className="button button-secondary" onClick={() => copyTrackingLink(absoluteRedirectUrl(result.redirectUrl))}>
                   {copied ? '✓' : '📋'} {t('get_link_copy')}
                 </button>
-                <a href={result.redirectUrl} target="_blank" rel="noreferrer" className="button button-primary">
+                <a
+                  href={result.destinationUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="button button-primary"
+                  onClick={() => recordRedirectHit(result.code)}
+                >
                   🛒 {t('get_link_buy_now')}
                 </a>
                 <button
@@ -425,6 +527,10 @@ export default function GetCashbackLinkPage() {
             <Link href="/orders" className="quick-utility-item">
               <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0d9488' }}><ReceiptIcon size={22} /></span></span>
               {t('get_link_history')}
+            </Link>
+            <Link href="/link-history" className="quick-utility-item">
+              <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0369a1' }}><LinkIcon size={22} /></span></span>
+              {t('sidebar_link_history')}
             </Link>
             <Link href="/referrals" className="quick-utility-item">
               <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#6366f1' }}><UsersIcon size={22} /></span></span>

@@ -161,7 +161,7 @@ export default function OrdersPage() {
                     <tr key={item.id}>
                       <td className="order-table-product-cell">
                         <div className="order-table-product">
-                          <OrderThumb imageUrl={item.imageUrl} platform={platformName} size={48} />
+                          <OrderThumb imageUrl={item.imageUrl} platform={platformName} size={36} />
                           <div className="order-table-product-info">
                             <div className="order-card-tags">
                               <span className="order-card-platform">{platformName}</span>

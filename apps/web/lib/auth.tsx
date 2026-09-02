@@ -294,7 +294,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isFirebaseConfigured()) throw new Error(NOT_CONFIGURED_ERROR);
     const auth = getFirebaseAuth();
     await setPersistence(auth, browserLocalPersistence);
-    await signInWithPopup(auth, new GoogleAuthProvider());
+    const provider = new GoogleAuthProvider();
+    // Without this, Google silently reuses whichever Google account is
+    // already active in the browser and skips the picker — fine for a
+    // single-admin site, but this one has TWO admin Gmail accounts
+    // (BOOTSTRAP_ADMIN_EMAILS) that need to switch between each other on
+    // the same machine/browser without first signing out of Google itself.
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await signInWithPopup(auth, provider);
   }, []);
 
   const logout = useCallback(() => {

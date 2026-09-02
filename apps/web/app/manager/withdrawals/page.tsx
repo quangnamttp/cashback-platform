@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useEffect, useMemo, useState } from 'react';
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/adminAudit';
+import { syncWithdrawalStatusToTelegram } from '../../../lib/telegram';
 import { ADMIN_WALLET_ID } from '../../../lib/orderEntry';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { Modal } from '../../../components/ui/Modal';
@@ -29,12 +30,18 @@ type WithdrawalRequest = {
   bank?: string;
   accountNumber?: string;
   accountHolder?: string;
+  requesterName?: string;
+  requesterEmail?: string;
   status: 'PENDING_ADMIN' | 'APPROVED' | 'REJECTED' | 'PAID';
   requestedAt?: { toDate: () => Date };
   rejectionReason?: string;
+  telegramChatId?: string | null;
+  telegramMessageId?: number | null;
 };
 
 type UserOption = { id: string; fullName?: string; email?: string };
+
+type LedgerEntry = { userId: string; amount: number; status: 'FROZEN' | 'RELEASED' | 'REJECTED' };
 
 const statusBadge: Record<string, string> = {
   PENDING_ADMIN: 'badge-warning',
@@ -63,6 +70,7 @@ export default function AdminWithdrawalsPage() {
   const { uid, userEmail } = useAuth();
   const [rows, setRows] = useState<WithdrawalRequest[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<WithdrawalRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -77,13 +85,45 @@ export default function AdminWithdrawalsPage() {
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
       setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserOption)));
     });
+    const unsubLedger = onSnapshot(collection(db, 'cashbackLedger'), (snap) => {
+      setLedger(snap.docs.map((d) => d.data() as LedgerEntry));
+    });
     return () => {
       unsubRows();
       unsubUsers();
+      unsubLedger();
     };
   }, []);
 
   const pendingCount = rows.filter((row) => row.status === 'PENDING_ADMIN').length;
+
+  // Same "available = released − reserved" formula the customer's own
+  // wallet page shows them (cashback-wallet/page.tsx) — computed here too
+  // because nothing server-side stops a withdrawal request's `amount` from
+  // exceeding it (firestore.rules can't sum a collection to check a
+  // balance). Without this, approving/marking-paid means trusting whatever
+  // number is on the request doc with no way to notice an over-request.
+  // ADMIN_WALLET's own revenue withdrawals aren't in cashbackLedger (that's
+  // a separate 20%-of-ledger calculation on /manager/wallet), so this
+  // check only applies to real customers.
+  const availableByUser = useMemo(() => {
+    const released = new Map<string, number>();
+    ledger.forEach((entry) => {
+      if (entry.status !== 'RELEASED') return;
+      released.set(entry.userId, (released.get(entry.userId) ?? 0) + entry.amount);
+    });
+    const reserved = new Map<string, number>();
+    rows.forEach((row) => {
+      if (row.status === 'REJECTED') return;
+      reserved.set(row.userId, (reserved.get(row.userId) ?? 0) + row.amount);
+    });
+    const result = new Map<string, number>();
+    const userIds = new Set([...released.keys(), ...reserved.keys()]);
+    userIds.forEach((userId) => {
+      result.set(userId, (released.get(userId) ?? 0) - (reserved.get(userId) ?? 0));
+    });
+    return result;
+  }, [ledger, rows]);
 
   const filteredRows = rows.filter((row) => {
     const matchesStatus =
@@ -119,6 +159,30 @@ export default function AdminWithdrawalsPage() {
         decidedAt: serverTimestamp(),
         ...(decision === 'REJECT' ? { rejectionReason: reason || '' } : {}),
       });
+      if (decision === 'MARK_PAID' || decision === 'REJECT') {
+        // Keeps the Telegram buttons in sync when admin decides from the
+        // web instead of tapping them in Telegram — otherwise those
+        // buttons would still look tappable for an already-settled
+        // request. (APPROVE has no Telegram button of its own — that step
+        // only exists on the web side — so nothing to sync for it.)
+        const row = rows.find((r) => r.id === requestId);
+        if (row?.telegramChatId && row.telegramMessageId) {
+          syncWithdrawalStatusToTelegram(
+            { chatId: row.telegramChatId, messageId: row.telegramMessageId },
+            {
+              requesterName: row.requesterName || requesterLabel(users, row.userId),
+              requesterEmail: row.requesterEmail || users.find((u) => u.id === row.userId)?.email || '—',
+              bank: row.bank ?? row.method,
+              accountNumber: row.accountNumber ?? '',
+              accountHolder: row.accountHolder ?? '',
+              amount: row.amount,
+              amountLabel: formatCurrency(row.amount, lang),
+              requestId: row.id,
+            },
+            decision === 'MARK_PAID' ? 'paid' : 'rejected',
+          );
+        }
+      }
       await logAdminAction({
         actorUid: uid,
         actorEmail: userEmail,
@@ -130,6 +194,21 @@ export default function AdminWithdrawalsPage() {
       console.error('decide withdrawal failed', err);
     } finally {
       setBusyId(null);
+    }
+  };
+
+  // Only REJECTED requests can ever be deleted (see firestore.rules) — a
+  // real APPROVED/PAID request stays a permanent audit trail. Exists so
+  // Admin can clear mistaken/test entries out of this list.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deleteRejected = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteDoc(doc(getFirebaseDb(), 'withdrawalRequests', id));
+    } catch (err) {
+      console.error('delete rejected withdrawal failed', err);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -173,6 +252,7 @@ export default function AdminWithdrawalsPage() {
                 <th>Mã lệnh</th>
                 <th>Người rút</th>
                 <th>Số tiền</th>
+                <th>Số dư khả dụng của khách</th>
                 <th>Phương thức</th>
                 <th>Số TK / SĐT</th>
                 <th>Chủ tài khoản</th>
@@ -187,6 +267,21 @@ export default function AdminWithdrawalsPage() {
                   <td><CopyIdChip value={row.id} /></td>
                   <td>{requesterLabel(users, row.userId)}</td>
                   <td><strong>{formatCurrency(row.amount, lang)}</strong></td>
+                  <td>
+                    {row.userId === ADMIN_WALLET_ID ? (
+                      <span className="muted-copy">—</span>
+                    ) : (
+                      (() => {
+                        const bal = availableByUser.get(row.userId) ?? 0;
+                        return (
+                          <span style={bal < 0 ? { color: '#dc2626', fontWeight: 600 } : undefined}>
+                            {formatCurrency(bal, lang)}
+                            {bal < 0 && ' ⚠️ Vượt số dư'}
+                          </span>
+                        );
+                      })()
+                    )}
+                  </td>
                   <td>{row.bank ?? row.method}</td>
                   <td>{row.accountNumber ?? '—'}</td>
                   <td>{row.accountHolder ?? '—'}</td>
@@ -210,15 +305,22 @@ export default function AdminWithdrawalsPage() {
                         <button className="btn-reject" disabled={busyId === row.id} onClick={() => openReject(row)}>Từ chối</button>
                       </div>
                     )}
-                    {(row.status === 'REJECTED' || row.status === 'PAID') && (
-                      <span className="muted-copy">Đã xử lý</span>
+                    {row.status === 'PAID' && <span className="muted-copy">Đã xử lý</span>}
+                    {row.status === 'REJECTED' && (
+                      <button
+                        className="btn-reject"
+                        disabled={deletingId === row.id}
+                        onClick={() => deleteRejected(row.id)}
+                      >
+                        {deletingId === row.id ? 'Đang xoá...' : '🗑 Xoá'}
+                      </button>
                     )}
                   </td>
                 </tr>
               ))}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="muted-copy">Không tìm thấy yêu cầu rút tiền phù hợp.</td>
+                  <td colSpan={10} className="muted-copy">Không tìm thấy yêu cầu rút tiền phù hợp.</td>
                 </tr>
               )}
             </tbody>
@@ -229,9 +331,13 @@ export default function AdminWithdrawalsPage() {
       <p className="mock-note">
         Dữ liệu thật từ Firestore (collection <code>withdrawalRequests</code>), gồm cả lệnh rút của khách hàng và lệnh
         rút doanh thu 20% của Admin (đánh dấu &quot;Ví tổng Admin&quot;). Chưa tích hợp API ngân hàng/ví thật — Admin
-        luôn cần chuyển khoản thủ công rồi bấm &quot;Đã thanh toán&quot;. Từ chối một lệnh không cần hoàn tiền thủ công:
-        số dư luôn được tính trực tiếp từ lịch sử đã <code>RELEASED</code> trừ các lệnh đã <code>PAID</code>, nên một
-        lệnh bị từ chối trước khi thanh toán không hề làm mất tiền của người rút.
+        luôn cần chuyển khoản thủ công rồi bấm &quot;Đã thanh toán&quot;. Ngay khi 1 lệnh được tạo, số tiền đó đã bị
+        giữ lại khỏi số dư khả dụng của người rút (kể cả khi lệnh còn đang &quot;Chờ duyệt&quot;) — tránh việc tạo
+        nhiều lệnh rút cùng lúc vượt quá số dư thật. Từ chối một lệnh không cần hoàn tiền thủ công: số tiền tự động
+        trả lại vào số dư ngay khi bấm &quot;Từ chối&quot;. Cột &quot;Số dư khả dụng của khách&quot; hiển thị số dư
+        thật của khách <strong>sau khi</strong> trừ hết các lệnh rút chưa bị từ chối (kể cả lệnh này) — nếu hiện âm
+        (⚠️) nghĩa là tổng các lệnh rút của khách này đã vượt quá số tiền họ thực sự có, cần kiểm tra kỹ trước khi
+        duyệt/thanh toán.
       </p>
 
       <Modal open={!!rejectTarget} onClose={() => setRejectTarget(null)}>

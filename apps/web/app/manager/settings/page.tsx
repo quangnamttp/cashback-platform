@@ -7,10 +7,14 @@ import { usePageTitle } from '../../../lib/use-page-title';
 import { useAuth, BOOTSTRAP_ADMIN_EMAILS } from '../../../lib/auth';
 import { isGoogleDriveConfigured } from '../../../lib/googleDrive';
 import { backupOldAuditLogs } from '../../../lib/backupLogs';
+import { subscribeSystemRates, saveSystemRates, DEFAULT_RATES, type SystemRates } from '../../../lib/systemConfig';
+import { useLanguage } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/currency';
 
 export default function AdminSettingsPage() {
   usePageTitle('Cấu hình hệ thống');
-  const { userEmail } = useAuth();
+  const { userEmail, logout } = useAuth();
+  const { lang } = useLanguage();
 
   const [showAutoReplyForm, setShowAutoReplyForm] = useState(false);
   const [autoReply, setAutoReply] = useState(DEFAULT_AUTO_REPLY);
@@ -20,9 +24,33 @@ export default function AdminSettingsPage() {
   const [backingUp, setBackingUp] = useState(false);
   const [backupResult, setBackupResult] = useState<{ count: number; webViewLink: string } | 'error' | null>(null);
 
+  const [rates, setRates] = useState<SystemRates>(DEFAULT_RATES);
+  const [ratesForm, setRatesForm] = useState<SystemRates>(DEFAULT_RATES);
+  const [showRatesForm, setShowRatesForm] = useState(false);
+  const [savingRates, setSavingRates] = useState(false);
+  const [ratesSaved, setRatesSaved] = useState(false);
+
   useEffect(() => {
     setAutoReply(loadAutoReplyMessage());
   }, []);
+
+  useEffect(() => {
+    return subscribeSystemRates((r) => {
+      setRates(r);
+      setRatesForm(r);
+    });
+  }, []);
+
+  const handleSaveRates = async () => {
+    setSavingRates(true);
+    try {
+      await saveSystemRates(ratesForm);
+      setRatesSaved(true);
+      setTimeout(() => setRatesSaved(false), 2000);
+    } finally {
+      setSavingRates(false);
+    }
+  };
 
   const handleSaveAutoReply = () => {
     saveAutoReplyMessage(autoReply);
@@ -53,25 +81,72 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
-      <section className="two-column-grid">
-        <div className="panel">
-          <h3>Tỷ lệ hoàn tiền mặc định</h3>
-          <p className="muted-copy">Cấu hình % hoàn tiền mặc định theo từng sàn (Shopee, Lazada, TikTok Shop).</p>
-          <div className="profile-grid">
-            <div><span className="field-label">Shopee</span><strong>4%</strong></div>
-            <div><span className="field-label">Lazada</span><strong>5%</strong></div>
-            <div><span className="field-label">TikTok Shop</span><strong>3%</strong></div>
-          </div>
+      <section className="panel">
+        <div className="panel-header">
+          <h3>💰 Tỷ lệ hoàn tiền &amp; ngưỡng rút tiền</h3>
+          <button
+            className="button button-secondary"
+            onClick={() => {
+              setRatesForm(rates);
+              setShowRatesForm((v) => !v);
+            }}
+          >
+            {showRatesForm ? 'Đóng' : 'Chỉnh sửa'}
+          </button>
         </div>
+        <p className="muted-copy">
+          Dữ liệu thật từ Firestore (<code>systemConfig/rates</code>) — % hoàn tiền dùng để ước tính ở trang &quot;Nhận
+          hoàn tiền&quot;, ngưỡng rút tiền áp dụng ngay khi khách tạo yêu cầu rút ở Ví tiền.
+        </p>
 
-        <div className="panel">
-          <h3>Ngưỡng rút tiền</h3>
-          <p className="muted-copy">Số tiền tối thiểu người dùng có thể yêu cầu rút.</p>
-          <div className="profile-grid">
-            <div><span className="field-label">Ngưỡng tối thiểu</span><strong>₫50.000</strong></div>
-            <div><span className="field-label">Thời gian xử lý</span><strong>1-3 ngày làm việc</strong></div>
+        {!showRatesForm ? (
+          <div className="profile-grid" style={{ marginTop: 14 }}>
+            <div><span className="field-label">Shopee</span><strong>{Math.round(rates.shopeeRate * 100)}%</strong></div>
+            <div><span className="field-label">Lazada</span><strong>{Math.round(rates.lazadaRate * 100)}%</strong></div>
+            <div><span className="field-label">TikTok Shop</span><strong>{Math.round(rates.tiktokRate * 100)}%</strong></div>
+            <div><span className="field-label">Ngưỡng rút tối thiểu</span><strong>{formatCurrency(rates.minWithdraw, lang)}</strong></div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="two-column-grid" style={{ marginTop: 14 }}>
+              <label>
+                <span className="field-label">Shopee (%)</span>
+                <input
+                  type="number" min={0} max={100} step={0.1}
+                  value={Math.round(ratesForm.shopeeRate * 1000) / 10}
+                  onChange={(e) => setRatesForm((f) => ({ ...f, shopeeRate: (Number(e.target.value) || 0) / 100 }))}
+                />
+              </label>
+              <label>
+                <span className="field-label">Lazada (%)</span>
+                <input
+                  type="number" min={0} max={100} step={0.1}
+                  value={Math.round(ratesForm.lazadaRate * 1000) / 10}
+                  onChange={(e) => setRatesForm((f) => ({ ...f, lazadaRate: (Number(e.target.value) || 0) / 100 }))}
+                />
+              </label>
+              <label>
+                <span className="field-label">TikTok Shop (%)</span>
+                <input
+                  type="number" min={0} max={100} step={0.1}
+                  value={Math.round(ratesForm.tiktokRate * 1000) / 10}
+                  onChange={(e) => setRatesForm((f) => ({ ...f, tiktokRate: (Number(e.target.value) || 0) / 100 }))}
+                />
+              </label>
+              <label>
+                <span className="field-label">Ngưỡng rút tối thiểu (đ)</span>
+                <input
+                  type="number" min={0} step={1000}
+                  value={ratesForm.minWithdraw}
+                  onChange={(e) => setRatesForm((f) => ({ ...f, minWithdraw: Number(e.target.value) || 0 }))}
+                />
+              </label>
+            </div>
+            <button className="button button-primary" style={{ marginTop: 12 }} onClick={handleSaveRates} disabled={savingRates}>
+              {savingRates ? 'Đang lưu...' : ratesSaved ? '✓ Đã lưu' : 'Lưu thay đổi'}
+            </button>
+          </>
+        )}
       </section>
 
       <section className="panel">
@@ -119,6 +194,9 @@ export default function AdminSettingsPage() {
           Admin cho tài khoản khác ở bất kỳ đâu trong hệ thống — vai trò <code>role</code> bị khoá vĩnh viễn ngay từ
           lúc tài khoản được tạo, không ai (kể cả Admin) có thể sửa lại sau đó.
         </p>
+        <button className="button button-secondary" style={{ marginTop: 14 }} onClick={logout}>
+          🚪 Đăng xuất
+        </button>
       </section>
 
       <section className="panel">
@@ -165,7 +243,6 @@ export default function AdminSettingsPage() {
         )}
       </section>
 
-      <p className="mock-note">Cấu hình tỷ lệ hoàn tiền và ngưỡng rút tiền phía trên vẫn là dữ liệu minh họa (mock) — chưa nối vào cấu hình thật.</p>
     </AdminShell>
   );
 }

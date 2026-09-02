@@ -31,6 +31,20 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // The Telegram "✅ Đã thanh toán" button (workers/telegram-bot) signs in
+    // as this ONE dedicated Firebase Auth account to write back to
+    // Firestore, instead of an Admin SDK service-account key — a leaked
+    // Admin SDK key bypasses every rule in this whole file, while a leaked
+    // credential for this account can only ever do the one thing
+    // withdrawalRequests/update below allows it to do. Not an admin: this
+    // identity is never checked by isAdmin() and grants nothing anywhere
+    // else in this database. Replace the placeholder with the real uid of
+    // that account (Firebase Console → Authentication → Users) before
+    // deploying the Worker.
+    function isPaymentBot() {
+      return isSignedIn() && request.auth.uid == 'eMg2P3tFgGgZQCDDy6GEslQpWDt2';
+    }
+
     match /users/{uid} {
       // Also readable by whoever referred this account — /referrals shows
       // "who signed up with my code" by querying where('referredBy','==',
@@ -95,6 +109,15 @@ service cloud.firestore {
       }
     }
 
+    // Public, real values behind the "hoàn tiền dự kiến" estimate on
+    // /get-cashback-link and the withdrawal minimum on /cashback-wallet —
+    // readable by anyone (including logged-out visitors browsing before
+    // signing in), editable only by the admin from /manager/settings.
+    match /systemConfig/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Admin-only writes: orders/ledger/fraud are entered manually by the
     // admin (writeBatch, done together with the linked order) instead of a
     // server trigger reacting automatically.
@@ -113,7 +136,7 @@ service cloud.firestore {
     }
 
     match /withdrawalRequests/{requestId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot();
       // Two allowed shapes: a regular user withdrawing their own cashback,
       // or the admin withdrawing the platform's 20% share out of the
       // virtual ADMIN_WALLET (never the admin's own personal uid, so it can
@@ -123,8 +146,15 @@ service cloud.firestore {
         && request.resource.data.status == 'PENDING_ADMIN'
         && ((request.resource.data.userId == request.auth.uid)
             || (isAdmin() && request.resource.data.userId == 'ADMIN_WALLET'));
-      allow update: if isAdmin();
-      allow delete: if false;
+      allow update: if isAdmin()
+        || (isPaymentBot()
+            && resource.data.status in ['PENDING_ADMIN', 'APPROVED']
+            && request.resource.data.status in ['PAID', 'REJECTED']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'decidedBy', 'rejectionReason']));
+      // A REJECTED request never moved real money — safe for Admin to clear
+      // a mistaken/test entry out of the history list. APPROVED/PAID stay
+      // permanently undeletable (real audit trail).
+      allow delete: if isAdmin() && resource.data.status == 'REJECTED';
     }
 
     match /fraudSignals/{signalId} {

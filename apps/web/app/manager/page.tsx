@@ -19,6 +19,14 @@ const RISK_LABEL: Record<FraudSignal['riskLevel'], string> = {
   LOW: 'Thấp',
 };
 
+// A session doc never expires or gets cleaned up automatically (see
+// lib/auth.tsx) — someone who logged in once months ago and never came
+// back stays counted as "active" forever unless Admin manually revokes it
+// from /manager/devices. This stat only ever means something as a live
+// "who's actually around right now" number if it's also gated by recent
+// activity — otherwise it only grows and reads as fake/inflated over time.
+const RECENT_SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export default function AdminPage() {
   usePageTitle('Tổng quan quản trị');
   const [userCount, setUserCount] = useState(0);
@@ -32,7 +40,14 @@ export default function AdminPage() {
     const db = getFirebaseDb();
     const unsubscribers = [
       onSnapshot(collection(db, 'users'), (snap) => setUserCount(snap.size)),
-      onSnapshot(query(collection(db, 'sessions'), where('status', '==', 'ACTIVE')), (snap) => setActiveSessionCount(snap.size)),
+      onSnapshot(query(collection(db, 'sessions'), where('status', '==', 'ACTIVE')), (snap) => {
+        const cutoff = Date.now() - RECENT_SESSION_WINDOW_MS;
+        const recent = snap.docs.filter((d) => {
+          const lastSeenAt = d.data().lastSeenAt as { toMillis?: () => number } | undefined;
+          return typeof lastSeenAt?.toMillis === 'function' && lastSeenAt.toMillis() >= cutoff;
+        });
+        setActiveSessionCount(recent.length);
+      }),
       onSnapshot(query(collection(db, 'orders'), where('status', '==', 'PENDING')), (snap) => setPendingOrderCount(snap.size)),
       // No time gate, no amount tiering — every held entry counts here
       // regardless of size or age (see /manager/payouts).
@@ -47,7 +62,7 @@ export default function AdminPage() {
 
   const stats = [
     { label: 'Người dùng', value: userCount },
-    { label: 'Phiên đang hoạt động', value: activeSessionCount },
+    { label: 'Phiên hoạt động (24h qua)', value: activeSessionCount },
     { label: 'Đơn hàng chờ duyệt', value: pendingOrderCount },
     { label: 'Hoàn tiền chờ giải phóng', value: pendingPayoutCount },
     { label: 'Rút tiền chờ duyệt', value: pendingWithdrawalCount },
@@ -110,8 +125,8 @@ export default function AdminPage() {
       </div>
 
       <p className="mock-note">
-        Số liệu thật, thời gian thực từ Firestore. Riêng hai trang Tiếp thị liên kết và Giới thiệu bên dưới vẫn đang
-        dùng dữ liệu minh họa (mock) — báo mình khi bạn muốn nối nốt sang dữ liệu thật.
+        Số liệu thật, thời gian thực từ Firestore. Riêng tab &quot;Nền tảng affiliate&quot; trong trang Tiếp thị liên
+        kết vẫn là nội dung mô tả tĩnh (không phải số liệu giao dịch) vì chưa có API affiliate thật để nối vào.
       </p>
     </AdminShell>
   );

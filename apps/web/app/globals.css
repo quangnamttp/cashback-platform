@@ -2394,6 +2394,14 @@ p {
   color: var(--text-muted);
 }
 
+.notif-empty {
+  padding: 16px;
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* ==========================================================
    NEW HOMEPAGE: promo banner, welcome/balance card,
    quick utilities, cashback process timeline
@@ -3251,25 +3259,33 @@ p {
 
 .order-table-product-cell {
   white-space: normal;
-  min-width: 260px;
+  min-width: 220px;
+  max-width: 360px;
 }
 
 .order-table-product {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
 }
 
 .order-table-product-info {
   min-width: 0;
 }
 
+/* Single line, ellipsis-truncated instead of wrapping — a long product
+   name must never stretch the row's height or push other columns off
+   the edge of a normal-width viewport. */
 .order-table-product-name {
   display: block;
-  margin: 4px 0;
-  font-size: 0.9rem;
+  margin: 3px 0;
+  font-size: 0.85rem;
   color: var(--text);
-  line-height: 1.4;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .order-table-cashback-cell,
@@ -3278,9 +3294,18 @@ p {
 }
 
 .order-table-date {
-  margin-top: 4px;
-  font-size: 0.72rem;
+  margin-top: 3px;
+  font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+/* Tighter rows than the base .data-table default (12px 10px) — used only
+   on the customer-facing order-style tables (Đơn hàng / Trạng thái đơn
+   hàng / Link đã tạo), which list many rows and benefit from a denser,
+   more scannable layout. */
+.order-data-table th,
+.order-data-table td {
+  padding: 8px 10px;
 }
 
 /* Admin "Nhập đơn hàng" form — sectioned layout */
@@ -3755,6 +3780,16 @@ p {
   width: 100%;
   margin-top: 18px;
   position: relative;
+  /* Base .button is a fixed 44px single-line pill (white-space:nowrap) —
+     right for short labels, but this phrase is long enough to overflow
+     past the pill's own white background on narrow phones instead of
+     wrapping. Let this one button wrap to 2 lines with room to grow. */
+  white-space: normal;
+  height: auto;
+  min-height: 44px;
+  padding: 10px 18px;
+  text-align: center;
+  line-height: 1.3;
 }
 
 .wc-value-v2 {
@@ -4184,6 +4219,11 @@ p {
   justify-content: center;
   background: color-mix(in srgb, var(--store-accent, var(--primary)) 14%, white);
   border: 1.5px solid color-mix(in srgb, var(--store-accent, var(--primary)) 35%, white);
+  /* .store-card is a column flexbox with no align-items set, so a
+     fixed-size child like this defaults to the start (left) edge instead
+     of centering — only the icon centers here, title/description below it
+     stay left-aligned as before. */
+  align-self: center;
 }
 
 .store-card-cta {
@@ -5695,6 +5735,30 @@ p {
   font-weight: 800;
 }
 
+.quick-product-cashback-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+  line-height: 1.4;
+}
+
+.quick-product-cashback-tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px;
+}
+
+.quick-product-cashback-tier {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.quick-product-cashback-tier strong {
+  color: #15803d;
+  font-weight: 800;
+}
+
 /* "80% hoa hồng" framing — never shows the real, lower final rate (3-5%)
    bare on its own, always paired with "hoa hồng tiếp thị" so it can't be
    misread as 80% of the order value. The `title` tooltip carries the
@@ -6496,29 +6560,6 @@ p {
 
 .support-chat-bubble.admin.tail {
   border-top-right-radius: 4px;
-}
-
-.download-platform-tabs {
-  display: flex;
-  gap: 8px;
-  margin: 16px 0;
-}
-
-.download-platform-tabs button {
-  flex: 1;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  font-weight: 700;
-  font-size: 0.88rem;
-  color: var(--text-secondary);
-}
-
-.download-platform-tabs button.active {
-  border-color: var(--primary);
-  background: var(--bg-accent);
-  color: var(--primary-dark);
 }
 
 .download-steps li {

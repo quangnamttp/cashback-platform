@@ -1,0 +1,15 @@
+{
+  "name": "Hoàn Tiền DV",
+  "short_name": "Hoàn Tiền DV",
+  "description": "Nền tảng hoàn tiền / hoa hồng tiếp thị cho Shopee, TikTok Shop và Lazada",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eaf6ff",
+  "theme_color": "#0096ff",
+  "lang": "vi",
+  "icons": [
+    { "src": "/logo.png", "sizes": "500x500", "type": "image/png", "purpose": "any" },
+    { "src": "/logo.png", "sizes": "500x500", "type": "image/png", "purpose": "maskable" }
+  ]
+}

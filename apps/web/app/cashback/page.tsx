@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { AppShell } from '../../components/layout/AppShell';
 import { RequireAuth } from '../../components/layout/RequireAuth';
@@ -28,9 +28,12 @@ type OrderDoc = {
 // not an actual marketplace shipping status — there's no logistics API
 // integration here. CONFIRMED reasonably maps to "fully done" from this
 // site's point of view; PENDING maps to "still being prepared/checked" by
-// admin. CANCELLED/REFUNDED orders aren't shown here since there's no
-// honest progress to depict for them (they still show up in full on the
-// Đơn hàng history page).
+// admin. CANCELLED (admin rejected before ever confirming) isn't shown
+// here since there's no honest progress to depict for it — it still shows
+// up in full on the Đơn hàng history page. REFUNDED (a confirmed order the
+// customer later returned) IS shown, as its own distinct stopped state —
+// it must never simply vanish from this page, since the customer needs to
+// see it reflects a real returned order, not a disappeared one.
 const STAGE_BY_STATUS: Record<'PENDING' | 'CONFIRMED', number> = {
   PENDING: 1,
   CONFIRMED: 3,
@@ -57,6 +60,8 @@ export default function CashbackPage() {
   const [orders, setOrders] = useState<OrderDoc[]>([]);
   const [ledgerByOrder, setLedgerByOrder] = useState<Record<string, number>>({});
   const [hasReferrer, setHasReferrer] = useState(false);
+  const [query_, setQuery] = useState('');
+  const [platformFilter, setPlatformFilter] = useState('all');
 
   useEffect(() => {
     if (!uid) {
@@ -67,7 +72,7 @@ export default function CashbackPage() {
     const unsubscribe = onSnapshot(q, (snap) => {
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...d.data() } as OrderDoc))
-        .filter((o) => o.status === 'PENDING' || o.status === 'CONFIRMED');
+        .filter((o) => o.status !== 'CANCELLED');
       setOrders(rows);
     });
     return unsubscribe;
@@ -103,6 +108,16 @@ export default function CashbackPage() {
   const cashbackFor = (order: OrderDoc) =>
     ledgerByOrder[order.id] ?? computeCommissionSplit(order.commissionAmount, hasReferrer).customerAmount;
 
+  const filteredOrders = useMemo(() => {
+    return orders.filter((row) => {
+      const platformName = PLATFORM_LABEL[row.platform] ?? row.platform;
+      const matchesQuery =
+        row.productName.toLowerCase().includes(query_.toLowerCase()) || row.id.toLowerCase().includes(query_.toLowerCase());
+      const matchesPlatform = platformFilter === 'all' || platformName === platformFilter;
+      return matchesQuery && matchesPlatform;
+    });
+  }, [orders, query_, platformFilter]);
+
   return (
     <RequireAuth>
       <AppShell showRightPanel={false}>
@@ -114,9 +129,28 @@ export default function CashbackPage() {
             </div>
           </div>
 
+          <div className="order-toolbar">
+            <div className="order-search">
+              <span>🔍</span>
+              <input
+                placeholder={t('order_search_placeholder')}
+                value={query_}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} className="order-filter-select">
+              <option value="all">{t('order_filter_all')}</option>
+              <option value="Shopee">Shopee</option>
+              <option value="TikTok Shop">TikTok Shop</option>
+              <option value="Lazada">Lazada</option>
+            </select>
+            <button type="button" className="button button-primary order-search-btn">🔍 Tìm kiếm</button>
+          </div>
+
           <div className="ship-order-list">
-            {orders.map((item) => {
+            {filteredOrders.map((item) => {
               const platformName = PLATFORM_LABEL[item.platform] ?? item.platform;
+              const isRefunded = item.status === 'REFUNDED';
               const stage = STAGE_BY_STATUS[item.status as 'PENDING' | 'CONFIRMED'] ?? 0;
               const date = item.orderDate?.toDate();
               return (
@@ -133,18 +167,28 @@ export default function CashbackPage() {
                     </div>
                     <div className="ship-order-cashback-block">
                       <div className="order-card-cashback">{formatCurrency(cashbackFor(item), lang)}</div>
-                      <span className={shippingStatusPillClass[stage] ?? 'order-pill'}>
-                        ● {t(shippingStatusKeyMap[stage] as any)}
-                      </span>
+                      {isRefunded ? (
+                        <span className="order-pill danger">● Đã trả hàng</span>
+                      ) : (
+                        <span className={shippingStatusPillClass[stage] ?? 'order-pill'}>
+                          ● {t(shippingStatusKeyMap[stage] as any)}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <ShipmentTracker stage={stage} t={t} />
+                  {isRefunded ? (
+                    <p className="muted-copy" style={{ marginTop: 4 }}>
+                      Đơn hàng này đã được ghi nhận trả hàng — các khoản hoàn tiền/hoa hồng liên quan đã bị thu hồi.
+                    </p>
+                  ) : (
+                    <ShipmentTracker stage={stage} t={t} />
+                  )}
                 </div>
               );
             })}
 
-            {orders.length === 0 && (
+            {filteredOrders.length === 0 && (
               <div className="panel empty-state-panel">
                 <span className="promo-icon-badge">📦</span>
                 <p className="muted-copy">{t('order_empty')}</p>
