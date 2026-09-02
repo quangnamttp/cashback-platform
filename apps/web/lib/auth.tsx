@@ -134,7 +134,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const deviceId = getOrCreateDeviceId();
     const deviceType = detectDeviceType();
     const sessionRef = doc(db, 'sessions', `${nextUser.uid}_${deviceId}`);
-    const sessionToken = crypto.randomUUID();
+    // Reuse this browser's existing session token instead of minting a
+    // fresh one on every call — onAuthStateChanged (and therefore this
+    // function) fires again for every NEW TAB of an already-logged-in
+    // browser, since Firebase Auth's own persistence is shared across tabs
+    // of the same browser. deviceId is ALSO shared across those tabs (same
+    // localStorage), so every tab was writing a fresh random token to the
+    // exact same session doc — each new tab's write made the PREVIOUS
+    // tab's onSnapshot listener see a "different" token and self-kick,
+    // even though it was really the same browser kicking itself. A stable
+    // per-browser token makes every tab's (re-)registration a no-op write
+    // for the doc's sessionToken field, so no mismatch, no kick.
+    let sessionToken: string;
+    try {
+      sessionToken = window.localStorage.getItem(SESSION_TOKEN_KEY) || crypto.randomUUID();
+    } catch {
+      sessionToken = crypto.randomUUID();
+    }
 
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(sessionRef);
