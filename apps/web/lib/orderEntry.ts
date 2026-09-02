@@ -3,6 +3,7 @@
 import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { getFirebaseDb } from './firebase';
 import { generateOrderId } from './ids';
+import { notifyCashbackApprovalToTelegram, notifyOrderApprovalToTelegram } from './telegram';
 
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REFUNDED';
 export type Platform = 'SHOPEE' | 'TIKTOK_SHOP' | 'LAZADA';
@@ -98,7 +99,20 @@ async function resolveReferrer(db: ReturnType<typeof getFirebaseDb>, customerUse
   return referrerUid === customerUserId ? null : referrerUid;
 }
 
-function addCommissionLedgerEntries(
+function formatVnd(amount: number): string {
+  return `${Math.round(amount).toLocaleString('vi-VN')} ₫`;
+}
+
+/**
+ * Reads first (never inside the batch — batch.set is sync/local), then
+ * sends the Telegram "duyệt hoàn tiền" notification, THEN builds the
+ * customer's ledger write with that message's chat/message id folded in —
+ * same pre-generate-the-ref-before-writing shape as the withdrawal flow in
+ * cashback-wallet/page.tsx, and for the same reason: the Worker (or a
+ * later web-side decide) needs to edit this exact message later, so its
+ * id has to already be on the doc the moment it's created.
+ */
+async function addCommissionLedgerEntries(
   batch: ReturnType<typeof writeBatch>,
   db: ReturnType<typeof getFirebaseDb>,
   params: { orderId: string; customerUserId: string; referrerUid: string | null; commissionAmount: number },
@@ -106,13 +120,32 @@ function addCommissionLedgerEntries(
   const split = computeCommissionSplit(params.commissionAmount, !!params.referrerUid);
 
   if (split.customerAmount > 0) {
-    batch.set(doc(collection(db, 'cashbackLedger')), {
+    const customerSnap = await getDoc(doc(db, 'users', params.customerUserId));
+    const customerData = customerSnap.exists() ? customerSnap.data() : null;
+    const requesterName: string = customerData?.fullName || customerData?.email || params.customerUserId;
+    const requesterEmail: string = customerData?.email || '—';
+
+    const ledgerRef = doc(collection(db, 'cashbackLedger'));
+    const telegramRef = await notifyCashbackApprovalToTelegram({
+      requesterName,
+      requesterEmail,
+      orderId: params.orderId,
+      amount: split.customerAmount,
+      amountLabel: formatVnd(split.customerAmount),
+      ledgerId: ledgerRef.id,
+    });
+
+    batch.set(ledgerRef, {
       userId: params.customerUserId,
       orderId: params.orderId,
       amount: split.customerAmount,
       type: 'CUSTOMER_CASHBACK' as LedgerEntryType,
       status: 'FROZEN',
       confirmedAt: serverTimestamp(),
+      requesterName,
+      requesterEmail,
+      telegramChatId: telegramRef?.chatId ?? null,
+      telegramMessageId: telegramRef?.messageId ?? null,
     });
   }
 
@@ -162,6 +195,32 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
   // Reads that decide the batch's contents happen before we start writing.
   const referrerUid = statusChanged && input.status === 'CONFIRMED' ? await resolveReferrer(db, input.userId) : null;
 
+  // Only for a brand-new order entered as PENDING — never for one created
+  // directly as CONFIRMED/CANCELLED/etc (the admin's own explicit choice
+  // at entry time already skips the approval step, so there's nothing to
+  // notify) and never on a later status change to an already-existing
+  // order (this message is specifically "a new order needs a decision",
+  // not a general order-activity log). Pre-generate nothing extra here —
+  // orderRef already has its final id (generateOrderId() ran above,
+  // synchronously) before this call, so the Telegram message and the
+  // order doc agree on the same id from the start.
+  let orderTelegramRef: { chatId: string; messageId: number } | null = null;
+  if (!existing && input.status === 'PENDING') {
+    const customerSnap = await getDoc(doc(db, 'users', input.userId));
+    const customerData = customerSnap.exists() ? customerSnap.data() : null;
+    orderTelegramRef = await notifyOrderApprovalToTelegram({
+      requesterName: customerData?.fullName || customerData?.email || input.userId,
+      requesterEmail: customerData?.email || '—',
+      productName: input.productName,
+      platformLabel: PLATFORM_LABEL[input.platform] ?? input.platform,
+      orderValue: input.orderValue,
+      orderValueLabel: formatVnd(input.orderValue),
+      commissionAmount: input.commissionAmount,
+      commissionAmountLabel: formatVnd(input.commissionAmount),
+      orderId,
+    });
+  }
+
   const batch = writeBatch(db);
 
   batch.set(orderRef, {
@@ -175,12 +234,17 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
     status: input.status,
     orderDate: existing?.orderDate ?? serverTimestamp(),
     confirmedAt: input.status === 'CONFIRMED' ? serverTimestamp() : existing?.confirmedAt ?? null,
+    ...(orderTelegramRef
+      ? { telegramChatId: orderTelegramRef.chatId, telegramMessageId: orderTelegramRef.messageId }
+      : existing
+        ? {}
+        : { telegramChatId: null, telegramMessageId: null }),
   }, { merge: true });
 
   if (statusChanged && input.status === 'CONFIRMED' && input.commissionAmount > 0) {
     const existingLedger = await getDocs(query(collection(db, 'cashbackLedger'), where('orderId', '==', orderId), limit(1)));
     if (existingLedger.empty) {
-      addCommissionLedgerEntries(batch, db, { orderId, customerUserId: input.userId, referrerUid, commissionAmount: input.commissionAmount });
+      await addCommissionLedgerEntries(batch, db, { orderId, customerUserId: input.userId, referrerUid, commissionAmount: input.commissionAmount });
     }
   }
 
@@ -254,20 +318,27 @@ export async function approveOrdersBatch(orders: PendingOrderForApproval[]): Pro
     const referrerUids = await Promise.all(chunk.map((order) => resolveReferrer(db, order.userId)));
 
     const batch = writeBatch(db);
-    chunk.forEach((order, idx) => {
+    // Sequential, not Promise.all — addCommissionLedgerEntries now sends a
+    // Telegram message per order (the "duyệt hoàn tiền" notification), and
+    // firing a whole chunk of those at once risks tripping Telegram's own
+    // per-chat rate limit on a large bulk approve. One at a time is slower
+    // but never lost — callTelegramApi already treats a failed send as
+    // best-effort and won't block/fail the order approval itself.
+    for (let idx = 0; idx < chunk.length; idx++) {
+      const order = chunk[idx];
       batch.update(doc(db, 'orders', order.id), {
         status: 'CONFIRMED',
         confirmedAt: serverTimestamp(),
       });
       if (order.commissionAmount > 0) {
-        addCommissionLedgerEntries(batch, db, {
+        await addCommissionLedgerEntries(batch, db, {
           orderId: order.id,
           customerUserId: order.userId,
           referrerUid: referrerUids[idx],
           commissionAmount: order.commissionAmount,
         });
       }
-    });
+    }
     await batch.commit();
   }
 }

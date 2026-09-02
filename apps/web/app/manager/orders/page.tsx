@@ -20,6 +20,7 @@ import {
   type OrderStatus,
   type Platform,
 } from '../../../lib/orderEntry';
+import { syncOrderStatusToTelegram } from '../../../lib/telegram';
 import { usePageTitle } from '../../../lib/use-page-title';
 
 const PLATFORM_OPTIONS: { value: Platform; label: string }[] = [
@@ -39,6 +40,8 @@ type OrderRow = {
   commissionAmount: number;
   status: OrderStatus;
   orderDate?: { toDate: () => Date };
+  telegramChatId?: string | null;
+  telegramMessageId?: number | null;
 };
 
 type UserOption = { id: string; fullName?: string; email?: string; referredBy?: string | null };
@@ -154,12 +157,39 @@ export default function AdminOrdersPage() {
     setSelectedIds(allPendingSelected ? new Set() : new Set(pendingOrders.map((o) => o.id)));
   };
 
+  // Keeps the Telegram "duyệt đơn hàng" buttons in sync when admin decides
+  // from the web instead of tapping them in Telegram — otherwise those
+  // buttons would still look tappable for an already-settled order. Only
+  // orders created as PENDING ever got a Telegram message in the first
+  // place (see lib/orderEntry.ts's upsertOrder), so rows missing
+  // telegramChatId/messageId are silently skipped.
+  const syncOrderTelegram = (order: OrderRow, status: 'confirmed' | 'cancelled') => {
+    if (!order.telegramChatId || !order.telegramMessageId) return;
+    const orderUser = users.find((u) => u.id === order.userId);
+    syncOrderStatusToTelegram(
+      { chatId: order.telegramChatId, messageId: order.telegramMessageId },
+      {
+        requesterName: orderUser?.fullName || orderUser?.email || order.userId,
+        requesterEmail: orderUser?.email || '—',
+        productName: order.productName,
+        platformLabel: PLATFORM_LABEL[order.platform] ?? order.platform,
+        orderValue: order.orderValue,
+        orderValueLabel: formatCurrency(order.orderValue, lang),
+        commissionAmount: order.commissionAmount,
+        commissionAmountLabel: formatCurrency(order.commissionAmount, lang),
+        orderId: order.id,
+      },
+      status,
+    );
+  };
+
   const approveSelected = async () => {
     const targets = pendingOrders.filter((o) => selectedIds.has(o.id));
     if (targets.length === 0) return;
     setBulkBusy('approve');
     try {
       await approveOrdersBatch(targets.map((o) => ({ id: o.id, userId: o.userId, commissionAmount: o.commissionAmount })));
+      targets.forEach((order) => syncOrderTelegram(order, 'confirmed'));
       setSelectedIds(new Set());
     } catch (err) {
       console.error('bulk approve failed', err);
@@ -169,11 +199,12 @@ export default function AdminOrdersPage() {
   };
 
   const rejectSelected = async () => {
-    const targetIds = pendingOrders.filter((o) => selectedIds.has(o.id)).map((o) => o.id);
-    if (targetIds.length === 0) return;
+    const targets = pendingOrders.filter((o) => selectedIds.has(o.id));
+    if (targets.length === 0) return;
     setBulkBusy('reject');
     try {
-      await rejectOrdersBatch(targetIds);
+      await rejectOrdersBatch(targets.map((o) => o.id));
+      targets.forEach((order) => syncOrderTelegram(order, 'cancelled'));
       setSelectedIds(new Set());
     } catch (err) {
       console.error('bulk reject failed', err);

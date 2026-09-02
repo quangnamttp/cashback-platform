@@ -50,7 +50,14 @@ service cloud.firestore {
       // "who signed up with my code" by querying where('referredBy','==',
       // myCode); Firestore evaluates that per returned document, so this
       // looks up the requester's OWN referralCode via get() and compares.
-      allow read: if isOwner(uid) || isAdmin()
+      // isPaymentBot() needs this too: confirming an order from Telegram
+      // (handleOrderDecision) has to read the customer's name/email for
+      // the message text and referredBy to resolve a referrer bonus, the
+      // exact same fields addCommissionLedgerEntries() reads on the web
+      // side as isAdmin(). Read-only, and only ever a name/email/referral
+      // code — nothing this identity can act on beyond what its narrow
+      // write permissions elsewhere already allow.
+      allow read: if isOwner(uid) || isAdmin() || isPaymentBot()
         || (isSignedIn()
             && resource.data.referredBy != null
             && resource.data.referredBy == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.referralCode);
@@ -118,21 +125,56 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Admin-only writes: orders/ledger/fraud are entered manually by the
-    // admin (writeBatch, done together with the linked order) instead of a
-    // server trigger reacting automatically.
+    // Orders are entered manually by the admin (writeBatch, done together
+    // with the linked ledger entries) instead of a server trigger reacting
+    // automatically.
+    //
+    // The Telegram "✅ Duyệt đơn hàng" button (workers/telegram-bot) signs
+    // in as the SAME isPaymentBot() account every other Telegram-driven
+    // write in this file uses — a second narrow permission for it: flip a
+    // PENDING order to CONFIRMED/CANCELLED, touching only
+    // status/confirmedAt. The bot never originates an order — create stays
+    // admin-only (only the admin's own /manager/orders form does that);
+    // this only ever settles a decision on one the admin already entered.
     match /orders/{orderId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow write: if isAdmin();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isPaymentBot()
+            && resource.data.status == 'PENDING'
+            && request.resource.data.status in ['CONFIRMED', 'CANCELLED']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt']));
     }
 
     // No time gate — admin has full discretion on when to release a
     // held commission to the user's withdrawable balance (deliberate
     // choice: a hard-coded wait risks losing customers who feel stalled,
     // so the human judgment call replaces the rule here).
+    //
+    // isPaymentBot() gets two narrow permissions here: (1) create a FROZEN
+    // entry — needed so "✅ Duyệt đơn hàng" above can complete the SAME
+    // commission-split write the admin's own web approval does, without
+    // ever touching the web session — bounded to a valid type and an
+    // orderId that must already exist, so a leaked bot credential can at
+    // worst create a spurious FROZEN hold referencing a real order, never
+    // an outright fabricated payout (releasing it still needs a separate,
+    // visually-reviewed "✅ Duyệt hoàn tiền" tap, same trust model as
+    // everything else this bot does); and (2) flip that same FROZEN entry
+    // to RELEASED/REJECTED, touching only status/releasedBy/releasedAt.
+    // delete stays admin-only.
     match /cashbackLedger/{ledgerId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow write: if isAdmin();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot();
+      allow delete: if isAdmin();
+      allow create: if isAdmin()
+        || (isPaymentBot()
+            && request.resource.data.status == 'FROZEN'
+            && request.resource.data.type in ['CUSTOMER_CASHBACK', 'REFERRAL_BONUS', 'PLATFORM_REVENUE']
+            && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderId)));
+      allow update: if isAdmin()
+        || (isPaymentBot()
+            && resource.data.status == 'FROZEN'
+            && request.resource.data.status in ['RELEASED', 'REJECTED']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'releasedBy', 'releasedAt']));
     }
 
     match /withdrawalRequests/{requestId} {

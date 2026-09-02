@@ -1,22 +1,31 @@
-// Receiving half of the withdrawal-notification Telegram bot. The web app
+// Receiving half of three Telegram notification flows: withdrawal
+// requests, order approval, and cashback-release approval. The web app
 // (apps/web/lib/telegram.ts) only ever SENDS messages — a static site with
 // no server can't receive anything back from Telegram (button presses,
 // etc.), since that needs an always-on endpoint Telegram can call. This
 // Worker is that endpoint: register it once with Telegram's setWebhook and
-// every button press on a withdrawal message arrives here as a
-// callback_query update.
+// every button press on any of the three kinds of message arrives here as
+// a callback_query update, distinguished by callback_data prefix
+// (pay:/paid_noop:/rejected_noop: for withdrawals, order_approve:/
+// order_reject:/order_confirmed_noop:/order_cancelled_noop: for order
+// approval, cb_approve:/cb_reject:/cb_approved_noop:/cb_rejected_noop: for
+// cashback release).
 //
 // Firestore write access: rather than an Admin SDK service-account key
 // (which bypasses Security Rules entirely — too much blast radius for a
-// bot that only ever needs to flip one field on one collection), this
-// signs in as a dedicated, narrowly-scoped Firebase Auth account and calls
-// the Firestore REST API with its ID token, so the SAME firestore.rules
-// that gate every other write in this app also gate this bot — see the
-// isPaymentBot() rule in firestore.rules, which allows that one account to
-// do exactly one thing: flip a withdrawalRequests doc from PENDING_ADMIN/
-// APPROVED to PAID or REJECTED, touching only status/decidedAt/decidedBy/
-// rejectionReason. Nothing else in the database is reachable with this
-// credential.
+// bot that only ever needs to touch three collections in narrowly bounded
+// ways), this signs in as a dedicated, narrowly-scoped Firebase Auth
+// account and calls the Firestore REST API with its ID token, so the SAME
+// firestore.rules that gate every other write in this app also gate this
+// bot — see the isPaymentBot() rule in firestore.rules, which allows that
+// one account to do exactly three things: flip a withdrawalRequests doc
+// from PENDING_ADMIN/APPROVED to PAID or REJECTED; flip an orders doc from
+// PENDING to CONFIRMED/CANCELLED (and, only when confirming, create the
+// FROZEN cashbackLedger entries that transition implies — the same
+// commission-split math apps/web/lib/orderEntry.ts's addCommissionLedgerEntries
+// does, mirrored below since this Worker has no access to that module);
+// and flip a FROZEN cashbackLedger entry to RELEASED/REJECTED. Nothing
+// else in the database is reachable with this credential.
 
 async function telegramApi(env, method, body) {
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
@@ -93,6 +102,47 @@ function settledKeyboard(fields, status) {
   return [[{ text: LOCK_LABEL[status], callback_data: `${LOCK_CALLBACK_PREFIX[status]}${fields.requestId}` }]];
 }
 
+// --- Cashback approval (order confirmed -> release to customer's wallet) ---
+// Mirrors cashbackMessageText()/cashbackKeyboard() in apps/web/lib/telegram.ts
+// — same "separate copy, no shared build" reason as the withdrawal render
+// functions above. Distinct callback_data prefixes (cb_*) keep this
+// entirely separate from the withdrawal flow's pay:/paid_noop:/etc, even
+// though both live in the same Worker/webhook.
+
+const CASHBACK_STATUS_HEADER = {
+  approved: `✅ <b>HOÀN TIỀN</b>`,
+  rejected: `❌ <b>HOÀN TIỀN</b>`,
+};
+const CASHBACK_STATUS_LINE = {
+  approved: `✅ <b>Trạng thái:</b> Đã duyệt`,
+  rejected: `❌ <b>Trạng thái:</b> Đã từ chối`,
+};
+const CASHBACK_LOCK_LABEL = {
+  approved: '🔒 Đã duyệt (Không thể bấm)',
+  rejected: '🔒 Đã từ chối (Không thể bấm)',
+};
+const CASHBACK_LOCK_CALLBACK_PREFIX = {
+  approved: 'cb_approved_noop:',
+  rejected: 'cb_rejected_noop:',
+};
+
+function renderCashbackSettledMessage(fields, status) {
+  return [
+    CASHBACK_STATUS_HEADER[status],
+    DIVIDER,
+    `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
+    `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
+    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
+    DIVIDER,
+    CASHBACK_STATUS_LINE[status],
+  ].join('\n');
+}
+
+function cashbackSettledKeyboard(fields, status) {
+  return [[{ text: CASHBACK_LOCK_LABEL[status], callback_data: `${CASHBACK_LOCK_CALLBACK_PREFIX[status]}${fields.ledgerId}` }]];
+}
+
 async function firestoreSignIn(env) {
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${env.FIREBASE_API_KEY}`,
@@ -111,12 +161,12 @@ async function firestoreSignIn(env) {
   return json.idToken;
 }
 
-function firestoreDocUrl(env, requestId) {
-  return `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/withdrawalRequests/${requestId}`;
+function firestoreDocUrl(env, collectionName, docId) {
+  return `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collectionName}/${docId}`;
 }
 
 async function getWithdrawalDoc(env, idToken, requestId) {
-  const res = await fetch(firestoreDocUrl(env, requestId), {
+  const res = await fetch(firestoreDocUrl(env, 'withdrawalRequests', requestId), {
     headers: { Authorization: `Bearer ${idToken}` },
   });
   if (res.status === 404) return null;
@@ -150,7 +200,7 @@ async function markDocSettled(env, idToken, requestId, status) {
   };
   if (status === 'REJECTED') body.fields.rejectionReason = { stringValue: 'Từ chối qua Telegram' };
 
-  const res = await fetch(`${firestoreDocUrl(env, requestId)}?${mask}`, {
+  const res = await fetch(`${firestoreDocUrl(env, 'withdrawalRequests', requestId)}?${mask}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -163,8 +213,278 @@ async function markDocSettled(env, idToken, requestId, status) {
   console.log('firestore patch OK for', requestId, '->', status);
 }
 
+async function getLedgerDoc(env, idToken, ledgerId) {
+  const res = await fetch(firestoreDocUrl(env, 'cashbackLedger', ledgerId), {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (res.status === 404) return null;
+  const json = await res.json();
+  if (!res.ok) {
+    console.error('firestore get (ledger) failed:', res.status, JSON.stringify(json));
+    throw new Error(`firestore get (ledger) failed: ${json.error?.message || res.status}`);
+  }
+  const f = json.fields || {};
+  return {
+    status: f.status?.stringValue ?? null,
+    orderId: f.orderId?.stringValue ?? '—',
+    amount: Number(f.amount?.integerValue ?? f.amount?.doubleValue ?? 0),
+    requesterName: f.requesterName?.stringValue ?? 'Khách hàng',
+    requesterEmail: f.requesterEmail?.stringValue ?? '—',
+  };
+}
+
+async function markLedgerSettled(env, idToken, ledgerId, status) {
+  const mask = ['status', 'releasedAt', 'releasedBy'].map((p) => `updateMask.fieldPaths=${p}`).join('&');
+  const body = {
+    fields: {
+      status: { stringValue: status },
+      releasedAt: { timestampValue: new Date().toISOString() },
+      releasedBy: { stringValue: 'telegram-bot' },
+    },
+  };
+
+  const res = await fetch(`${firestoreDocUrl(env, 'cashbackLedger', ledgerId)}?${mask}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error('firestore patch (ledger) failed:', res.status, JSON.stringify(json));
+    throw new Error(`firestore patch (ledger) failed: ${json.error?.message || res.status}`);
+  }
+  console.log('firestore patch (ledger) OK for', ledgerId, '->', status);
+}
+
 function formatVnd(amount) {
   return `${amount.toLocaleString('vi-VN')} ₫`;
+}
+
+// --- Order approval (PENDING -> CONFIRMED) helpers ---
+// Mirrors resolveReferrer()/computeCommissionSplit()/addCommissionLedgerEntries()
+// in apps/web/lib/orderEntry.ts — kept as a separate copy for the same
+// reason as the message-render functions above (this Worker has no access
+// to that module, and no Firebase client SDK, only the raw REST API).
+// COMMISSION_SPLIT and ADMIN_WALLET_ID values must match that file exactly.
+
+const ADMIN_WALLET_ID = 'ADMIN_WALLET';
+const COMMISSION_SPLIT = {
+  CUSTOMER_WITH_REFERRER: 0.75,
+  REFERRER_BONUS: 0.05,
+  CUSTOMER_NO_REFERRER: 0.8,
+  PLATFORM_SHARE: 0.2,
+};
+
+function computeCommissionSplit(commissionAmount, hasReferrer) {
+  const safeAmount = Math.max(0, Math.round(commissionAmount || 0));
+  if (hasReferrer) {
+    return {
+      customerAmount: Math.round(safeAmount * COMMISSION_SPLIT.CUSTOMER_WITH_REFERRER),
+      referrerAmount: Math.round(safeAmount * COMMISSION_SPLIT.REFERRER_BONUS),
+      platformAmount: Math.round(safeAmount * COMMISSION_SPLIT.PLATFORM_SHARE),
+    };
+  }
+  return {
+    customerAmount: Math.round(safeAmount * COMMISSION_SPLIT.CUSTOMER_NO_REFERRER),
+    referrerAmount: 0,
+    platformAmount: Math.round(safeAmount * COMMISSION_SPLIT.PLATFORM_SHARE),
+  };
+}
+
+async function getOrderDoc(env, idToken, orderId) {
+  const res = await fetch(firestoreDocUrl(env, 'orders', orderId), {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (res.status === 404) return null;
+  const json = await res.json();
+  if (!res.ok) {
+    console.error('firestore get (order) failed:', res.status, JSON.stringify(json));
+    throw new Error(`firestore get (order) failed: ${json.error?.message || res.status}`);
+  }
+  const f = json.fields || {};
+  return {
+    status: f.status?.stringValue ?? null,
+    userId: f.userId?.stringValue ?? '',
+    platform: f.platform?.stringValue ?? '',
+    productName: f.productName?.stringValue ?? '',
+    orderValue: Number(f.orderValue?.integerValue ?? f.orderValue?.doubleValue ?? 0),
+    commissionAmount: Number(f.commissionAmount?.integerValue ?? f.commissionAmount?.doubleValue ?? 0),
+  };
+}
+
+async function getUserDoc(env, idToken, userId) {
+  const res = await fetch(firestoreDocUrl(env, 'users', userId), {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (res.status === 404) return null;
+  const json = await res.json();
+  if (!res.ok) {
+    console.error('firestore get (user) failed:', res.status, JSON.stringify(json));
+    throw new Error(`firestore get (user) failed: ${json.error?.message || res.status}`);
+  }
+  const f = json.fields || {};
+  return {
+    fullName: f.fullName?.stringValue ?? null,
+    email: f.email?.stringValue ?? null,
+    referredBy: f.referredBy?.stringValue ?? null,
+  };
+}
+
+// Firestore REST's structured-query endpoint — the one thing a plain
+// document GET can't do (finding a user BY their referralCode, not by
+// uid). Mirrors resolveReferrer()'s where('referralCode','==',code) query.
+async function findUserIdByReferralCode(env, idToken, referralCode) {
+  const res = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'users' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'referralCode' },
+              op: 'EQUAL',
+              value: { stringValue: referralCode },
+            },
+          },
+          limit: 1,
+        },
+      }),
+    },
+  );
+  const json = await res.json();
+  if (!res.ok) {
+    console.error('firestore runQuery failed:', res.status, JSON.stringify(json));
+    throw new Error(`firestore runQuery failed: ${json.error?.message || res.status}`);
+  }
+  const match = Array.isArray(json) ? json.find((row) => row.document) : null;
+  if (!match) return null;
+  // document.name is a full path — projects/.../documents/users/{uid}.
+  const parts = match.document.name.split('/');
+  return parts[parts.length - 1];
+}
+
+async function resolveReferrerUid(env, idToken, customerUserId, customerReferredBy) {
+  if (!customerReferredBy) return null;
+  const referrerUid = await findUserIdByReferralCode(env, idToken, customerReferredBy);
+  if (!referrerUid || referrerUid === customerUserId) return null;
+  return referrerUid;
+}
+
+// POST (no doc id in the URL) lets Firestore mint the id itself — the
+// closest REST equivalent of the client SDK's doc(collection(db,...)).
+// Returns that generated id.
+async function createLedgerDocument(env, idToken, fields) {
+  const res = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/cashbackLedger`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    },
+  );
+  const json = await res.json();
+  if (!res.ok) {
+    console.error('firestore create (ledger) failed:', res.status, JSON.stringify(json));
+    throw new Error(`firestore create (ledger) failed: ${json.error?.message || res.status}`);
+  }
+  const parts = json.name.split('/');
+  return parts[parts.length - 1];
+}
+
+async function markOrderSettled(env, idToken, orderId, status) {
+  const mask = ['status', 'confirmedAt'].map((p) => `updateMask.fieldPaths=${p}`).join('&');
+  const body = {
+    fields: {
+      status: { stringValue: status },
+      confirmedAt: { timestampValue: new Date().toISOString() },
+    },
+  };
+  const res = await fetch(`${firestoreDocUrl(env, 'orders', orderId)}?${mask}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error('firestore patch (order) failed:', res.status, JSON.stringify(json));
+    throw new Error(`firestore patch (order) failed: ${json.error?.message || res.status}`);
+  }
+  console.log('firestore patch (order) OK for', orderId, '->', status);
+}
+
+// --- Order approval message render (mirrors orderApprovalMessageText()/
+// orderApprovalKeyboard() in apps/web/lib/telegram.ts) ---
+
+const ORDER_STATUS_HEADER = {
+  pending: `🆕 <b>ĐƠN HÀNG MỚI</b>`,
+  confirmed: `✅ <b>ĐƠN HÀNG</b>`,
+  cancelled: `❌ <b>ĐƠN HÀNG</b>`,
+};
+const ORDER_STATUS_LINE = {
+  pending: `⏳ <b>Trạng thái:</b> Chờ duyệt`,
+  confirmed: `✅ <b>Trạng thái:</b> Đã duyệt`,
+  cancelled: `❌ <b>Trạng thái:</b> Đã từ chối`,
+};
+
+function renderOrderMessage(fields, status) {
+  return [
+    ORDER_STATUS_HEADER[status],
+    DIVIDER,
+    `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
+    `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
+    `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
+    `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
+    `💰 <b>Giá trị đơn:</b> <code>${escapeHtml(fields.orderValueLabel)}</code>`,
+    `💵 <b>Hoa hồng sàn trả:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    DIVIDER,
+    ORDER_STATUS_LINE[status],
+  ].join('\n');
+}
+
+function orderKeyboard(fields, status) {
+  if (status === 'confirmed') {
+    return [[{ text: '🔒 Đã duyệt (Không thể bấm)', callback_data: `order_confirmed_noop:${fields.orderId}` }]];
+  }
+  if (status === 'cancelled') {
+    return [[{ text: '🔒 Đã từ chối (Không thể bấm)', callback_data: `order_cancelled_noop:${fields.orderId}` }]];
+  }
+  return [[
+    { text: '✅ Duyệt đơn hàng', callback_data: `order_approve:${fields.orderId}` },
+    { text: '❌ Từ chối đơn hàng', callback_data: `order_reject:${fields.orderId}` },
+  ]];
+}
+
+// --- Cashback-pending message render (mirrors cashbackMessageText()/
+// cashbackKeyboard() status:'pending' in apps/web/lib/telegram.ts) — the
+// Worker needs this too now, since confirming an order FROM TELEGRAM has
+// to send this same "chờ duyệt hoàn tiền" follow-up message itself,
+// instead of only ever receiving it from the web side.
+
+const CASHBACK_PENDING_HEADER = `🎉 <b>ĐƠN HÀNG ĐÃ XÁC NHẬN — CHỜ HOÀN TIỀN</b>`;
+const CASHBACK_PENDING_LINE = `⏳ <b>Trạng thái:</b> Chờ duyệt`;
+
+function renderCashbackPendingMessage(fields) {
+  return [
+    CASHBACK_PENDING_HEADER,
+    DIVIDER,
+    `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
+    `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
+    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
+    DIVIDER,
+    CASHBACK_PENDING_LINE,
+  ].join('\n');
+}
+
+function cashbackPendingKeyboard(fields) {
+  return [[
+    { text: '✅ Duyệt hoàn tiền', callback_data: `cb_approve:${fields.ledgerId}` },
+    { text: '❌ Từ chối hoàn tiền', callback_data: `cb_reject:${fields.ledgerId}` },
+  ]];
 }
 
 // targetStatus: 'PAID' | 'REJECTED'
@@ -257,6 +577,269 @@ async function handleDecision(env, callbackQuery, requestId, targetStatus) {
   console.log('handleDecision done, requestId:', requestId);
 }
 
+// targetStatus: 'RELEASED' | 'REJECTED' — mirrors handleDecision above,
+// operating on cashbackLedger instead of withdrawalRequests.
+async function handleCashbackDecision(env, callbackQuery, ledgerId, targetStatus) {
+  const statusKey = targetStatus === 'RELEASED' ? 'approved' : 'rejected';
+  console.log('handleCashbackDecision start, ledgerId:', ledgerId, 'target:', targetStatus);
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+
+  let idToken;
+  try {
+    idToken = await firestoreSignIn(env);
+  } catch (err) {
+    console.error('sign-in step failed:', err.message);
+    await answerCallback(env, callbackQuery.id, '⚠️ Lỗi xác thực hệ thống, thử lại sau.', true);
+    return;
+  }
+
+  let ledgerDoc;
+  try {
+    ledgerDoc = await getLedgerDoc(env, idToken, ledgerId);
+  } catch (err) {
+    console.error('get ledger doc step failed:', err.message);
+    await answerCallback(env, callbackQuery.id, '⚠️ Không đọc được khoản hoàn tiền, thử lại sau.', true);
+    return;
+  }
+
+  console.log('ledger doc fetched:', JSON.stringify(ledgerDoc));
+
+  if (!ledgerDoc) {
+    await answerCallback(env, callbackQuery.id, '⚠️ Không tìm thấy khoản hoàn tiền này.', true);
+    return;
+  }
+
+  const otherFinalStatus = targetStatus === 'RELEASED' ? 'REJECTED' : 'RELEASED';
+  if (ledgerDoc.status === otherFinalStatus) {
+    await answerCallback(
+      env,
+      callbackQuery.id,
+      targetStatus === 'RELEASED'
+        ? '⚠️ Khoản này đã bị từ chối, không thể duyệt.'
+        : '⚠️ Khoản này đã được duyệt, không thể từ chối.',
+      true,
+    );
+    return;
+  }
+
+  // Already in the target state (most likely: admin decided from the web
+  // dashboard first) — no write needed, just bring this message's own
+  // state in sync so a stray second tap here is a no-op instead of an
+  // error.
+  if (ledgerDoc.status !== targetStatus) {
+    try {
+      await markLedgerSettled(env, idToken, ledgerId, targetStatus);
+    } catch (err) {
+      console.error('patch step failed:', err.message);
+      await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được trạng thái, thử lại sau.', true);
+      return;
+    }
+  }
+
+  const settledFields = {
+    requesterName: ledgerDoc.requesterName,
+    requesterEmail: ledgerDoc.requesterEmail,
+    orderId: ledgerDoc.orderId,
+    amount: ledgerDoc.amount,
+    amountLabel: formatVnd(ledgerDoc.amount),
+    ledgerId,
+  };
+  const editResult = await telegramApi(env, 'editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'HTML',
+    text: renderCashbackSettledMessage(settledFields, statusKey),
+    reply_markup: { inline_keyboard: cashbackSettledKeyboard(settledFields, statusKey) },
+  }).catch((err) => {
+    console.error('editMessageText threw:', err.message);
+    return null;
+  });
+  console.log('editMessageText result ok:', editResult?.ok);
+
+  await answerCallback(
+    env,
+    callbackQuery.id,
+    targetStatus === 'RELEASED' ? '✅ Đã duyệt hoàn tiền!' : '❌ Đã từ chối hoàn tiền.',
+    false,
+  );
+  console.log('handleCashbackDecision done, ledgerId:', ledgerId);
+}
+
+const PLATFORM_LABEL = { SHOPEE: 'Shopee', TIKTOK_SHOP: 'TikTok Shop', LAZADA: 'Lazada' };
+
+// targetStatus: 'CONFIRMED' | 'CANCELLED' — mirrors handleDecision/
+// handleCashbackDecision above, but CONFIRMED does substantially more:
+// the same referrer-lookup + commission-split + FROZEN-ledger-entries work
+// upsertOrder()/addCommissionLedgerEntries() do on the web side (see the
+// mirrored helpers above), since tapping "✅ Duyệt đơn hàng" here has to
+// reach the exact same end state as approving from /manager/orders would.
+async function handleOrderDecision(env, callbackQuery, orderId, targetStatus) {
+  const statusKey = targetStatus === 'CONFIRMED' ? 'confirmed' : 'cancelled';
+  console.log('handleOrderDecision start, orderId:', orderId, 'target:', targetStatus);
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+
+  let idToken;
+  try {
+    idToken = await firestoreSignIn(env);
+  } catch (err) {
+    console.error('sign-in step failed:', err.message);
+    await answerCallback(env, callbackQuery.id, '⚠️ Lỗi xác thực hệ thống, thử lại sau.', true);
+    return;
+  }
+
+  let order;
+  try {
+    order = await getOrderDoc(env, idToken, orderId);
+  } catch (err) {
+    console.error('get order step failed:', err.message);
+    await answerCallback(env, callbackQuery.id, '⚠️ Không đọc được đơn hàng, thử lại sau.', true);
+    return;
+  }
+
+  console.log('order fetched:', JSON.stringify(order));
+
+  if (!order) {
+    await answerCallback(env, callbackQuery.id, '⚠️ Không tìm thấy đơn hàng này.', true);
+    return;
+  }
+
+  const otherFinalStatus = targetStatus === 'CONFIRMED' ? 'CANCELLED' : 'CONFIRMED';
+  if (order.status === otherFinalStatus) {
+    await answerCallback(
+      env,
+      callbackQuery.id,
+      targetStatus === 'CONFIRMED'
+        ? '⚠️ Đơn này đã bị từ chối, không thể duyệt.'
+        : '⚠️ Đơn này đã được duyệt, không thể từ chối.',
+      true,
+    );
+    return;
+  }
+
+  // Already in the target state (most likely: admin decided from the web
+  // dashboard first) — no write needed, just bring this message's own
+  // state in sync so a stray second tap here is a no-op instead of an
+  // error. Ledger entries (if any) were already created by whichever side
+  // got there first, so nothing further to do on that front either.
+  let customerUser = null;
+  if (order.status !== targetStatus) {
+    try {
+      customerUser = await getUserDoc(env, idToken, order.userId);
+      if (targetStatus === 'CONFIRMED' && order.commissionAmount > 0) {
+        const referrerUid = await resolveReferrerUid(env, idToken, order.userId, customerUser?.referredBy);
+        const split = computeCommissionSplit(order.commissionAmount, !!referrerUid);
+        const requesterName = customerUser?.fullName || customerUser?.email || order.userId;
+        const requesterEmail = customerUser?.email || '—';
+
+        if (split.customerAmount > 0) {
+          const ledgerId = await createLedgerDocument(env, idToken, {
+            userId: { stringValue: order.userId },
+            orderId: { stringValue: orderId },
+            amount: { integerValue: String(split.customerAmount) },
+            type: { stringValue: 'CUSTOMER_CASHBACK' },
+            status: { stringValue: 'FROZEN' },
+            confirmedAt: { timestampValue: new Date().toISOString() },
+            requesterName: { stringValue: requesterName },
+            requesterEmail: { stringValue: requesterEmail },
+          });
+          const cashbackFields = {
+            requesterName,
+            requesterEmail,
+            orderId,
+            amountLabel: formatVnd(split.customerAmount),
+            ledgerId,
+          };
+          const cashbackSend = await telegramApi(env, 'sendMessage', {
+            chat_id: chatId,
+            message_thread_id: 13,
+            parse_mode: 'HTML',
+            text: renderCashbackPendingMessage(cashbackFields),
+            reply_markup: { inline_keyboard: cashbackPendingKeyboard(cashbackFields) },
+          }).catch((err) => {
+            console.error('cashback follow-up sendMessage threw:', err.message);
+            return null;
+          });
+          if (cashbackSend?.ok) {
+            await fetch(
+              `${firestoreDocUrl(env, 'cashbackLedger', ledgerId)}?updateMask.fieldPaths=telegramChatId&updateMask.fieldPaths=telegramMessageId`,
+              {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fields: {
+                    telegramChatId: { stringValue: String(cashbackSend.result.chat.id) },
+                    telegramMessageId: { integerValue: String(cashbackSend.result.message_id) },
+                  },
+                }),
+              },
+            ).catch((err) => console.error('ledger telegram-ref patch threw:', err.message));
+          }
+        }
+
+        if (split.platformAmount > 0) {
+          await createLedgerDocument(env, idToken, {
+            userId: { stringValue: ADMIN_WALLET_ID },
+            orderId: { stringValue: orderId },
+            amount: { integerValue: String(split.platformAmount) },
+            type: { stringValue: 'PLATFORM_REVENUE' },
+            status: { stringValue: 'FROZEN' },
+            confirmedAt: { timestampValue: new Date().toISOString() },
+          });
+        }
+
+        if (referrerUid && split.referrerAmount > 0) {
+          await createLedgerDocument(env, idToken, {
+            userId: { stringValue: referrerUid },
+            orderId: { stringValue: orderId },
+            amount: { integerValue: String(split.referrerAmount) },
+            type: { stringValue: 'REFERRAL_BONUS' },
+            status: { stringValue: 'FROZEN' },
+            confirmedAt: { timestampValue: new Date().toISOString() },
+          });
+        }
+      }
+      await markOrderSettled(env, idToken, orderId, targetStatus);
+    } catch (err) {
+      console.error('order settle step failed:', err.message);
+      await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được đơn hàng, thử lại sau.', true);
+      return;
+    }
+  } else {
+    customerUser = await getUserDoc(env, idToken, order.userId).catch(() => null);
+  }
+
+  const settledFields = {
+    requesterName: customerUser?.fullName || customerUser?.email || order.userId,
+    requesterEmail: customerUser?.email || '—',
+    productName: order.productName,
+    platformLabel: PLATFORM_LABEL[order.platform] ?? order.platform,
+    orderValueLabel: formatVnd(order.orderValue),
+    commissionAmountLabel: formatVnd(order.commissionAmount),
+    orderId,
+  };
+  const editResult = await telegramApi(env, 'editMessageText', {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'HTML',
+    text: renderOrderMessage(settledFields, statusKey),
+    reply_markup: { inline_keyboard: orderKeyboard(settledFields, statusKey) },
+  }).catch((err) => {
+    console.error('editMessageText threw:', err.message);
+    return null;
+  });
+  console.log('editMessageText result ok:', editResult?.ok);
+
+  await answerCallback(
+    env,
+    callbackQuery.id,
+    targetStatus === 'CONFIRMED' ? '✅ Đã duyệt đơn hàng!' : '❌ Đã từ chối đơn hàng.',
+    false,
+  );
+  console.log('handleOrderDecision done, orderId:', orderId);
+}
+
 export default {
   async fetch(request, env) {
     if (request.method !== 'POST') return new Response('OK', { status: 200 });
@@ -292,6 +875,26 @@ export default {
       await answerCallback(env, callbackQuery.id, 'Lệnh này đã được thanh toán rồi.', false);
     } else if (callbackQuery && typeof data === 'string' && data.startsWith('rejected_noop:')) {
       await answerCallback(env, callbackQuery.id, 'Lệnh này đã bị từ chối rồi.', false);
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('cb_approve:')) {
+      const ledgerId = data.slice('cb_approve:'.length);
+      await handleCashbackDecision(env, callbackQuery, ledgerId, 'RELEASED');
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('cb_reject:')) {
+      const ledgerId = data.slice('cb_reject:'.length);
+      await handleCashbackDecision(env, callbackQuery, ledgerId, 'REJECTED');
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('cb_approved_noop:')) {
+      await answerCallback(env, callbackQuery.id, 'Khoản này đã được duyệt rồi.', false);
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('cb_rejected_noop:')) {
+      await answerCallback(env, callbackQuery.id, 'Khoản này đã bị từ chối rồi.', false);
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('order_approve:')) {
+      const orderId = data.slice('order_approve:'.length);
+      await handleOrderDecision(env, callbackQuery, orderId, 'CONFIRMED');
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('order_reject:')) {
+      const orderId = data.slice('order_reject:'.length);
+      await handleOrderDecision(env, callbackQuery, orderId, 'CANCELLED');
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('order_confirmed_noop:')) {
+      await answerCallback(env, callbackQuery.id, 'Đơn này đã được duyệt rồi.', false);
+    } else if (callbackQuery && typeof data === 'string' && data.startsWith('order_cancelled_noop:')) {
+      await answerCallback(env, callbackQuery.id, 'Đơn này đã bị từ chối rồi.', false);
     } else if (callbackQuery) {
       console.log('unrecognized callback_data:', data);
       // An unrecognized button/callback — still must be acknowledged or

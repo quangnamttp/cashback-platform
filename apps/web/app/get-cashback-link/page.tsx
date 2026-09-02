@@ -7,6 +7,7 @@ import { mockPlatforms } from '../../lib/mock-data';
 import { createOrReuseRedirect, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type Platform } from '../../lib/redirectLink';
 import { COMMISSION_SPLIT } from '../../lib/orderEntry';
 import { subscribeSystemRates, DEFAULT_RATES, ASSUMED_ORDER_VALUE, type SystemRates } from '../../lib/systemConfig';
+import { guessOrderValueRange } from '../../lib/cashbackEstimate';
 import { fetchProductPreview, extractProductNameFromUrl, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
@@ -26,14 +27,9 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   LAZADA: 'Lazada',
 };
 
-// Reference order sizes shown when we couldn't read a real price — spans
-// cheap-item to appliance-tier so a customer with a 500k+ cart isn't left
-// staring at a single "3.000đ" that looks like the site is worthless for
-// anything but small orders.
-const CASHBACK_ESTIMATE_TIERS = [100_000, 500_000, 1_000_000];
-
 type CheckResult =
   | { status: 'unsupported' }
+  | { status: 'invalid_link' }
   | { status: 'error' }
   | {
       status: 'supported';
@@ -195,6 +191,10 @@ export default function GetCashbackLinkPage() {
         setResult({ status: 'unsupported' });
         return;
       }
+      if (data.status === 'invalid_link') {
+        setResult({ status: 'invalid_link' });
+        return;
+      }
       setResult({
         status: 'supported',
         platformCode: data.platform,
@@ -223,8 +223,16 @@ export default function GetCashbackLinkPage() {
       const requestId = ++previewRequestRef.current;
       fetchProductPreview(targetLink).then((preview) => {
         if (previewRequestRef.current === requestId && preview) {
+          // A real product page always has og:title AND og:image together —
+          // a scraped title with NO image is the generic site-wide
+          // fallback (e.g. Shopee serving "Shopee Việt Nam | Mua và Bán…"
+          // for a non-existent/invalid product id, confirmed live), which
+          // is strictly worse than the local slug guess above and must
+          // never overwrite it — it would also silently break the tier
+          // guess below (a "ghế massage" slug losing to a generic title
+          // means guessOrderValueRange never sees the keyword).
           setProductPreview((prev) => ({
-            title: preview.title || prev?.title,
+            title: preview.title && preview.image ? preview.title : prev?.title,
             image: preview.image || prev?.image,
             price: preview.price,
           }));
@@ -361,6 +369,18 @@ export default function GetCashbackLinkPage() {
               </div>
             )}
 
+            {result?.status === 'invalid_link' && (
+              <div className="get-link-result-card">
+                <div className="get-link-result-error">
+                  ⚠️ Link này không có định dạng sản phẩm hợp lệ
+                </div>
+                <p className="get-link-unsupported-note">
+                  Không tìm thấy mã sản phẩm trong link — bạn kiểm tra lại đã copy đúng link trang sản phẩm chưa
+                  (không phải link trang chủ, trang tìm kiếm hay link quảng cáo).
+                </p>
+              </div>
+            )}
+
             {result?.status === 'error' && (
               <div className="get-link-result-error">
                 ⚠️ {t('get_link_error_generic')}
@@ -387,9 +407,23 @@ export default function GetCashbackLinkPage() {
                     </div>
                     <div className="quick-product-info-text">
                       <h3 className="quick-product-title">{productPreview?.title || `Sản phẩm liên kết qua ${result.platform}`}</h3>
+                      {/* Only ever a POSITIVE signal, never a negative one —
+                          a real product photo resolving from the scraper is
+                          good evidence the link points at a real, live
+                          listing, but the reverse isn't true: Shopee's
+                          common "tên-shop/id" share-link format (as opposed
+                          to the canonical /product/{shopId}/{itemId} form)
+                          serves a bare SPA shell with zero scrapable meta
+                          tags for real products too (verified live against
+                          a link a real customer pasted), so no image here
+                          must never be read as "not a real product". */}
+                      {productPreview?.image && (
+                        <div className="quick-product-verified-badge">✅ Đã xác minh sản phẩm thật</div>
+                      )}
                       {hasRealPrice ? (
                         <div className="quick-product-cashback-inline">
                           Hoàn tiền dự kiến: <strong>{formatCurrency(estimatedCashback, lang)}</strong>
+                          <span className="quick-product-cashback-caption"> (số tiền dự kiến, chỉ mang tính tham khảo)</span>
                         </div>
                       ) : (
                         <>
@@ -401,23 +435,24 @@ export default function GetCashbackLinkPage() {
                               VND number here is always either misleadingly
                               low (a 500k+ product showing "3.000đ") or high
                               (a 20k product showing the same "3.000đ" as if
-                              expensive). Showing how it scales across a
-                              couple of realistic order sizes is the honest
-                              version of this estimate — never a `title`
-                              tooltip either, since that never shows on
-                              mobile (no hover on touchscreens). */}
-                          <div className="quick-product-cashback-inline">
-                            Hoàn tiền dự kiến (theo giá trị đơn hàng thật của bạn):
+                              expensive). A range across a guessed order-value
+                              tier (see guessOrderValueRange above) is the
+                              honest version of this estimate — both ends are
+                              still `bound * platformRate`, the same rate a
+                              real order settles at, never a bigger made-up
+                              number. */}
+                          <div className="quick-product-cashback-row">
+                            <span>Hoàn tiền dự kiến</span>
+                            <strong>
+                              {formatCurrency(Math.round(guessOrderValueRange(productPreview?.title).low * (platformRate[result.platformCode] ?? 0)), lang)}
+                              {' – '}
+                              {formatCurrency(Math.round(guessOrderValueRange(productPreview?.title).high * (platformRate[result.platformCode] ?? 0)), lang)}
+                            </strong>
+                            <span className="quick-product-cashback-caption">(số tiền dự kiến, chỉ mang tính tham khảo)</span>
                           </div>
-                          <div className="quick-product-cashback-tiers">
-                            {CASHBACK_ESTIMATE_TIERS.map((tier) => (
-                              <span key={tier} className="quick-product-cashback-tier">
-                                Đơn {formatCurrency(tier, lang)} → <strong>{formatCurrency(Math.round(tier * (platformRate[result.platformCode] ?? 0)), lang)}</strong>
-                              </span>
-                            ))}
-                          </div>
-                          <p className="quick-product-cashback-note">
-                            Hệ thống chưa đọc được giá thật của sản phẩm này — số tiền hoàn thật được tính lại chính xác theo hoa hồng sàn trả khi đơn hàng được đối soát.
+                          <p className="quick-product-note">
+                            💡 Mức hoàn tiền tham khảo theo giá trị đơn hàng thực tế. Số tiền chính xác sẽ được cập
+                            nhật khi đơn hàng được sàn đối soát.
                           </p>
                         </>
                       )}

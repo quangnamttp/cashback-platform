@@ -57,8 +57,17 @@ const statusLabel: Record<string, string> = {
   PAID: 'Đã chuyển tiền',
 };
 
-function requesterLabel(users: UserOption[], userId: string): string {
+// `stored` is the requesterName/requesterEmail already saved directly on
+// the withdrawalRequests doc at creation time (see cashback-wallet/page.tsx
+// — captured for the Telegram message). Preferred over the live `users`
+// lookup below: that lookup needs a matching users/{uid} doc to resolve
+// anything and silently falls back to the raw uid when one doesn't exist
+// (a real gap — every account created through the actual signup flow gets
+// one, but it means any account missing that doc, for any reason, shows
+// as an unreadable id string here instead of a name).
+function requesterLabel(users: UserOption[], userId: string, stored?: string): string {
   if (userId === ADMIN_WALLET_ID) return 'Ví tổng Admin (doanh thu 20%)';
+  if (stored) return stored;
   const user = users.find((u) => u.id === userId);
   if (!user) return userId;
   return user.fullName || user.email || userId;
@@ -132,7 +141,7 @@ export default function AdminWithdrawalsPage() {
     if (!matchesStatus) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().toLowerCase();
-    const requester = requesterLabel(users, row.userId);
+    const requester = requesterLabel(users, row.userId, row.requesterName);
     return (
       row.id.toLowerCase().includes(q) ||
       requester.toLowerCase().includes(q) ||
@@ -170,7 +179,7 @@ export default function AdminWithdrawalsPage() {
           syncWithdrawalStatusToTelegram(
             { chatId: row.telegramChatId, messageId: row.telegramMessageId },
             {
-              requesterName: row.requesterName || requesterLabel(users, row.userId),
+              requesterName: requesterLabel(users, row.userId, row.requesterName),
               requesterEmail: row.requesterEmail || users.find((u) => u.id === row.userId)?.email || '—',
               bank: row.bank ?? row.method,
               accountNumber: row.accountNumber ?? '',
@@ -265,7 +274,7 @@ export default function AdminWithdrawalsPage() {
               {filteredRows.map((row) => (
                 <tr key={row.id}>
                   <td><CopyIdChip value={row.id} /></td>
-                  <td>{requesterLabel(users, row.userId)}</td>
+                  <td>{requesterLabel(users, row.userId, row.requesterName)}</td>
                   <td><strong>{formatCurrency(row.amount, lang)}</strong></td>
                   <td>
                     {row.userId === ADMIN_WALLET_ID ? (
@@ -347,7 +356,7 @@ export default function AdminWithdrawalsPage() {
               <span className="promo-icon-badge" style={{ width: 40, height: 40, background: '#fee2e2', color: '#dc2626' }}>✕</span>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Từ chối lệnh rút</h3>
-                <span className="modal-code-row-small">{requesterLabel(users, rejectTarget.userId)} • {formatCurrency(rejectTarget.amount, lang)}</span>
+                <span className="modal-code-row-small">{requesterLabel(users, rejectTarget.userId, rejectTarget.requesterName)} • {formatCurrency(rejectTarget.amount, lang)}</span>
               </div>
             </div>
 

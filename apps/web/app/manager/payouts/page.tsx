@@ -6,6 +6,7 @@ import { getFirebaseDb } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { ADMIN_WALLET_ID, type LedgerEntryType } from '../../../lib/orderEntry';
+import { syncCashbackStatusToTelegram } from '../../../lib/telegram';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
@@ -28,6 +29,10 @@ type LedgerEntry = {
   type?: LedgerEntryType;
   status: 'FROZEN' | 'RELEASED' | 'REJECTED';
   confirmedAt?: { toDate: () => Date };
+  requesterName?: string;
+  requesterEmail?: string;
+  telegramChatId?: string | null;
+  telegramMessageId?: number | null;
 };
 
 const TYPE_LABEL: Record<LedgerEntryType, string> = {
@@ -36,8 +41,16 @@ const TYPE_LABEL: Record<LedgerEntryType, string> = {
   PLATFORM_REVENUE: 'Doanh thu 20% (Admin)',
 };
 
-function ownerLabel(userId: string): string {
-  return userId === ADMIN_WALLET_ID ? 'Ví tổng Admin' : userId;
+type UserOption = { id: string; fullName?: string; email?: string };
+
+// Previously returned the raw uid for every real customer (only
+// ADMIN_WALLET_ID had a real label) — this table had no way to show who a
+// held commission actually belongs to without opening Firestore directly.
+function ownerLabel(users: UserOption[], userId: string): string {
+  if (userId === ADMIN_WALLET_ID) return 'Ví tổng Admin';
+  const user = users.find((u) => u.id === userId);
+  if (!user) return userId;
+  return user.fullName || user.email || userId;
 }
 
 // No time gate, no amount tiering — every held commission sits in this one
@@ -50,17 +63,24 @@ export default function AdminPayoutsPage() {
   const { lang } = useLanguage();
   const { uid, userEmail } = useAuth();
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState<'approve' | 'reject' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
   useEffect(() => {
-    const q = query(collection(getFirebaseDb(), 'cashbackLedger'), where('status', '==', 'FROZEN'));
-    const unsubscribe = onSnapshot(q, (snap) => {
+    const db = getFirebaseDb();
+    const unsubEntries = onSnapshot(query(collection(db, 'cashbackLedger'), where('status', '==', 'FROZEN')), (snap) => {
       setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as LedgerEntry)));
     });
-    return unsubscribe;
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserOption)));
+    });
+    return () => {
+      unsubEntries();
+      unsubUsers();
+    };
   }, []);
 
   const filteredEntries = useMemo(() => {
@@ -71,11 +91,11 @@ export default function AdminPayoutsPage() {
       return (
         entry.id.toLowerCase().includes(q) ||
         (entry.orderId ?? '').toLowerCase().includes(q) ||
-        ownerLabel(entry.userId).toLowerCase().includes(q) ||
+        ownerLabel(users, entry.userId).toLowerCase().includes(q) ||
         String(entry.amount).includes(q)
       );
     });
-  }, [entries, searchQuery, typeFilter]);
+  }, [entries, users, searchQuery, typeFilter]);
 
   const allSelected = filteredEntries.length > 0 && filteredEntries.every((e) => selectedIds.has(e.id));
 
@@ -113,6 +133,28 @@ export default function AdminPayoutsPage() {
         });
         await batch.commit();
       }
+      // Keeps the Telegram buttons in sync when admin decides from the web
+      // instead of tapping them in Telegram — otherwise those buttons
+      // would still look tappable for an already-settled entry. Only
+      // CUSTOMER_CASHBACK entries ever get a Telegram message (see
+      // addCommissionLedgerEntries in lib/orderEntry.ts), so entries
+      // without a saved telegramChatId/messageId are silently skipped.
+      targets.forEach((entry) => {
+        if (entry.telegramChatId && entry.telegramMessageId) {
+          syncCashbackStatusToTelegram(
+            { chatId: entry.telegramChatId, messageId: entry.telegramMessageId },
+            {
+              requesterName: entry.requesterName || ownerLabel(users, entry.userId),
+              requesterEmail: entry.requesterEmail || users.find((u) => u.id === entry.userId)?.email || '—',
+              orderId: entry.orderId || '—',
+              amount: entry.amount,
+              amountLabel: formatCurrency(entry.amount, lang),
+              ledgerId: entry.id,
+            },
+            decision === 'RELEASED' ? 'approved' : 'rejected',
+          );
+        }
+      });
       await logAdminAction({
         actorUid: uid,
         actorEmail: userEmail,
@@ -202,7 +244,7 @@ export default function AdminPayoutsPage() {
                     />
                   </td>
                   <td><CopyIdChip value={entry.id} /></td>
-                  <td>{ownerLabel(entry.userId)}</td>
+                  <td>{ownerLabel(users, entry.userId)}</td>
                   <td>{entry.type ? TYPE_LABEL[entry.type] : '—'}</td>
                   <td>{entry.orderId ? <CopyIdChip value={entry.orderId} /> : '—'}</td>
                   <td><strong>{formatCurrency(entry.amount, lang)}</strong></td>

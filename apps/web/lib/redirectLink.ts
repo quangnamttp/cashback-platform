@@ -3,6 +3,7 @@
 import { collection, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { getFirebaseDb } from './firebase';
 import { generateShortCode } from './ids';
+import { isShortlink } from './productPreview';
 
 export type Platform = 'SHOPEE' | 'TIKTOK_SHOP' | 'LAZADA';
 
@@ -21,6 +22,27 @@ const PLATFORM_PATTERNS: { platform: Platform; pattern: RegExp }[] = [
 export function detectPlatform(rawUrl: string): Platform | null {
   const found = PLATFORM_PATTERNS.find((p) => p.pattern.test(rawUrl));
   return found ? found.platform : null;
+}
+
+/**
+ * Cheap structural check for "does this URL's path even look like it names
+ * a real product" — every real product/shop/SKU id on Shopee, TikTok Shop
+ * and Lazada is a long run of digits (confirmed live: a real Shopee item
+ * id like 24826385591, a real vanity link's 26989828302, Lazada's
+ * i{10ish digits}-s{10ish digits}...). A marketing/promo text slug with no
+ * id at all (e.g. "shopee.vn/-DEAL-Máy-Massage-...", pasted by a customer
+ * who copied the wrong thing) never has one. This can't tell a real-but-
+ * unscrapable product link from a fake one (that needs the marketplace's
+ * own affiliate API, which we don't have) — it only catches links that
+ * don't even have the SHAPE of a product link, which detectPlatform's
+ * pure domain check lets straight through today.
+ */
+export function hasProductIdSignature(rawUrl: string): boolean {
+  try {
+    return /\d{6,}/.test(new URL(rawUrl).pathname);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -109,6 +131,7 @@ export function goUrl(code: string) {
 
 export type CreateRedirectResult =
   | { status: 'unsupported' }
+  | { status: 'invalid_link' }
   | { status: 'supported'; code: string; redirectUrl: string; destinationUrl: string; platform: Platform; cacheHit: boolean };
 
 /**
@@ -125,7 +148,11 @@ export async function savePreviewToRedirect(
   try {
     const db = getFirebaseDb();
     const update: Record<string, unknown> = {};
-    if (preview.title) update.title = preview.title;
+    // A title with no image is the marketplace's generic site-wide
+    // fallback (e.g. Shopee serving "Shopee Việt Nam | Mua và Bán…" for a
+    // non-existent/invalid product id) — worse than whatever /link-history
+    // already has (its own local slug guess), never worth overwriting with.
+    if (preview.title && preview.image) update.title = preview.title;
     if (preview.image) update.image = preview.image;
     if (preview.price) update.price = preview.price;
     if (Object.keys(update).length === 0) return;
@@ -176,6 +203,14 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
   const platform = detectPlatform(productUrl);
   if (!platform) {
     return { status: 'unsupported' };
+  }
+  // Skip the shape check on a still-unresolved shortlink (resolveShortlink
+  // failed upstream in handleCheck, so the caller fell back to the raw
+  // s.shopee.vn/vt.tiktok.com code) — a shortlink's whole point is an
+  // opaque code with no product id visible in it, so the signature check
+  // doesn't apply and would always wrongly reject it.
+  if (!isShortlink(productUrl) && !hasProductIdSignature(productUrl)) {
+    return { status: 'invalid_link' };
   }
 
   const normalized = normalizeProductUrl(productUrl);

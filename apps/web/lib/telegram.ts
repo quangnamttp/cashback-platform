@@ -25,6 +25,18 @@ export function isTelegramRelayConfigured(): boolean {
   return !!BOT_TOKEN && !!CHAT_ID;
 }
 
+// One bot, one group chat with Topics enabled (chat id -1004411327315) —
+// every notification kind routes to its own topic via the Bot API's
+// message_thread_id instead of one mixed stream, so a withdrawal request
+// doesn't get lost between cashback approvals and general support-chat
+// activity. Mirrored in workers/telegram-bot/src/index.js — keep both in
+// sync if a topic ever changes.
+export const TELEGRAM_TOPICS = {
+  SUPPORT: 11,
+  WITHDRAWAL: 14,
+  CASHBACK: 13,
+} as const;
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -63,7 +75,11 @@ export function forwardChatMessageToTelegram(params: {
     `Từ: ${params.userName || 'Khách'} (${params.userEmail || 'chưa rõ email'})`,
     params.text ? params.text : params.hasImage ? '[Khách gửi kèm hình ảnh]' : '',
   ].filter(Boolean);
-  return callTelegramApi('sendMessage', { chat_id: CHAT_ID, text: lines.join('\n') }).then(() => undefined);
+  return callTelegramApi('sendMessage', {
+    chat_id: CHAT_ID,
+    message_thread_id: TELEGRAM_TOPICS.SUPPORT,
+    text: lines.join('\n'),
+  }).then(() => undefined);
 }
 
 type TelegramMessageRef = { chatId: string; messageId: number };
@@ -172,6 +188,7 @@ export async function notifyWithdrawalRequestToTelegram(fields: WithdrawalMessag
 
   const result = await callTelegramApi<{ message_id: number; chat: { id: number } }>('sendMessage', {
     chat_id: CHAT_ID,
+    message_thread_id: TELEGRAM_TOPICS.WITHDRAWAL,
     parse_mode: 'HTML',
     text: withdrawalMessageText(fields, 'pending'),
     reply_markup: { inline_keyboard: withdrawalKeyboard(fields, 'pending') },
@@ -199,5 +216,228 @@ export function syncWithdrawalStatusToTelegram(
     parse_mode: 'HTML',
     text: withdrawalMessageText(fields, status),
     reply_markup: { inline_keyboard: withdrawalKeyboard(fields, status) },
+  }).then(() => undefined);
+}
+
+// ---------------------------------------------------------------------
+// Cashback approval (order confirmed -> release held commission to the
+// customer's wallet) — same pattern as the withdrawal flow above, just a
+// different topic (TELEGRAM_TOPICS.CASHBACK) and a different Firestore
+// target (cashbackLedger, not withdrawalRequests). Tapping "✅ Duyệt hoàn
+// tiền" is handled by the SAME workers/telegram-bot Worker, distinguished
+// by its own callback_data prefixes (cb_approve/cb_reject) so it can't be
+// confused with the withdrawal bot's pay:/reject flow.
+// ---------------------------------------------------------------------
+
+export type CashbackMessageFields = {
+  requesterName: string;
+  requesterEmail: string;
+  orderId: string;
+  amount: number;
+  amountLabel: string;
+  ledgerId: string;
+};
+
+export type CashbackTelegramStatus = 'pending' | 'approved' | 'rejected';
+
+const CASHBACK_STATUS_HEADER: Record<CashbackTelegramStatus, string> = {
+  pending: `🎉 <b>ĐƠN HÀNG ĐÃ XÁC NHẬN — CHỜ HOÀN TIỀN</b>`,
+  approved: `✅ <b>HOÀN TIỀN</b>`,
+  rejected: `❌ <b>HOÀN TIỀN</b>`,
+};
+const CASHBACK_STATUS_LINE: Record<CashbackTelegramStatus, string> = {
+  pending: `⏳ <b>Trạng thái:</b> Chờ duyệt`,
+  approved: `✅ <b>Trạng thái:</b> Đã duyệt`,
+  rejected: `❌ <b>Trạng thái:</b> Đã từ chối`,
+};
+
+function cashbackMessageText(fields: CashbackMessageFields, status: CashbackTelegramStatus): string {
+  const lines = [
+    CASHBACK_STATUS_HEADER[status],
+    DIVIDER,
+    `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
+    `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
+    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
+    DIVIDER,
+    CASHBACK_STATUS_LINE[status],
+  ];
+  return lines.join('\n');
+}
+
+function cashbackKeyboard(fields: CashbackMessageFields, status: CashbackTelegramStatus): InlineButton[][] {
+  if (status === 'approved') {
+    return [[{ text: '🔒 Đã duyệt (Không thể bấm)', callback_data: `cb_approved_noop:${fields.ledgerId}` }]];
+  }
+  if (status === 'rejected') {
+    return [[{ text: '🔒 Đã từ chối (Không thể bấm)', callback_data: `cb_rejected_noop:${fields.ledgerId}` }]];
+  }
+  return [[
+    { text: '✅ Duyệt hoàn tiền', callback_data: `cb_approve:${fields.ledgerId}` },
+    { text: '❌ Từ chối hoàn tiền', callback_data: `cb_reject:${fields.ledgerId}` },
+  ]];
+}
+
+/**
+ * Sent once per order, right when the admin confirms it (orders/{id}
+ * PENDING -> CONFIRMED, the moment a FROZEN cashbackLedger entry is
+ * created for the customer's share — see lib/orderEntry.ts). Returns the
+ * sent message's chat/message id so the caller can save it onto that same
+ * cashbackLedger doc — needed later to edit this message from the web UI
+ * (see syncCashbackStatusToTelegram) or, in the other direction, for the
+ * Telegram buttons' callback_data to name which ledger entry they act on.
+ * Returns null if Telegram isn't configured or the send failed — callers
+ * must treat that as normal and never block order confirmation on it.
+ */
+export async function notifyCashbackApprovalToTelegram(fields: CashbackMessageFields): Promise<TelegramMessageRef | null> {
+  if (!CHAT_ID) return null;
+
+  const result = await callTelegramApi<{ message_id: number; chat: { id: number } }>('sendMessage', {
+    chat_id: CHAT_ID,
+    message_thread_id: TELEGRAM_TOPICS.CASHBACK,
+    parse_mode: 'HTML',
+    text: cashbackMessageText(fields, 'pending'),
+    reply_markup: { inline_keyboard: cashbackKeyboard(fields, 'pending') },
+  });
+  if (!result) return null;
+  return { chatId: String(result.chat.id), messageId: result.message_id };
+}
+
+/**
+ * Called after admin approves/rejects the release FROM THE WEB UI
+ * (/manager/payouts) — edits the original Telegram message the same way
+ * syncWithdrawalStatusToTelegram does for withdrawals. The mirror case
+ * (settled via a Telegram button first) is handled inside
+ * workers/telegram-bot itself, not here.
+ */
+export function syncCashbackStatusToTelegram(
+  ref: TelegramMessageRef,
+  fields: CashbackMessageFields,
+  status: 'approved' | 'rejected',
+): Promise<void> {
+  return callTelegramApi('editMessageText', {
+    chat_id: ref.chatId,
+    message_id: ref.messageId,
+    parse_mode: 'HTML',
+    text: cashbackMessageText(fields, status),
+    reply_markup: { inline_keyboard: cashbackKeyboard(fields, status) },
+  }).then(() => undefined);
+}
+
+// ---------------------------------------------------------------------
+// Order approval (PENDING -> CONFIRMED, the step that creates the FROZEN
+// ledger entry above) — same TELEGRAM_TOPICS.CASHBACK topic as the
+// cashback-release messages, since from the admin's point of view both are
+// steps in the same "duyệt hoàn tiền" pipeline: this fires the moment an
+// order is entered as PENDING (see lib/orderEntry.ts's upsertOrder), so
+// approving never has to start on the web — tapping "✅ Duyệt đơn hàng"
+// here does the full PENDING->CONFIRMED transition (referrer lookup,
+// commission split, FROZEN ledger entries — see workers/telegram-bot's
+// handleOrderDecision) and, on success, that same Worker sends the
+// cashback-release message above as a follow-up. Deliberately still two
+// separate approvals, not one: confirming an order and releasing money to
+// a wallet are different decisions with different stakes, and collapsing
+// them would remove the "hold, then decide when to release" step the rest
+// of this app is built around (see /manager/payouts).
+// ---------------------------------------------------------------------
+
+export type OrderApprovalMessageFields = {
+  requesterName: string;
+  requesterEmail: string;
+  productName: string;
+  platformLabel: string;
+  orderValue: number;
+  orderValueLabel: string;
+  commissionAmount: number;
+  commissionAmountLabel: string;
+  orderId: string;
+};
+
+export type OrderApprovalTelegramStatus = 'pending' | 'confirmed' | 'cancelled';
+
+const ORDER_STATUS_HEADER: Record<OrderApprovalTelegramStatus, string> = {
+  pending: `🆕 <b>ĐƠN HÀNG MỚI</b>`,
+  confirmed: `✅ <b>ĐƠN HÀNG</b>`,
+  cancelled: `❌ <b>ĐƠN HÀNG</b>`,
+};
+const ORDER_STATUS_LINE: Record<OrderApprovalTelegramStatus, string> = {
+  pending: `⏳ <b>Trạng thái:</b> Chờ duyệt`,
+  confirmed: `✅ <b>Trạng thái:</b> Đã duyệt`,
+  cancelled: `❌ <b>Trạng thái:</b> Đã từ chối`,
+};
+
+function orderApprovalMessageText(fields: OrderApprovalMessageFields, status: OrderApprovalTelegramStatus): string {
+  const lines = [
+    ORDER_STATUS_HEADER[status],
+    DIVIDER,
+    `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
+    `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
+    `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
+    `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
+    `💰 <b>Giá trị đơn:</b> <code>${escapeHtml(fields.orderValueLabel)}</code>`,
+    `💵 <b>Hoa hồng sàn trả:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    DIVIDER,
+    ORDER_STATUS_LINE[status],
+  ];
+  return lines.join('\n');
+}
+
+function orderApprovalKeyboard(fields: OrderApprovalMessageFields, status: OrderApprovalTelegramStatus): InlineButton[][] {
+  if (status === 'confirmed') {
+    return [[{ text: '🔒 Đã duyệt (Không thể bấm)', callback_data: `order_confirmed_noop:${fields.orderId}` }]];
+  }
+  if (status === 'cancelled') {
+    return [[{ text: '🔒 Đã từ chối (Không thể bấm)', callback_data: `order_cancelled_noop:${fields.orderId}` }]];
+  }
+  return [[
+    { text: '✅ Duyệt đơn hàng', callback_data: `order_approve:${fields.orderId}` },
+    { text: '❌ Từ chối đơn hàng', callback_data: `order_reject:${fields.orderId}` },
+  ]];
+}
+
+/**
+ * Sent once, right when a new order is entered as PENDING (see
+ * lib/orderEntry.ts's upsertOrder — never for an order created directly as
+ * CONFIRMED/something else, since that skips approval by the admin's own
+ * explicit choice at entry time). Returns the sent message's chat/message
+ * id so the caller can save it onto that same orders doc — needed later to
+ * edit this message from the web UI (see syncOrderStatusToTelegram) or,
+ * from the other direction, for the Telegram buttons' callback_data to
+ * name which order they act on. Returns null if Telegram isn't configured
+ * or the send failed — callers must treat that as normal and never block
+ * order creation on it.
+ */
+export async function notifyOrderApprovalToTelegram(fields: OrderApprovalMessageFields): Promise<TelegramMessageRef | null> {
+  if (!CHAT_ID) return null;
+
+  const result = await callTelegramApi<{ message_id: number; chat: { id: number } }>('sendMessage', {
+    chat_id: CHAT_ID,
+    message_thread_id: TELEGRAM_TOPICS.CASHBACK,
+    parse_mode: 'HTML',
+    text: orderApprovalMessageText(fields, 'pending'),
+    reply_markup: { inline_keyboard: orderApprovalKeyboard(fields, 'pending') },
+  });
+  if (!result) return null;
+  return { chatId: String(result.chat.id), messageId: result.message_id };
+}
+
+/**
+ * Called after admin approves/rejects the order FROM THE WEB UI
+ * (/manager/orders) — edits the original Telegram message the same way
+ * the other sync* functions in this file do. The mirror case (settled via
+ * a Telegram button first) is handled inside workers/telegram-bot itself.
+ */
+export function syncOrderStatusToTelegram(
+  ref: TelegramMessageRef,
+  fields: OrderApprovalMessageFields,
+  status: 'confirmed' | 'cancelled',
+): Promise<void> {
+  return callTelegramApi('editMessageText', {
+    chat_id: ref.chatId,
+    message_id: ref.messageId,
+    parse_mode: 'HTML',
+    text: orderApprovalMessageText(fields, status),
+    reply_markup: { inline_keyboard: orderApprovalKeyboard(fields, status) },
   }).then(() => undefined);
 }

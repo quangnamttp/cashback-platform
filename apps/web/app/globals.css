@@ -5726,7 +5726,7 @@ p {
 
 .quick-product-cashback-inline {
   font-size: 0.82rem;
-  color: #15803d;
+  color: var(--success);
   font-weight: 600;
 }
 
@@ -5735,29 +5735,18 @@ p {
   font-weight: 800;
 }
 
-.quick-product-cashback-note {
-  font-size: 0.72rem;
+.quick-product-cashback-caption {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
   color: var(--text-muted);
-  margin: 2px 0 0;
-  line-height: 1.4;
 }
 
-.quick-product-cashback-tiers {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-top: 2px;
-}
-
-.quick-product-cashback-tier {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-}
-
-.quick-product-cashback-tier strong {
-  color: #15803d;
-  font-weight: 800;
-}
+/* Fallback "no real price yet" range display reuses .quick-product-
+   cashback-row (defined below) — one simple highlighted pill instead of a
+   multi-row table. Both ends of the range are still the real
+   `bound * platformRate` (see CASHBACK_ESTIMATE_HIGH in
+   app/get-cashback-link/page.tsx) — only the presentation changed. */
 
 /* "80% hoa hồng" framing — never shows the real, lower final rate (3-5%)
    bare on its own, always paired with "hoa hồng tiếp thị" so it can't be
@@ -5817,25 +5806,44 @@ p {
   line-height: 1.4;
 }
 
+/* Uses the site's own surface/border tokens (not a hardcoded light-green
+   fill) so it sits inside .quick-product-card as part of the page instead
+   of a disconnected colored patch, and adapts correctly in dark mode — the
+   left accent border + green text is what still reads as "money" without
+   needing a solid tinted background. */
 .quick-product-cashback-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  background: #dcfce7;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--success);
   border-radius: var(--radius-md);
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .quick-product-cashback-row span {
   font-size: 0.76rem;
-  color: #15803d;
+  color: var(--success);
   font-weight: 600;
 }
 
 .quick-product-cashback-row strong {
   font-size: 1.2rem;
-  color: #15803d;
+  color: var(--success);
   font-weight: 800;
+}
+
+/* Positive-only signal — see the comment above where this renders in
+   app/get-cashback-link/page.tsx for why its absence is never shown as a
+   "not a real product" warning. */
+.quick-product-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--success);
+  margin-bottom: 3px;
 }
 
 .quick-voucher-panel {

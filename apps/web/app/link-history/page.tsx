@@ -12,7 +12,8 @@ import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
 import { PLATFORM_LABEL, type Platform } from '../../lib/orderEntry';
 import { recordRedirectHit } from '../../lib/redirectLink';
-import { subscribeSystemRates, DEFAULT_RATES, ASSUMED_ORDER_VALUE, type SystemRates } from '../../lib/systemConfig';
+import { guessOrderValueRange } from '../../lib/cashbackEstimate';
+import { subscribeSystemRates, DEFAULT_RATES, type SystemRates } from '../../lib/systemConfig';
 import { usePageTitle } from '../../lib/use-page-title';
 
 type RedirectDoc = {
@@ -65,8 +66,17 @@ export default function LinkHistoryPage() {
       // product — practically the same as expired from the customer's
       // point of view, so both render with the same "hết hạn" badge.
       const isExpired = item.status !== 'ACTIVE' || now > expiresAtMs;
-      const estimatedCashback = Math.round((item.price ?? ASSUMED_ORDER_VALUE) * (platformRate[item.platform] ?? 0));
-      return { ...item, isExpired, estimatedCashback };
+      const rate = platformRate[item.platform] ?? 0;
+      if (item.price) {
+        return { ...item, isExpired, cashbackLow: Math.round(item.price * rate), cashbackHigh: Math.round(item.price * rate) };
+      }
+      // Same guessed-tier range /get-cashback-link shows for this exact
+      // product (same title, same guessOrderValueRange call) — previously
+      // this used one fixed ASSUMED_ORDER_VALUE for every single link
+      // regardless of product, always showing the same "~4.000đ" no matter
+      // what was actually pasted.
+      const range = guessOrderValueRange(item.title);
+      return { ...item, isExpired, cashbackLow: Math.round(range.low * rate), cashbackHigh: Math.round(range.high * rate) };
     });
   }, [links, rates]);
 
@@ -148,7 +158,9 @@ export default function LinkHistoryPage() {
                         </td>
                         <td className="order-table-cashback-cell">
                           <strong className="order-card-cashback">
-                            {item.price ? '' : '~'}{formatCurrency(item.estimatedCashback, lang)}
+                            {item.price
+                              ? formatCurrency(item.cashbackLow, lang)
+                              : `~${formatCurrency(item.cashbackLow, lang)} – ~${formatCurrency(item.cashbackHigh, lang)}`}
                           </strong>
                         </td>
                         <td className="order-table-status-cell">
