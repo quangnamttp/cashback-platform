@@ -1015,6 +1015,17 @@ p {
   -webkit-overflow-scrolling: touch;
 }
 
+/* On a phone-height viewport, a 520px-tall scroll box eats most of the
+   visible screen, so reaching its horizontal scrollbar means swiping all
+   the way to the bottom of the row list first. Capping it shorter on
+   mobile keeps more of the page (and the box's own bottom edge) in view
+   at once. */
+@media (max-width: 640px) {
+  .table-scroll {
+    max-height: 360px;
+  }
+}
+
 .data-table thead th {
   position: sticky;
   top: 0;
@@ -1032,12 +1043,22 @@ p {
   border-collapse: collapse;
 }
 
+/* Denser than the original 12px/10px + inherited body font-size — every
+   admin table (fraud/users/orders/withdrawals/payouts/referrals/devices/
+   logs, all share this one class) has enough columns that a viewer on a
+   normal screen had to scroll all the way down through every row before
+   the horizontal scrollbar (bottom-pinned inside .table-scroll's own
+   520px box) became reachable. Shrinking rows means more of the table's
+   real height is visible at once, so that scrollbar shows up much
+   sooner — and a bit more fits sideways before horizontal scroll is
+   even needed at all. */
 .data-table th,
 .data-table td {
   text-align: left;
-  padding: 12px 10px;
+  padding: 8px 8px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  font-size: 0.8rem;
 }
 
 .data-table tbody tr {
