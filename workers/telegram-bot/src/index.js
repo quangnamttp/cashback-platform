@@ -178,6 +178,7 @@ async function getWithdrawalDoc(env, idToken, requestId) {
   const f = json.fields || {};
   return {
     status: f.status?.stringValue ?? null,
+    userId: f.userId?.stringValue ?? '',
     bank: f.bank?.stringValue ?? f.method?.stringValue ?? '',
     accountNumber: f.accountNumber?.stringValue ?? '',
     accountHolder: f.accountHolder?.stringValue ?? '',
@@ -185,6 +186,48 @@ async function getWithdrawalDoc(env, idToken, requestId) {
     requesterName: f.requesterName?.stringValue ?? f.requesterLabel?.stringValue ?? 'Khách hàng',
     requesterEmail: f.requesterEmail?.stringValue ?? '—',
   };
+}
+
+// Mirrors lib/walletBalance.ts's creditWalletBalance — the Worker has no
+// Firebase SDK, so this is a plain read-modify-write over the REST API
+// instead of the client SDK's increment() FieldValue, guarded by
+// currentDocument.updateTime (or currentDocument.exists=false on first
+// write for this uid) so a concurrent credit from the web side can't be
+// silently clobbered. Retries once on a lost race — low-contention path
+// (one uid's wallet is rarely credited twice within the same instant), so
+// a single retry is enough rather than needing a full backoff loop.
+async function creditWalletBalance(env, idToken, uid, amount) {
+  if (!uid || uid === ADMIN_WALLET_ID || !(amount > 0)) return;
+  const url = firestoreDocUrl(env, 'walletBalances', uid);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const getRes = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
+    if (getRes.status === 404) {
+      const res = await fetch(`${url}?currentDocument.exists=false`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { available: { integerValue: String(Math.round(amount)) } } }),
+      });
+      if (res.ok) return;
+      continue; // someone else created it in the meantime — retry as an update
+    }
+    const json = await getRes.json().catch(() => ({}));
+    if (!getRes.ok) {
+      console.error('creditWalletBalance get failed:', getRes.status, JSON.stringify(json));
+      return;
+    }
+    const current = Number(json.fields?.available?.integerValue ?? json.fields?.available?.doubleValue ?? 0);
+    const nextValue = Math.round(current + amount);
+    const res = await fetch(
+      `${url}?updateMask.fieldPaths=available&currentDocument.updateTime=${encodeURIComponent(json.updateTime)}`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { available: { integerValue: String(nextValue) } } }),
+      },
+    );
+    if (res.ok) return;
+  }
+  console.error('creditWalletBalance: gave up after retries for', uid);
 }
 
 async function markDocSettled(env, idToken, requestId, status) {
@@ -226,6 +269,7 @@ async function getLedgerDoc(env, idToken, ledgerId) {
   const f = json.fields || {};
   return {
     status: f.status?.stringValue ?? null,
+    userId: f.userId?.stringValue ?? '',
     orderId: f.orderId?.stringValue ?? '—',
     amount: Number(f.amount?.integerValue ?? f.amount?.doubleValue ?? 0),
     requesterName: f.requesterName?.stringValue ?? 'Khách hàng',
@@ -309,6 +353,9 @@ async function getOrderDoc(env, idToken, orderId) {
     productName: f.productName?.stringValue ?? '',
     orderValue: Number(f.orderValue?.integerValue ?? f.orderValue?.doubleValue ?? 0),
     commissionAmount: Number(f.commissionAmount?.integerValue ?? f.commissionAmount?.doubleValue ?? 0),
+    // Needed by tryClaimOrderStatus below — an optimistic-concurrency
+    // precondition, not displayed anywhere.
+    updateTime: json.updateTime,
   };
 }
 
@@ -394,7 +441,24 @@ async function createLedgerDocument(env, idToken, fields) {
   return parts[parts.length - 1];
 }
 
-async function markOrderSettled(env, idToken, orderId, status) {
+/**
+ * The atomic guard against double-approving the same order from two
+ * directions at once (a web tab's approveOrdersBatch racing this same
+ * Telegram tap, or two taps on two devices) — mirrors what
+ * confirmOrderWithLedger's Firestore transaction does on the web side
+ * (apps/web/lib/orderEntry.ts), but this Worker has no Firebase SDK/
+ * transactions, only the raw REST API, so the equivalent here is an
+ * optimistic-concurrency precondition: the PATCH only applies if the order
+ * doc's updateTime still matches what was read a moment ago. If someone
+ * else (web or another tap) wrote to it in between, this fails with 409
+ * and the caller must NOT create ledger entries — the order was already
+ * claimed by whoever won. Called BEFORE any ledger-entry creation for
+ * exactly that reason (unlike the old unconditional markOrderSettled this
+ * replaces, which ran AFTER ledger creation, leaving a window where two
+ * concurrent callers could both create a full set of FROZEN entries before
+ * either one got around to writing the order's own status).
+ */
+async function tryClaimOrderStatus(env, idToken, orderId, expectedUpdateTime, status) {
   const mask = ['status', 'confirmedAt'].map((p) => `updateMask.fieldPaths=${p}`).join('&');
   const body = {
     fields: {
@@ -402,17 +466,25 @@ async function markOrderSettled(env, idToken, orderId, status) {
       confirmedAt: { timestampValue: new Date().toISOString() },
     },
   };
-  const res = await fetch(`${firestoreDocUrl(env, 'orders', orderId)}?${mask}`, {
+  const precondition = expectedUpdateTime
+    ? `&currentDocument.updateTime=${encodeURIComponent(expectedUpdateTime)}`
+    : '&currentDocument.exists=true';
+  const res = await fetch(`${firestoreDocUrl(env, 'orders', orderId)}?${mask}${precondition}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (res.status === 409 || res.status === 400) {
+    console.log('tryClaimOrderStatus: lost the race for', orderId, '(order changed since read)');
+    return false;
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error('firestore patch (order) failed:', res.status, JSON.stringify(json));
     throw new Error(`firestore patch (order) failed: ${json.error?.message || res.status}`);
   }
   console.log('firestore patch (order) OK for', orderId, '->', status);
+  return true;
 }
 
 // --- Order approval message render (mirrors orderApprovalMessageText()/
@@ -544,6 +616,17 @@ async function handleDecision(env, callbackQuery, requestId, targetStatus) {
       await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được trạng thái, thử lại sau.', true);
       return;
     }
+    // Mirrors app/manager/withdrawals/page.tsx's decide(REJECT) branch — a
+    // rejected request must give back the amount it reserved out of
+    // walletBalances/{uid}.available at creation time (see
+    // lib/walletBalance.ts), or the requester's real withdrawable ceiling
+    // stays wrongly lower forever. PAID needs no change (the reservation
+    // was already permanent the moment money actually moved).
+    if (targetStatus === 'REJECTED') {
+      await creditWalletBalance(env, idToken, doc.userId, doc.amount).catch((err) =>
+        console.error('creditWalletBalance (withdrawal reject) threw:', err.message),
+      );
+    }
   }
 
   const settledFields = {
@@ -635,6 +718,16 @@ async function handleCashbackDecision(env, callbackQuery, ledgerId, targetStatus
       await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được trạng thái, thử lại sau.', true);
       return;
     }
+    // Mirrors app/manager/payouts/page.tsx's decideSelected('RELEASED')
+    // branch — money only becomes withdrawable (and therefore checkable
+    // against the withdrawalRequests/create rule) once it's credited into
+    // walletBalances/{uid}.available here. REJECTED needs no credit (the
+    // money was never released).
+    if (targetStatus === 'RELEASED') {
+      await creditWalletBalance(env, idToken, ledgerDoc.userId, ledgerDoc.amount).catch((err) =>
+        console.error('creditWalletBalance (cashback release) threw:', err.message),
+      );
+    }
   }
 
   const settledFields = {
@@ -725,6 +818,25 @@ async function handleOrderDecision(env, callbackQuery, orderId, targetStatus) {
   // got there first, so nothing further to do on that front either.
   let customerUser = null;
   if (order.status !== targetStatus) {
+    // Claim the order FIRST (atomic, guarded by order.updateTime — see
+    // tryClaimOrderStatus) — only the caller that wins this race is allowed
+    // to go on and create ledger entries below. Losing the race here means
+    // a web approve or another tap already settled this exact order in the
+    // moment between our read above and this write.
+    let claimed;
+    try {
+      claimed = await tryClaimOrderStatus(env, idToken, orderId, order.updateTime, targetStatus);
+    } catch (err) {
+      console.error('order claim step failed:', err.message);
+      await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được đơn hàng, thử lại sau.', true);
+      return;
+    }
+
+    if (!claimed) {
+      const fresh = await getOrderDoc(env, idToken, orderId).catch(() => null);
+      if (fresh) order = fresh;
+      customerUser = await getUserDoc(env, idToken, order.userId).catch(() => null);
+    } else {
     try {
       customerUser = await getUserDoc(env, idToken, order.userId);
       if (targetStatus === 'CONFIRMED' && order.commissionAmount > 0) {
@@ -800,11 +912,11 @@ async function handleOrderDecision(env, callbackQuery, orderId, targetStatus) {
           });
         }
       }
-      await markOrderSettled(env, idToken, orderId, targetStatus);
     } catch (err) {
       console.error('order settle step failed:', err.message);
       await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được đơn hàng, thử lại sau.', true);
       return;
+    }
     }
   } else {
     customerUser = await getUserDoc(env, idToken, order.userId).catch(() => null);

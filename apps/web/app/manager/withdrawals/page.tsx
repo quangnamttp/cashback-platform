@@ -7,6 +7,7 @@ import { useAuth } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { syncWithdrawalStatusToTelegram } from '../../../lib/telegram';
 import { ADMIN_WALLET_ID } from '../../../lib/orderEntry';
+import { creditWalletBalance } from '../../../lib/walletBalance';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { Modal } from '../../../components/ui/Modal';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
@@ -152,11 +153,16 @@ export default function AdminWithdrawalsPage() {
     );
   });
 
-  // Only ever a status change on the request doc — nothing to reserve or
-  // refund, since a withdrawal request never debits a balance counter up
-  // front (there isn't one). "Available to withdraw" is always computed
-  // live from cashbackLedger, so a REJECTED request naturally leaves the
-  // requester's balance untouched with zero extra bookkeeping here.
+  // "Available to withdraw" is still always computed live from
+  // cashbackLedger for display (unchanged) — but the request's `amount` was
+  // reserved out of walletBalances/{uid}.available the moment it was
+  // created (see lib/walletBalance.ts / cashback-wallet/page.tsx), which
+  // IS what firestore.rules checks new requests against. A REJECTED
+  // request must give that reservation back, or the requester's real
+  // withdrawable ceiling would stay wrongly lower forever. ADMIN_WALLET
+  // never reserves against this counter (separate calc, see
+  // creditWalletBalance's call site in manager/payouts/page.tsx), so it's
+  // skipped here too.
   const decide = async (requestId: string, decision: 'APPROVE' | 'REJECT' | 'MARK_PAID', reason?: string) => {
     if (!uid) return;
     setBusyId(requestId);
@@ -168,6 +174,12 @@ export default function AdminWithdrawalsPage() {
         decidedAt: serverTimestamp(),
         ...(decision === 'REJECT' ? { rejectionReason: reason || '' } : {}),
       });
+      if (decision === 'REJECT') {
+        const row = rows.find((r) => r.id === requestId);
+        if (row && row.userId !== ADMIN_WALLET_ID) {
+          await creditWalletBalance(row.userId, row.amount);
+        }
+      }
       if (decision === 'MARK_PAID' || decision === 'REJECT') {
         // Keeps the Telegram buttons in sync when admin decides from the
         // web instead of tapping them in Telegram — otherwise those

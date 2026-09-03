@@ -75,12 +75,32 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Optional admin-maintained cache only (e.g. quick header display) — the
-    // wallet page itself always computes the real, trustworthy balance by
-    // summing cashbackLedger, never by trusting a mutable counter.
+    // A maintained running counter (see lib/walletBalance.ts) used ONLY to
+    // let withdrawalRequests/create below cap a request's amount with a
+    // single get() — firestore.rules cannot itself sum cashbackLedger, so
+    // without this there was no server-side check at all on a withdrawal
+    // amount. The wallet UI itself still always computes the real,
+    // displayed balance by summing cashbackLedger live, never by trusting
+    // this field for display.
+    //
+    // Only isAdmin()/isPaymentBot() can ever CREATE this doc or INCREASE
+    // it (crediting a release, or refunding a rejected withdrawal — both
+    // already-trusted actions elsewhere in this file). The owner may only
+    // DECREASE their own value, and never below 0 — that's the one write a
+    // customer legitimately needs to make themselves, atomically alongside
+    // creating their own withdrawal request (reserving the amount). A
+    // customer can therefore spend their own ceiling down but can never
+    // raise it, so self-writing this doc can't be used to inflate what
+    // they're later allowed to withdraw.
     match /walletBalances/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow write: if isAdmin();
+      allow create: if isAdmin() || isPaymentBot();
+      allow update: if isAdmin() || isPaymentBot()
+        || (isOwner(uid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['available'])
+            && request.resource.data.available >= 0
+            && request.resource.data.available <= resource.data.available);
+      allow delete: if false;
     }
 
     // Doc id is `${uid}_${deviceId}` — deviceId is a random id persisted in
@@ -183,10 +203,16 @@ service cloud.firestore {
       // or the admin withdrawing the platform's 20% share out of the
       // virtual ADMIN_WALLET (never the admin's own personal uid, so it can
       // never be confused with — or accidentally merged into — a personal
-      // withdrawal request).
+      // withdrawal request). The customer branch additionally caps `amount`
+      // against walletBalances/{uid}.available (see that match block) —
+      // the only real server-side stop on a withdrawal request exceeding
+      // the requester's actual balance; the ADMIN_WALLET branch is left as
+      // it already was (a separate, admin-only, 20%-of-ledger calculation
+      // on /manager/wallet, out of scope here).
       allow create: if isSignedIn()
         && request.resource.data.status == 'PENDING_ADMIN'
-        && ((request.resource.data.userId == request.auth.uid)
+        && ((request.resource.data.userId == request.auth.uid
+             && request.resource.data.amount <= get(/databases/$(database)/documents/walletBalances/$(request.auth.uid)).data.available)
             || (isAdmin() && request.resource.data.userId == 'ADMIN_WALLET'));
       allow update: if isAdmin()
         || (isPaymentBot()

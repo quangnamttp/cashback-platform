@@ -7,6 +7,7 @@ import { useAuth } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { ADMIN_WALLET_ID, type LedgerEntryType } from '../../../lib/orderEntry';
 import { syncCashbackStatusToTelegram } from '../../../lib/telegram';
+import { creditWalletBalance } from '../../../lib/walletBalance';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
@@ -132,6 +133,20 @@ export default function AdminPayoutsPage() {
           });
         });
         await batch.commit();
+      }
+      // Credits walletBalances/{uid}.available for every entry that just
+      // became withdrawable — the server-side ceiling withdrawalRequests/
+      // create checks (see lib/walletBalance.ts). ADMIN_WALLET is skipped:
+      // its withdrawals are a separate, admin-only 20%-of-ledger
+      // calculation on /manager/wallet that never reserves against this
+      // counter, so crediting it here would just accumulate a number
+      // nothing ever reads.
+      if (decision === 'RELEASED') {
+        await Promise.all(
+          targets
+            .filter((entry) => entry.userId !== ADMIN_WALLET_ID)
+            .map((entry) => creditWalletBalance(entry.userId, entry.amount)),
+        );
       }
       // Keeps the Telegram buttons in sync when admin decides from the web
       // instead of tapping them in Telegram — otherwise those buttons

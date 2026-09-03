@@ -25,6 +25,7 @@ import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
 import { validateAccountNumber } from '../../lib/bankValidation';
 import { notifyWithdrawalRequestToTelegram } from '../../lib/telegram';
+import { creditWalletBalance, reserveWithdrawal } from '../../lib/walletBalance';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { usePageTitle } from '../../lib/use-page-title';
 
@@ -259,39 +260,61 @@ export default function CashbackWalletPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const requesterName = userName || 'Khách hàng';
-      const requesterEmail = userEmail || uid;
-      // Pre-generated so the id is known BEFORE the doc is written — needed
-      // to send it as the Telegram "✅ Xác nhận đã thanh toán" button's
-      // callback_data and to fold the Telegram message's own chat/message
-      // id back into this same create call (a plain customer can create
-      // their own request, but firestore.rules only lets admin/the payment
-      // bot UPDATE one afterwards — see workers/telegram-bot).
-      const ref = doc(collection(getFirebaseDb(), 'withdrawalRequests'));
-      const telegramRef = await notifyWithdrawalRequestToTelegram({
-        requestId: ref.id,
-        requesterName,
-        requesterEmail,
-        bank: selectedAccount.bank,
-        accountNumber: selectedAccount.accountNumber,
-        accountHolder: selectedAccount.accountHolder,
-        amount: amountNum,
-        amountLabel: formatCurrency(amountNum, lang),
-      });
-      await setDoc(ref, {
-        userId: uid,
-        amount: amountNum,
-        bank: selectedAccount.bank,
-        accountNumber: selectedAccount.accountNumber,
-        accountHolder: selectedAccount.accountHolder,
-        method: `${selectedAccount.bank} • ${selectedAccount.accountNumber} (${selectedAccount.accountHolder})`,
-        requesterName,
-        requesterEmail,
-        status: 'PENDING_ADMIN',
-        requestedAt: serverTimestamp(),
-        telegramChatId: telegramRef?.chatId ?? null,
-        telegramMessageId: telegramRef?.messageId ?? null,
-      });
+      // Server-side (Firestore transaction + rules), not just this page's
+      // own isValidAmount check above — reserves the amount atomically
+      // against walletBalances/{uid}.available BEFORE the request doc is
+      // even created, so two withdrawal requests submitted near-
+      // simultaneously (double-tap, two tabs) can never both reserve more
+      // than what's really available. See lib/walletBalance.ts.
+      const reserved = await reserveWithdrawal(uid, amountNum);
+      if (!reserved) {
+        setSubmitError('Số dư khả dụng của bạn đã thay đổi, vui lòng tải lại trang và thử lại.');
+        return;
+      }
+
+      try {
+        const requesterName = userName || 'Khách hàng';
+        const requesterEmail = userEmail || uid;
+        // Pre-generated so the id is known BEFORE the doc is written — needed
+        // to send it as the Telegram "✅ Xác nhận đã thanh toán" button's
+        // callback_data and to fold the Telegram message's own chat/message
+        // id back into this same create call (a plain customer can create
+        // their own request, but firestore.rules only lets admin/the payment
+        // bot UPDATE one afterwards — see workers/telegram-bot).
+        const ref = doc(collection(getFirebaseDb(), 'withdrawalRequests'));
+        const telegramRef = await notifyWithdrawalRequestToTelegram({
+          requestId: ref.id,
+          requesterName,
+          requesterEmail,
+          bank: selectedAccount.bank,
+          accountNumber: selectedAccount.accountNumber,
+          accountHolder: selectedAccount.accountHolder,
+          amount: amountNum,
+          amountLabel: formatCurrency(amountNum, lang),
+        });
+        await setDoc(ref, {
+          userId: uid,
+          amount: amountNum,
+          bank: selectedAccount.bank,
+          accountNumber: selectedAccount.accountNumber,
+          accountHolder: selectedAccount.accountHolder,
+          method: `${selectedAccount.bank} • ${selectedAccount.accountNumber} (${selectedAccount.accountHolder})`,
+          requesterName,
+          requesterEmail,
+          status: 'PENDING_ADMIN',
+          requestedAt: serverTimestamp(),
+          telegramChatId: telegramRef?.chatId ?? null,
+          telegramMessageId: telegramRef?.messageId ?? null,
+        });
+      } catch (err) {
+        // The reservation above already went through — if creating the
+        // request doc itself fails partway (network drop, etc.), give the
+        // reserved amount back instead of leaving it stuck decremented with
+        // no matching request to ever release it.
+        await creditWalletBalance(uid, amountNum).catch(() => undefined);
+        throw err;
+      }
+
       setAmount('');
       setSelectedAccountId('');
       setSubmitted(true);
