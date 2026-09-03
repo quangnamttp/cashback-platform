@@ -103,6 +103,16 @@ const AFFILIATE_TAG_PARAM: Record<Platform, string> = {
  * by hand in /manager/orders: there is no automated affiliate payout
  * signal to trust on a Spark-plan, backend-free deployment. Confirmed with
  * the site owner as the intended, permanent design — not a stopgap.
+ *
+ * THE SWAP POINT for a real integration: this function's signature
+ * (platform + product URL + our own tracking code -> destination URL) is
+ * already exactly what AffiliateProvider.buildTrackingLink expects (see
+ * lib/affiliateProvider.ts) — trackingCode here IS the subId that
+ * interface documents. Once a provider is approved, replacing this body
+ * with a real provider's deep-link call (still only from server/build-time
+ * config — never a secret key shipped in this client bundle) is a
+ * self-contained change; nothing that calls buildAffiliateUrl needs to
+ * change.
  */
 function buildAffiliateUrl(platform: Platform, normalizedUrl: string, trackingCode: string): string {
   try {

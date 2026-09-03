@@ -1,19 +1,61 @@
 'use client';
 
 /**
- * Architecture prep only — nothing in this file is called by any live page
- * or flow today. It exists so that when a real affiliate provider (first
- * candidate: ACCESSTRADE, once the Shopee/Lazada campaigns are approved) is
- * wired in, that work is "write a provider implementation + call
- * createOrderFromAffiliateConversion from a webhook/poll handler" instead
- * of "redesign how orders/users/cashback/wallet relate to each other." User,
- * Order, cashbackLedger, wallet and admin approval are untouched by this
- * file — it only prepares the ONE seam those systems don't have yet:
- * turning a provider's raw conversion event into a real, idempotent order.
+ * ARCHITECTURE PREP ONLY — nothing in this file is called by any live page
+ * or flow today (see createOrderFromAffiliateConversion's own comment for
+ * why it's safe to ship un-called). It exists so that wiring in a real
+ * affiliate provider later (first candidate: ACCESSTRADE, once Shopee/
+ * Lazada campaigns are approved) is "write a provider implementation +
+ * call the Worker-side equivalent of createOrderFromAffiliateConversion
+ * from a webhook/poll handler" instead of "redesign how orders/users/
+ * cashback/wallet relate to each other." User, Order, cashbackLedger,
+ * wallet and admin approval are untouched by this file.
  *
- * Nothing here calls any affiliate provider's API, creates a real tracking
- * link, or fabricates a conversion — see createOrderFromAffiliateConversion's
- * own comment for why it's safe (inert) to ship un-called.
+ * ⚠️ WEB-ONLY — DO NOT IMPORT THIS FILE FROM A CLOUDFLARE WORKER.
+ * This is a 'use client' module: it pulls in the Firebase JS (client) SDK
+ * via getFirebaseDb()/lib/firebase.ts and lib/telegram.ts, both of which
+ * assume a browser environment and are bundled by Next.js, not usable from
+ * a standalone Worker script. This is the SAME constraint
+ * workers/telegram-bot/src/index.js already documents at its own top ("no
+ * access to that module, and no Firebase client SDK, only the raw REST
+ * API") — a Worker has no shared build with apps/web at all, so nothing
+ * under apps/web/lib/ can ever be literally imported by one, regardless of
+ * whether it's marked 'use client'.
+ *
+ * WHERE EACH RESPONSIBILITY LIVES (the boundary a real integration must
+ * respect):
+ *
+ *   WEB / apps/web (this file + lib/redirectLink.ts) owns:
+ *     - creating tracking links (createOrReuseRedirect in lib/redirectLink.ts)
+ *     - mapping a tracking code back to a user (resolveUserIdFromSubId below
+ *       — a plain read, safe and genuinely useful from the browser, e.g. a
+ *       future admin page manually inspecting an unmatched conversion)
+ *     - the AffiliateProvider/AffiliateConversion contract types below, so
+ *       a Worker implementation has an exact, TypeScript-checked shape to
+ *       match even though it can't import this file directly
+ *
+ *   WORKER / a future workers/<provider>-webhook (NOT written yet — Shopee
+ *   and Lazada aren't approved, nothing should call a real provider API
+ *   until they are) must own, in plain JS + Firestore REST + its own
+ *   narrowly-scoped Firebase Auth identity (mirroring workers/telegram-bot's
+ *   isPaymentBot() pattern — a new identity, not that same one, since this
+ *   Worker needs different permissions: orders/create for AFFILIATE-sourced
+ *   orders, which isPaymentBot() deliberately does NOT have today):
+ *     - receiving the webhook or running the poll
+ *     - normalizing the raw payload into the AffiliateConversion shape
+ *     - the idempotency check (see createOrderFromAffiliateConversion's
+ *       comment below for the exact algorithm to replicate)
+ *     - resolving conversion -> user (REST GET on redirectCache/{subId},
+ *       same lookup resolveUserIdFromSubId does, reimplemented over REST)
+ *     - creating/updating the Order document
+ *     - storing commission amount/status
+ *     - sending the admin Telegram notification
+ *   createOrderFromAffiliateConversion below is the REFERENCE
+ *   implementation of all of that — correct, typed, and runnable against a
+ *   real Firebase project during development — but it is not what actually
+ *   runs in production; the Worker's REST version is the one real webhook
+ *   traffic hits, replicated line-for-line from this one when that Worker
+ *   is written.
  */
 
 import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
@@ -38,7 +80,12 @@ export type AffiliateConversion = {
   // The provider's own unique id for this conversion event — the PRIMARY
   // idempotency key (see createOrderFromAffiliateConversion). Two webhook
   // deliveries, a polling re-fetch, or a manual retry for the same
-  // conversion must carry the same conversionId.
+  // conversion must carry the same conversionId. A provider typically
+  // sends MULTIPLE events for the same conversionId over its lifetime
+  // (e.g. commissionStatus PENDING at click/purchase time, then APPROVED
+  // or REJECTED once they finish their own review) — createOrderFromAffiliate
+  // Conversion below handles both "never seen this id" (create) and
+  // "seen it, status changed" (update) from the exact same call.
   conversionId: string;
   // The provider's own order id, when it has one distinct from
   // conversionId — used as the FALLBACK idempotency key only if
@@ -60,20 +107,19 @@ export type AffiliateConversion = {
 };
 
 /**
- * What a concrete provider module (e.g. a future lib/providers/accessTrade.ts)
- * must implement. Deliberately minimal: this app has no server, so a
- * provider's webhook receiver lives in a Cloudflare Worker (mirroring
- * workers/telegram-bot's existing isPaymentBot()-signed-in-via-REST
- * pattern) — buildTrackingLink and normalizeConversion are the two pieces
- * of provider-specific logic that Worker would need, kept here as a typed
- * contract so the Worker-side implementation (plain JS, no this module's
- * imports available to it, same constraint documented in
- * workers/telegram-bot/src/index.js) has an exact shape to match.
+ * What a concrete provider module (e.g. a future lib/providers/accessTrade.ts
+ * on the web side, mirrored in REST form inside the Worker) must implement.
+ * Deliberately minimal — buildTrackingLink and normalizeConversion are the
+ * two pieces of provider-specific logic everything else in this file is
+ * written to never need to know about.
  */
 export interface AffiliateProvider {
   id: AffiliateProviderId;
   /** Turns our own tracking code + the raw destination URL into whatever
-   * deep-link format the provider's real affiliate system requires. */
+   * deep-link format the provider's real affiliate system requires. See
+   * lib/redirectLink.ts's buildAffiliateUrl — the web-side function this
+   * interface method will eventually replace the body of, once a real
+   * provider is approved and its own deep-link rules are known. */
   buildTrackingLink(input: { subId: string; destinationUrl: string }): string;
   /** Turns the provider's raw webhook/poll payload into our normalized
    * shape, or null if the payload isn't a conversion this app cares about. */
@@ -101,32 +147,43 @@ function formatVnd(amount: number): string {
 
 /**
  * The idempotent entry point a future webhook/poll handler calls once per
- * received conversion. NOT called by anything today — no real provider is
- * wired in yet, and this must never be invoked with synthetic/fabricated
- * conversion data (that would create a real PENDING order + admin
- * notification for money that doesn't exist).
+ * received conversion event. NOT called by anything today — no real
+ * provider is wired in yet, and this must never be invoked with synthetic/
+ * fabricated conversion data (that would create a real PENDING order +
+ * admin notification for money that doesn't exist).
  *
- * Idempotency: the Firestore document id is deterministic —
+ * Idempotency — the Firestore document id is deterministic:
  * `${provider}_${conversionId}` (falling back to
  * `${provider}_ext_${externalOrderId}` only if the provider has no
- * conversionId for some payload). Handles every duplicate-delivery
- * scenario the SAME way, by construction, with no separate dedup table:
- *   - webhook redelivery / retry: identical id -> same document -> the
- *     transaction below sees it already exists and returns created:false.
- *   - polling re-fetching an already-seen conversion: identical id, same
- *     outcome.
+ * conversionId for some payload). One transaction handles BOTH cases a
+ * real provider integration needs, by construction, with no separate dedup
+ * table:
+ *   - conversionId never seen before -> creates a new PENDING order.
+ *   - conversionId already seen (webhook redelivery, polling re-fetch, a
+ *     retry, OR a genuine later lifecycle event like PENDING->APPROVED) ->
+ *     no new order; if the order is STILL PENDING (admin hasn't acted on
+ *     it yet) and the incoming commissionStatus/commissionAmount differ
+ *     from what's stored, updates just those two fields in place. Once the
+ *     admin has moved the order past PENDING (CONFIRMED/CANCELLED/
+ *     REFUNDED), the order's commission figures are already locked into
+ *     real ledger entries and are never silently rewritten by a later
+ *     provider event — that mismatch would need a human to notice, same
+ *     philosophy as the existing REFUNDED-after-RELEASE fraud-signal
+ *     safety net in lib/orderEntry.ts's upsertOrder.
  *   - two concurrent calls for the same conversion (a retry racing the
- *     original, or two Worker instances): the transaction serializes on
- *     that one document id — whichever commits first wins, the other's
- *     tx.get() sees it already exists and returns created:false. Never two
- *     orders for one conversion, regardless of timing.
+ *     original, two Worker instances, or a create racing an update): the
+ *     transaction serializes on that one document id — whichever commits
+ *     first wins, the other's tx.get() sees the committed result and
+ *     either backs off (already created) or reads the just-updated value
+ *     (already updated). Never two orders for one conversion, and never a
+ *     lost/overwritten status update, regardless of timing.
  * This is the same pattern confirmOrderWithLedger (lib/orderEntry.ts) uses
  * for the CONFIRMED-transition race — a transaction guarding a single,
  * deterministic document.
  */
 export async function createOrderFromAffiliateConversion(
   conversion: AffiliateConversion,
-): Promise<{ orderId: string; created: boolean }> {
+): Promise<{ orderId: string; created: boolean; updated: boolean }> {
   const db = getFirebaseDb();
   const orderId = conversion.conversionId
     ? `${conversion.provider}_${conversion.conversionId}`
@@ -143,7 +200,7 @@ export async function createOrderFromAffiliateConversion(
     throw new Error(`createOrderFromAffiliateConversion: no user found for subId ${conversion.subId}`);
   }
 
-  const orderFields = {
+  const newOrderFields = {
     userId,
     platform: conversion.platform,
     productName: conversion.productName,
@@ -165,11 +222,29 @@ export async function createOrderFromAffiliateConversion(
     telegramMessageId: null,
   };
 
-  const created = await runTransaction(db, async (tx) => {
+  const { created, updated } = await runTransaction(db, async (tx) => {
     const snap = await tx.get(orderRef);
-    if (snap.exists()) return false;
-    tx.set(orderRef, orderFields);
-    return true;
+    if (!snap.exists()) {
+      tx.set(orderRef, newOrderFields);
+      return { created: true, updated: false };
+    }
+    const existing = snap.data();
+    if (existing.status !== 'PENDING') {
+      // Admin already acted on this order — a later provider event must
+      // never silently change commission figures underneath an already-
+      // settled decision.
+      return { created: false, updated: false };
+    }
+    const statusChanged = existing.commissionStatus !== conversion.commissionStatus;
+    const amountChanged = existing.commissionAmount !== conversion.commissionAmount;
+    if (!statusChanged && !amountChanged) {
+      return { created: false, updated: false };
+    }
+    tx.update(orderRef, {
+      commissionStatus: conversion.commissionStatus,
+      commissionAmount: conversion.commissionAmount,
+    });
+    return { created: false, updated: true };
   });
 
   if (created) {
@@ -177,6 +252,11 @@ export async function createOrderFromAffiliateConversion(
     // gets (see upsertOrder in lib/orderEntry.ts) — kept identical so
     // wiring a real provider in later needs no changes to how admin finds
     // out about a new order, only to how the order itself gets created.
+    // Deliberately NOT re-sent on an updated (not created) order — a later
+    // commissionStatus/commissionAmount change edits the SAME still-PENDING
+    // order the admin was already notified about once; a second Telegram
+    // message per lifecycle event would be spammy, not useful, and admin
+    // still sees the current values whenever they open /manager/orders.
     const customerSnap = await getDoc(doc(db, 'users', userId));
     const customerData = customerSnap.exists() ? customerSnap.data() : null;
     const telegramRef = await notifyOrderApprovalToTelegram({
@@ -199,5 +279,5 @@ export async function createOrderFromAffiliateConversion(
     }
   }
 
-  return { orderId, created };
+  return { orderId, created, updated };
 }
