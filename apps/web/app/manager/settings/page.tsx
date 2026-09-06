@@ -7,6 +7,7 @@ import { usePageTitle } from '../../../lib/use-page-title';
 import { useAuth, BOOTSTRAP_ADMIN_EMAILS } from '../../../lib/auth';
 import { isGoogleDriveConfigured } from '../../../lib/googleDrive';
 import { backupOldAuditLogs } from '../../../lib/backupLogs';
+import { backfillOrdersCustomerVisible } from '../../../lib/backfillOrders';
 import { subscribeSystemRates, saveSystemRates, DEFAULT_RATES, type SystemRates } from '../../../lib/systemConfig';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
@@ -23,6 +24,9 @@ export default function AdminSettingsPage() {
   const [backupDays, setBackupDays] = useState(30);
   const [backingUp, setBackingUp] = useState(false);
   const [backupResult, setBackupResult] = useState<{ count: number; webViewLink: string } | 'error' | null>(null);
+
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ scanned: number; updated: number } | 'error' | null>(null);
 
   const [rates, setRates] = useState<SystemRates>(DEFAULT_RATES);
   const [ratesForm, setRatesForm] = useState<SystemRates>(DEFAULT_RATES);
@@ -69,6 +73,20 @@ export default function AdminSettingsPage() {
       setBackupResult('error');
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const result = await backfillOrdersCustomerVisible();
+      setBackfillResult(result);
+    } catch (err) {
+      console.error('backfill failed', err);
+      setBackfillResult('error');
+    } finally {
+      setBackfilling(false);
     }
   };
 
@@ -239,6 +257,25 @@ export default function AdminSettingsPage() {
             {backupResult.webViewLink && (
               <a href={backupResult.webViewLink} target="_blank" rel="noreferrer">Xem file trên Drive</a>
             )}
+          </p>
+        )}
+      </section>
+
+      <section className="panel">
+        <h3>🔄 Cập nhật hiển thị đơn hàng cho khách (chạy 1 lần)</h3>
+        <p className="muted-copy">
+          Đơn hàng tạo từ ACCESSTRADE (khi kích hoạt thật) sẽ ẩn khỏi khách hàng cho tới khi Admin duyệt — đơn thủ công
+          không đổi gì, vẫn hiển thị như trước. Để lịch sử đơn hàng của khách không bị trống, các đơn cũ tạo trước khi
+          có cơ chế này cần được đánh dấu &quot;hiển thị&quot; một lần. Bấm nút này ngay sau khi bản cập nhật này lên
+          production — an toàn khi bấm nhiều lần (lần sau không làm gì nếu đã chạy rồi).
+        </p>
+        <button className="button button-primary" style={{ marginTop: 10 }} onClick={handleBackfill} disabled={backfilling}>
+          {backfilling ? 'Đang cập nhật...' : '🔄 Chạy cập nhật'}
+        </button>
+        {backfillResult === 'error' && <p className="admin-gate-error" style={{ marginTop: 8 }}>Cập nhật thất bại, vui lòng thử lại.</p>}
+        {backfillResult && backfillResult !== 'error' && (
+          <p className="muted-copy" style={{ marginTop: 8 }}>
+            ✓ Đã quét {backfillResult.scanned} đơn hàng, cập nhật {backfillResult.updated} đơn chưa có cờ hiển thị.
           </p>
         )}
       </section>

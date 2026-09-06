@@ -59,7 +59,16 @@ export default function OrdersPage() {
       setOrders([]);
       return;
     }
-    const q = query(collection(getFirebaseDb(), 'orders'), where('userId', '==', uid), orderBy('orderDate', 'desc'));
+    // customerVisible=true is enforced server-side too (firestore.rules'
+    // orders match block) — an AFFILIATE order still awaiting Admin review
+    // is not returned by this query at all (not just hidden by this page),
+    // so there's no client-side filtering of anything sensitive here.
+    const q = query(
+      collection(getFirebaseDb(), 'orders'),
+      where('userId', '==', uid),
+      where('customerVisible', '==', true),
+      orderBy('orderDate', 'desc'),
+    );
     const unsubscribe = onSnapshot(q, (snap) => {
       setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderDoc)));
     });

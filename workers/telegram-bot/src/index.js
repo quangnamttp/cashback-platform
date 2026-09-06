@@ -459,11 +459,19 @@ async function createLedgerDocument(env, idToken, fields) {
  * either one got around to writing the order's own status).
  */
 async function tryClaimOrderStatus(env, idToken, orderId, expectedUpdateTime, status) {
-  const mask = ['status', 'confirmedAt'].map((p) => `updateMask.fieldPaths=${p}`).join('&');
+  // CONFIRMED is also the exact moment an AFFILIATE-sourced order (still
+  // customerVisible:false since workers/accesstrade-sync created it — see
+  // firestore.rules' orders match block) becomes visible to the customer.
+  // A MANUAL order is already customerVisible:true, so this write is a
+  // harmless no-op overwrite for it. CANCELLED never touches this field —
+  // an admin-rejected AFFILIATE conversion must never become visible.
+  const fieldNames = status === 'CONFIRMED' ? ['status', 'confirmedAt', 'customerVisible'] : ['status', 'confirmedAt'];
+  const mask = fieldNames.map((p) => `updateMask.fieldPaths=${p}`).join('&');
   const body = {
     fields: {
       status: { stringValue: status },
       confirmedAt: { timestampValue: new Date().toISOString() },
+      ...(status === 'CONFIRMED' ? { customerVisible: { booleanValue: true } } : {}),
     },
   };
   const precondition = expectedUpdateTime

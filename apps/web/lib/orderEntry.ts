@@ -395,6 +395,19 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
     affiliateProvider: input.affiliateProvider ?? existing?.affiliateProvider ?? null,
     affiliateConversionId: input.affiliateConversionId ?? existing?.affiliateConversionId ?? null,
     commissionStatus: input.commissionStatus ?? existing?.commissionStatus ?? null,
+    // A MANUAL order (the admin's own /manager/orders form — the only way
+    // to reach this branch with a brand-new doc) has always been visible
+    // to the customer immediately, PENDING or not — unchanged here. An
+    // AFFILIATE order (workers/accesstrade-sync) starts invisible while
+    // still PENDING (an unreviewed external conversion shouldn't show up
+    // as "you have an order" before Admin has looked at it — see
+    // firestore.rules' orders match block) and only this function's own
+    // CONFIRMED transition ever flips it true; REJECTED/CANCELLED never
+    // does, matching the "customer never sees a rejected auto-conversion"
+    // rule. Once true, always stays true (a later REFUNDED must stay
+    // visible — that's the existing cashbackClawback transparency note).
+    customerVisible:
+      input.status === 'CONFIRMED' ? true : existing ? (existing.customerVisible ?? true) : input.source !== 'AFFILIATE',
     ...(orderTelegramRef
       ? { telegramChatId: orderTelegramRef.chatId, telegramMessageId: orderTelegramRef.messageId }
       : existing
@@ -556,9 +569,9 @@ export async function approveOrdersBatch(orders: PendingOrderForApproval[]): Pro
         referrerUid,
         commissionAmount: order.commissionAmount,
       });
-      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp() }, writes);
+      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp(), customerVisible: true }, writes);
     } else {
-      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp() }, []);
+      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp(), customerVisible: true }, []);
     }
   }
 }

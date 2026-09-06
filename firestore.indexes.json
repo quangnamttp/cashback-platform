@@ -90,6 +90,15 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "orderDate", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "customerVisible", "order": "ASCENDING" },
+        { "fieldPath": "orderDate", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

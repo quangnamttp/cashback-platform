@@ -50,6 +50,19 @@
 
 const ACCESSTRADE_BASE = 'https://api.accesstrade.vn';
 
+// /v1/order-products is documented at 10 requests/minute, same as
+// /v1/order-list — but unlike order-list (called once per platform per
+// cron tick), order-products is called once per NEW order found in a
+// single tick, which could burst well past that limit if several orders
+// land in the same 5-minute window. This delay (>6s) caps the sustained
+// rate at <10/min even if every order-list result this tick is brand new.
+// Pure wall-clock wait (fetch/timer, not CPU-bound work), so it doesn't
+// count against Workers' CPU-time budget on any plan.
+const ORDER_PRODUCTS_THROTTLE_MS = 6500;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function accesstradeApi(env, method, path, { query, body } = {}) {
   const url = new URL(`${ACCESSTRADE_BASE}${path}`);
   if (query) Object.entries(query).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v); });
@@ -477,6 +490,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     // order-products gives the tracking parameters a plain order-list
     // response doesn't carry (see this file's top comment on sub_id1).
     const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-products', { query: { order_id: externalOrderId, merchant } });
+    await sleep(ORDER_PRODUCTS_THROTTLE_MS); // rate-limit guard — see this const's own comment
     if (!ok) {
       console.error(`order ${externalOrderId}: order-products fetch failed, skipping this cycle`);
       return;
@@ -528,6 +542,13 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       affiliateProvider: { stringValue: 'ACCESSTRADE' },
       affiliateConversionId: { stringValue: externalOrderId },
       commissionStatus: { stringValue: status },
+      // Starts hidden from the customer regardless of DRY_RUN — only
+      // Admin approving (PENDING -> CONFIRMED, via the existing
+      // /manager/orders or Telegram flow, unchanged by this Worker) flips
+      // this true. Enforced again at the firestore.rules level (this
+      // Worker's own isConversionBot() create rule requires this to be
+      // exactly `false`), not just here.
+      customerVisible: { booleanValue: false },
       telegramChatId: { nullValue: null },
       telegramMessageId: { nullValue: null },
     };

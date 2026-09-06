@@ -11,6 +11,10 @@ crons = ["*/5 * * * *"]
 
 [vars]
 FIREBASE_PROJECT_ID = "hoantiendv"
+# Not actually sensitive — the SAME value already ships public in the web
+# bundle as NEXT_PUBLIC_TELEGRAM_CHAT_ID (a Telegram group id, not a
+# credential). Only the bot TOKEN below needs to be a real secret.
+TELEGRAM_CHAT_ID = "-1004411327315"
 
 # Safety switch (see src/index.js) — "true" (default; keep it this way
 # until a real conversion has been inspected via `wrangler tail` and the
@@ -46,4 +50,3 @@ ACCESSTRADE_MERCHANT_TIKTOKSHOP = ""
 #                         (only used to send the "Đơn hàng mới" message to
 #                         topic 33 — this Worker never receives webhooks,
 #                         workers/telegram-bot still owns that)
-#   TELEGRAM_CHAT_ID      same group chat id as the other Worker (-1004411327315)

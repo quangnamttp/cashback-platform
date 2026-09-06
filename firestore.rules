@@ -183,16 +183,36 @@ service cloud.firestore {
     // create one directly as CONFIRMED/RELEASED, and never release
     // cashback — that still requires a separate, visually-reviewed
     // "✅ Duyệt hoàn tiền" tap, same trust model as every other bot here.
+    // customerVisible gates whether the OWNER (not Admin/bots — they always
+    // see everything) can read their own order — false only for an
+    // AFFILIATE-sourced order still PENDING Admin review (see
+    // lib/orderEntry.ts's upsertOrder / workers/accesstrade-sync). Treated
+    // as true when the field is simply absent (every order written before
+    // this existed, and every MANUAL order — see that same comment) so
+    // this never retroactively hides a pre-existing order. The customer-
+    // facing queries themselves (app/orders/page.tsx, app/cashback/page.tsx)
+    // additionally filter `where('customerVisible','==',true)` — Firestore
+    // validates a `list` query against its OWN filters, not actual data, so
+    // that explicit filter (not just this rule) is what makes the query
+    // itself provably safe to run; this rule is what protects a direct
+    // get-by-id attempt on a specific hidden order id.
     match /orders/{orderId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot() || isConversionBot();
+      allow read: if isAdmin() || isPaymentBot() || isConversionBot()
+        || (isSignedIn() && resource.data.userId == request.auth.uid
+            && (!('customerVisible' in resource.data) || resource.data.customerVisible == true));
       allow create: if isAdmin()
-        || (isConversionBot() && request.resource.data.source == 'AFFILIATE' && request.resource.data.status == 'PENDING');
+        || (isConversionBot() && request.resource.data.source == 'AFFILIATE'
+            && request.resource.data.status == 'PENDING' && request.resource.data.customerVisible == false);
       allow delete: if isAdmin();
       allow update: if isAdmin()
         || (isPaymentBot()
             && resource.data.status == 'PENDING'
             && request.resource.data.status in ['CONFIRMED', 'CANCELLED']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt', 'customerVisible'])
+            // customerVisible may only ever flip PENDING's existing false/
+            // absent to true here (the CONFIRMED case) or stay untouched
+            // (the CANCELLED case) — never the reverse.
+            && (request.resource.data.status == 'CANCELLED' || request.resource.data.customerVisible == true))
         || (isConversionBot() && resource.data.source == 'AFFILIATE'
             && ((resource.data.status == 'PENDING' && request.resource.data.status == 'PENDING'
                  && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount']))

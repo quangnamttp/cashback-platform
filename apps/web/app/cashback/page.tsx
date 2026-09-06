@@ -68,7 +68,17 @@ export default function CashbackPage() {
       setOrders([]);
       return;
     }
-    const q = query(collection(getFirebaseDb(), 'orders'), where('userId', '==', uid), orderBy('orderDate', 'desc'));
+    // customerVisible=true enforced server-side (firestore.rules) — an
+    // AFFILIATE order still awaiting Admin review is never returned here,
+    // same as app/orders/page.tsx. The CANCELLED filter below is a
+    // separate, purely cosmetic choice (this page has no honest shipping
+    // stage to show for a rejected order), unrelated to visibility/security.
+    const q = query(
+      collection(getFirebaseDb(), 'orders'),
+      where('userId', '==', uid),
+      where('customerVisible', '==', true),
+      orderBy('orderDate', 'desc'),
+    );
     const unsubscribe = onSnapshot(q, (snap) => {
       const rows = snap.docs
         .map((d) => ({ id: d.id, ...d.data() } as OrderDoc))
