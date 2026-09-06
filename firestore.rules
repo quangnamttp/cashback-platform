@@ -45,6 +45,18 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == 'eMg2P3tFgGgZQCDDy6GEslQpWDt2';
     }
 
+    // A SECOND, separate narrowly-scoped Firebase Auth identity for
+    // workers/accesstrade-sync (the ACCESSTRADE conversion-polling Worker)
+    // — deliberately NOT the same account as isPaymentBot(). That identity
+    // was scoped for "settle a decision the admin already made" (Telegram
+    // buttons); this one is scoped for "originate a new order from
+    // external, unverified-until-tested data", a different trust boundary
+    // entirely. Replace the placeholder with that account's real uid
+    // before deploying the Worker (see workers/accesstrade-sync/README).
+    function isConversionBot() {
+      return isSignedIn() && request.auth.uid == 'REPLACE_WITH_ACCESSTRADE_BOT_UID';
+    }
+
     match /users/{uid} {
       // Also readable by whoever referred this account — /referrals shows
       // "who signed up with my code" by querying where('referredBy','==',
@@ -156,14 +168,36 @@ service cloud.firestore {
     // status/confirmedAt. The bot never originates an order — create stays
     // admin-only (only the admin's own /manager/orders form does that);
     // this only ever settles a decision on one the admin already entered.
+    // isConversionBot() gets three narrow permissions here, all scoped to
+    // orders IT ITSELF originated (source=='AFFILIATE'): (1) create one as
+    // PENDING — the one thing that starts the exact same admin-approval
+    // pipeline a manually-entered order already goes through, no different
+    // treatment; (2) while still PENDING, refresh commissionStatus/
+    // commissionAmount as ACCESSTRADE's own conversion record changes
+    // before an admin has acted on it yet; (3) once CONFIRMED, transition
+    // to REFUNDED — the SAME clawback trigger the admin's own "Trả hàng"
+    // button fires (see lib/orderEntry.ts's upsertOrder REFUNDED branch,
+    // mirrored in REST inside the Worker) — only ever reachable when
+    // ACCESSTRADE itself reports REJECTED/CANCELLED/RETURN, never a guess
+    // by this bot. It can never touch a source:'MANUAL' order, never
+    // create one directly as CONFIRMED/RELEASED, and never release
+    // cashback — that still requires a separate, visually-reviewed
+    // "✅ Duyệt hoàn tiền" tap, same trust model as every other bot here.
     match /orders/{orderId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot();
-      allow create, delete: if isAdmin();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot() || isConversionBot();
+      allow create: if isAdmin()
+        || (isConversionBot() && request.resource.data.source == 'AFFILIATE' && request.resource.data.status == 'PENDING');
+      allow delete: if isAdmin();
       allow update: if isAdmin()
         || (isPaymentBot()
             && resource.data.status == 'PENDING'
             && request.resource.data.status in ['CONFIRMED', 'CANCELLED']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt']))
+        || (isConversionBot() && resource.data.source == 'AFFILIATE'
+            && ((resource.data.status == 'PENDING' && request.resource.data.status == 'PENDING'
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount']))
+                || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'REFUNDED'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'commissionStatus', 'cashbackClawback']))));
     }
 
     // No time gate — admin has full discretion on when to release a
@@ -183,18 +217,26 @@ service cloud.firestore {
     // to RELEASED/REJECTED, touching only status/releasedBy/releasedAt.
     // delete stays admin-only.
     match /cashbackLedger/{ledgerId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || isPaymentBot() || isConversionBot();
       allow delete: if isAdmin();
       allow create: if isAdmin()
         || (isPaymentBot()
             && request.resource.data.status == 'FROZEN'
             && request.resource.data.type in ['CUSTOMER_CASHBACK', 'REFERRAL_BONUS', 'PLATFORM_REVENUE']
             && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderId)));
+      // isConversionBot()'s branch mirrors the admin's own REFUNDED-clawback
+      // write (lib/orderEntry.ts) — FROZEN can only ever move to REJECTED
+      // here, never RELEASED (releasing is exclusively the admin/
+      // isPaymentBot() "✅ Duyệt hoàn tiền" action above).
       allow update: if isAdmin()
         || (isPaymentBot()
             && resource.data.status == 'FROZEN'
             && request.resource.data.status in ['RELEASED', 'REJECTED']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'releasedBy', 'releasedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'releasedBy', 'releasedAt']))
+        || (isConversionBot()
+            && resource.data.status == 'FROZEN'
+            && request.resource.data.status == 'REJECTED'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']));
     }
 
     match /withdrawalRequests/{requestId} {
@@ -227,7 +269,15 @@ service cloud.firestore {
 
     match /fraudSignals/{signalId} {
       allow read: if isAdmin();
-      allow write: if isAdmin();
+      // isConversionBot() may only ever CREATE a signal (never read/update/
+      // delete) — the same "refund after release" clawback notification
+      // the admin's own client creates in lib/orderEntry.ts, just
+      // triggered by a real ACCESSTRADE cancellation instead of an admin's
+      // manual "Trả hàng" click. status must start OPEN like every other
+      // signal; only an admin can ever resolve one.
+      allow create: if isAdmin()
+        || (isConversionBot() && request.resource.data.status == 'OPEN' && request.resource.data.signalType == 'REFUND_AFTER_RELEASE');
+      allow update, delete: if isAdmin();
     }
 
     // Social-platform voucher codes shown on /social-vouchers — public to

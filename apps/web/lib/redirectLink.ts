@@ -1,9 +1,16 @@
 'use client';
 
 import { collection, doc, getDoc, getDocs, increment, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where } from 'firebase/firestore';
-import { getFirebaseDb } from './firebase';
+import { getFirebaseAuth, getFirebaseDb } from './firebase';
 import { generateShortCode } from './ids';
 import { isShortlink } from './productPreview';
+
+// URL of workers/accesstrade-sync (see that Worker's own README/comments) —
+// undefined/empty just means real ACCESSTRADE link creation is skipped and
+// every product falls back to the existing internal-tag-only link below,
+// exactly like before this Worker existed. Same "skip the tier if unset"
+// pattern as NEXT_PUBLIC_SCRAPER_WORKER_URL in lib/productPreview.ts.
+const ACCESSTRADE_WORKER_URL = process.env.NEXT_PUBLIC_ACCESSTRADE_WORKER_URL;
 
 export type Platform = 'SHOPEE' | 'TIKTOK_SHOP' | 'LAZADA';
 
@@ -123,6 +130,33 @@ function buildAffiliateUrl(platform: Platform, normalizedUrl: string, trackingCo
     return url.toString();
   } catch {
     return normalizedUrl;
+  }
+}
+
+/**
+ * Asks workers/accesstrade-sync for a real ACCESSTRADE affiliate link —
+ * never calls ACCESSTRADE directly (the API key never reaches the
+ * browser). Returns null on ANY failure (worker not configured, platform's
+ * campaign not yet approved, network error, the Worker's own DRY_RUN-
+ * adjacent "not eligible" answer) so the caller always has a safe
+ * fallback to the existing internal-tag link below — never blocks link
+ * creation, never fabricates a link ACCESSTRADE didn't actually return.
+ */
+async function tryCreateRealAffiliateLink(platform: Platform, productUrl: string, subId: string): Promise<string | null> {
+  if (!ACCESSTRADE_WORKER_URL) return null;
+  try {
+    const idToken = await getFirebaseAuth().currentUser?.getIdToken();
+    if (!idToken) return null;
+    const res = await fetch(`${ACCESSTRADE_WORKER_URL}/create-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, platform, productUrl, subId }),
+    });
+    if (!res.ok) return null;
+    const json: { supported: boolean; affLink?: string } = await res.json();
+    return json.supported && json.affLink ? json.affLink : null;
+  } catch {
+    return null;
   }
 }
 
@@ -275,7 +309,12 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
   }
 
   const code = generateShortCode();
-  const destinationUrl = buildAffiliateUrl(platform, normalized, code);
+  // Try a real ACCESSTRADE link first (workers/accesstrade-sync); fall
+  // back to the internal-tag-only link unchanged from before whenever
+  // that's unavailable (worker not configured, campaign not yet approved
+  // for this platform, or any error) — never a fabricated link either way.
+  const realAffLink = await tryCreateRealAffiliateLink(platform, normalized, code);
+  const destinationUrl = realAffLink ?? buildAffiliateUrl(platform, normalized, code);
 
   await setDoc(doc(db, 'redirectCache', code), {
     userId: uid,
@@ -284,6 +323,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     normalizedProductUrl: normalized,
     originalUrl: productUrl,
     destinationUrl,
+    isRealAffiliateLink: !!realAffLink,
     status: 'ACTIVE',
     createdAt: serverTimestamp(),
     lastHitAt: serverTimestamp(),
