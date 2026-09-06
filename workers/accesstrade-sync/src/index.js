@@ -184,6 +184,27 @@ const PLATFORM_CONFIG = {
   LAZADA: (env) => ({ campaignId: env.ACCESSTRADE_CAMPAIGN_LAZADA }),
 };
 
+// Every field the docs list for each create-link endpoint, all optional
+// except productUrl/subId — today's web caller (lib/redirectLink.ts) only
+// ever sends subId (sub1), but the endpoint itself is ready to carry
+// sub2-4/productId/UTM the moment there's real data for them (e.g. sub2
+// for a referral code), without needing another round of changes here.
+function buildTrackingFields(body) {
+  const fields = {};
+  if (body.subId) fields.sub1 = body.subId;
+  if (body.sub2) fields.sub2 = body.sub2;
+  if (body.sub3) fields.sub3 = body.sub3;
+  if (body.sub4) fields.sub4 = body.sub4;
+  // Own marketing attribution only (rides alongside, never instead of, the
+  // real ACCESSTRADE sub-id tracking above) — same values the old
+  // internal-tag-only link used, kept for consistency.
+  fields.utm_source = body.utmSource || 'hoantiendv';
+  fields.utm_medium = body.utmMedium || 'cashback';
+  if (body.utmCampaign) fields.utm_campaign = body.utmCampaign;
+  if (body.utmContent) fields.utm_content = body.utmContent;
+  return fields;
+}
+
 async function handleCreateLink(request, env) {
   let body;
   try {
@@ -191,7 +212,7 @@ async function handleCreateLink(request, env) {
   } catch {
     return Response.json({ supported: false, reason: 'bad_request' }, { status: 400 });
   }
-  const { idToken, platform, productUrl, subId } = body || {};
+  const { idToken, platform, productUrl, subId, productId } = body || {};
   if (!idToken || !platform || !productUrl || !subId) {
     return Response.json({ supported: false, reason: 'bad_request' }, { status: 400 });
   }
@@ -199,12 +220,14 @@ async function handleCreateLink(request, env) {
   const uid = await verifyFirebaseIdToken(env, idToken);
   if (!uid) return Response.json({ supported: false, reason: 'unauthenticated' }, { status: 401 });
 
+  const trackingFields = buildTrackingFields(body);
+
   if (platform === 'TIKTOK_SHOP') {
     if (!env.ACCESSTRADE_MERCHANT_TIKTOKSHOP) {
       return Response.json({ supported: false, reason: 'not_configured' });
     }
     const { ok, json } = await accesstradeApi(env, 'POST', '/v2/tiktokshop_product_feeds/create_link', {
-      body: { product_url: productUrl, sub1: subId },
+      body: { product_url: productUrl, ...(productId ? { product_id: productId } : {}), ...trackingFields },
     });
     // Documented failure shape: {status:false, message:"The link is not
     // part of the campaign"} — treated as "not eligible", never faked.
@@ -221,7 +244,7 @@ async function handleCreateLink(request, env) {
       return Response.json({ supported: false, reason: 'not_configured' });
     }
     const { ok, json } = await accesstradeApi(env, 'POST', '/v1/product_link/create', {
-      body: { campaign_id: campaignId, urls: [productUrl], sub1: subId },
+      body: { campaign_id: campaignId, urls: [productUrl], ...trackingFields },
     });
     const successLink = json?.data?.success_link?.[0];
     if (!ok || !successLink?.aff_link) {
@@ -460,11 +483,30 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     }
     const params = json?.data?._extra?.parameters || json?._extra?.parameters || {};
     const subId = params.sub_id1;
-    console.log(`order ${externalOrderId}: raw _extra.parameters =`, JSON.stringify(params));
+    console.log(`order ${externalOrderId}: raw _extra.parameters (full, for manual review) =`, JSON.stringify(params));
 
-    const userId = await resolveUserIdFromSubId(env, idToken, subId);
+    // --- MAPPING CHECK — read this block, not just the pass/fail, before
+    // ever trusting a real order created from this. `redirectCache`'s own
+    // doc id IS whatever value was sent as sub1 at link-creation time (see
+    // lib/redirectLink.ts) — so a successful lookup below IS the proof
+    // sub1 round-tripped correctly as sub_id1, and a failed one tells you
+    // exactly which of the two ways this can go wrong actually happened. ---
+    const userId = subId ? await resolveUserIdFromSubId(env, idToken, subId) : null;
+    const mappingResult = !subId ? 'UNKNOWN' : userId ? 'MATCH' : 'NO_MATCH';
+    console.log([
+      `[MAPPING CHECK] order_id=${externalOrderId}`,
+      `sub1 gửi khi tạo link: (không lưu riêng — chính là redirectCache doc id được tra cứu bên dưới, xem lib/redirectLink.ts)`,
+      `sub_id1 ACCESSTRADE trả về: ${subId ?? '(KHÔNG CÓ — field sub_id1 vắng mặt trong _extra.parameters)'}`,
+      `userId dự kiến: ${userId ?? '(không xác định)'}`,
+      `mapping: ${mappingResult}`,
+    ].join('\n  '));
+
+    if (mappingResult === 'UNKNOWN') {
+      console.error(`order ${externalOrderId}: order-products response has NO sub_id1 field at all in _extra.parameters — this endpoint may not carry mapping data for this merchant/campaign. Not creating an order.`);
+      return;
+    }
     if (!userId) {
-      console.error(`order ${externalOrderId}: COULD NOT RESOLVE USER — sub_id1="${subId ?? '(missing)'}" did not match any redirectCache doc. Not creating an order. Full params logged above for manual review.`);
+      console.error(`order ${externalOrderId}: NO_MATCH — sub_id1="${subId}" did not match any redirectCache doc. Not creating an order. Full params logged above for manual review.`);
       return;
     }
 
