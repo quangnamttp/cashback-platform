@@ -54,7 +54,7 @@ service cloud.firestore {
     // entirely. Replace the placeholder with that account's real uid
     // before deploying the Worker (see workers/accesstrade-sync/README).
     function isConversionBot() {
-      return isSignedIn() && request.auth.uid == 'REPLACE_WITH_ACCESSTRADE_BOT_UID';
+      return isSignedIn() && request.auth.uid == 'K6LgwLli7vSdn8hSZQNLKiCKBKo1';
     }
 
     match /users/{uid} {

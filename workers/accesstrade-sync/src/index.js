@@ -197,6 +197,17 @@ const PLATFORM_CONFIG = {
   LAZADA: (env) => ({ campaignId: env.ACCESSTRADE_CAMPAIGN_LAZADA }),
 };
 
+// Separate from "is campaign_id/merchant filled in" on purpose — Lazada's
+// real values are stored below (ready for the day its campaign is
+// approved) while staying fully inert: this is the ONE switch that turns
+// it on later, without needing campaign_id/merchant to ever be blanked
+// out or the code touched again. ACCESSTRADE_ENABLED_PLATFORMS is a plain
+// comma-separated var (see wrangler.toml), not a secret.
+function isPlatformEnabled(env, platform) {
+  const list = (env.ACCESSTRADE_ENABLED_PLATFORMS || '').split(',').map((p) => p.trim());
+  return list.includes(platform);
+}
+
 // Every field the docs list for each create-link endpoint, all optional
 // except productUrl/subId — today's web caller (lib/redirectLink.ts) only
 // ever sends subId (sub1), but the endpoint itself is ready to carry
@@ -234,6 +245,15 @@ async function handleCreateLink(request, env) {
   if (!uid) return Response.json({ supported: false, reason: 'unauthenticated' }, { status: 401 });
 
   const trackingFields = buildTrackingFields(body);
+
+  if ((platform === 'TIKTOK_SHOP' || platform === 'SHOPEE' || platform === 'LAZADA') && !isPlatformEnabled(env, platform)) {
+    // Lazada today: campaign_id/merchant are stored (see wrangler.toml)
+    // but this platform isn't in ACCESSTRADE_ENABLED_PLATFORMS, so it's
+    // never called — same "not eligible" answer the web side already
+    // falls back from, distinguished in logs/response as maintenance
+    // rather than simply unconfigured.
+    return Response.json({ supported: false, reason: 'platform_maintenance' });
+  }
 
   if (platform === 'TIKTOK_SHOP') {
     if (!env.ACCESSTRADE_MERCHANT_TIKTOKSHOP) {
@@ -282,7 +302,7 @@ function configuredMerchants(env) {
     ['SHOPEE', env.ACCESSTRADE_MERCHANT_SHOPEE],
     ['LAZADA', env.ACCESSTRADE_MERCHANT_LAZADA],
     ['TIKTOK_SHOP', env.ACCESSTRADE_MERCHANT_TIKTOKSHOP],
-  ].filter(([, merchant]) => !!merchant);
+  ].filter(([platform, merchant]) => !!merchant && isPlatformEnabled(env, platform));
 }
 
 function escapeHtml(value) {

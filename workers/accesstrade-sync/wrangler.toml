@@ -23,20 +23,32 @@ TELEGRAM_CHAT_ID = "-1004411327315"
 # "false" only after that manual verification — never guess this open.
 DRY_RUN = "true"
 
-# ACCESSTRADE campaign_id / merchant per platform — NOT secret, but left
-# blank on purpose: these are account-specific values only visible in your
-# own ACCESSTRADE Publisher dashboard (not in the API docs), and a platform
-# with a blank value here is skipped entirely (both link creation and order
-# sync) rather than guessed. Fill in once Shopee/Lazada are approved and
-# you've confirmed the exact values.
-ACCESSTRADE_CAMPAIGN_SHOPEE = ""
-ACCESSTRADE_MERCHANT_SHOPEE = ""
-ACCESSTRADE_CAMPAIGN_LAZADA = ""
-ACCESSTRADE_MERCHANT_LAZADA = ""
+# ACCESSTRADE campaign_id / merchant per platform — NOT secret (confirmed
+# by the account owner as safe to store as plain config, same as
+# merchant/campaign_id already are throughout ACCESSTRADE's own docs).
+# Real, account-specific values from the Publisher dashboard.
+ACCESSTRADE_CAMPAIGN_SHOPEE = "4751584435713464237"
+ACCESSTRADE_MERCHANT_SHOPEE = "shopee"
 # TikTok Shop's create_link v2 (see docs) takes product_url/product_id
-# directly, no campaign_id — only the merchant code is needed for order
-# sync (/v1/order-list, /v1/order-products).
-ACCESSTRADE_MERCHANT_TIKTOKSHOP = ""
+# directly, no campaign_id in that call — campaign id stored here anyway
+# for reference/future use (e.g. a product-search feature), merchant is
+# what order-list/order-products actually need.
+ACCESSTRADE_CAMPAIGN_TIKTOKSHOP = "6648523843406889655"
+ACCESSTRADE_MERCHANT_TIKTOKSHOP = "tiktokshop"
+# Lazada's real values — stored and ready, but NOT active (see
+# ACCESSTRADE_ENABLED_PLATFORMS below). Its campaign isn't approved yet;
+# once it is, the only change needed is adding LAZADA to that list — never
+# blank these out, never touch the code again.
+ACCESSTRADE_CAMPAIGN_LAZADA = "5087153089503673507"
+ACCESSTRADE_MERCHANT_LAZADA = "lazada"
+
+# The ONE switch controlling which platforms actually run (link creation
+# AND order sync) — deliberately separate from whether campaign_id/
+# merchant above are filled in, so Lazada's real values can sit ready
+# without Lazada ever being called. Comma-separated, no spaces needed
+# (isPlatformEnabled trims them anyway). Add LAZADA here (and nothing
+# else) once its campaign is approved.
+ACCESSTRADE_ENABLED_PLATFORMS = "SHOPEE,TIKTOK_SHOP"
 
 # Secrets (never put these here — set via `wrangler secret put <NAME>`):
 #   ACCESSTRADE_API_KEY   the Publisher API Access Key from your ACCESSTRADE account
