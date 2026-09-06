@@ -7,6 +7,7 @@ import { OrderThumb } from '../../../components/ui/OrderThumb';
 import { PlatformIcon } from '../../../components/ui/PlatformIcons';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
+import { Modal } from '../../../components/ui/Modal';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { getFirebaseDb } from '../../../lib/firebase';
@@ -42,7 +43,21 @@ type OrderRow = {
   orderDate?: { toDate: () => Date };
   telegramChatId?: string | null;
   telegramMessageId?: number | null;
+  cashbackClawback?: 'FROZEN_REJECTED' | 'RELEASED_FLAGGED';
+  // Technical/affiliate-provider prep fields — real values once ACCESSTRADE
+  // is wired in, always absent/'MANUAL' for today's hand-entered orders.
+  // Never shown in the main table (see the "Chi tiết" modal below) — this
+  // list is for a decision at a glance, not a technical dump.
+  source?: string;
+  externalOrderId?: string | null;
+  subId?: string | null;
+  trackingId?: string | null;
+  affiliateProvider?: string | null;
+  affiliateConversionId?: string | null;
+  commissionStatus?: string | null;
 };
+
+type LedgerRow = { orderId?: string; type: 'CUSTOMER_CASHBACK' | 'REFERRAL_BONUS' | 'PLATFORM_REVENUE'; amount: number; status: 'FROZEN' | 'RELEASED' | 'REJECTED' };
 
 type UserOption = { id: string; fullName?: string; email?: string; referredBy?: string | null };
 
@@ -57,6 +72,18 @@ const statusBadge: Record<OrderStatus, string> = {
   PENDING: 'badge-warning',
   REFUNDED: 'badge-danger',
   CANCELLED: 'badge-danger',
+};
+
+const CASHBACK_STATUS_LABEL: Record<LedgerRow['status'], string> = {
+  FROZEN: 'Đang giữ',
+  RELEASED: 'Đã giải phóng',
+  REJECTED: 'Đã từ chối',
+};
+
+const CASHBACK_STATUS_BADGE: Record<LedgerRow['status'], string> = {
+  FROZEN: 'badge-warning',
+  RELEASED: 'badge-success',
+  REJECTED: 'badge-danger',
 };
 
 const ORDER_FILTER_OPTIONS = [
@@ -83,6 +110,7 @@ export default function AdminOrdersPage() {
   const { lang } = useLanguage();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [tab, setTab] = useState<'pending' | 'all'>('pending');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -93,6 +121,7 @@ export default function AdminOrdersPage() {
   const [bulkBusy, setBulkBusy] = useState<'approve' | 'reject' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     const db = getFirebaseDb();
@@ -102,11 +131,30 @@ export default function AdminOrdersPage() {
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
       setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserOption)));
     });
+    const unsubLedger = onSnapshot(collection(db, 'cashbackLedger'), (snap) => {
+      setLedger(snap.docs.map((d) => d.data() as LedgerRow));
+    });
     return () => {
       unsubOrders();
       unsubUsers();
+      unsubLedger();
     };
   }, []);
+
+  // The customer's own cashback entry per order (never REFERRAL_BONUS/
+  // PLATFORM_REVENUE — those aren't "the order's cashback" from an
+  // at-a-glance admin view) — used for the "Cashback"/"Trạng thái cashback"
+  // columns below so Admin doesn't have to cross-reference the separate
+  // Cashback page just to see whether an order's payout already released.
+  const cashbackByOrder = useMemo(() => {
+    const map = new Map<string, LedgerRow>();
+    ledger.forEach((entry) => {
+      if (entry.type === 'CUSTOMER_CASHBACK' && entry.orderId) map.set(entry.orderId, entry);
+    });
+    return map;
+  }, [ledger]);
+
+  const detailOrder = orders.find((o) => o.id === detailOrderId) ?? null;
 
   const matchingUsers = useMemo(() => {
     if (!userQuery.trim()) return [];
@@ -544,17 +592,22 @@ export default function AdminOrdersPage() {
             <thead>
               <tr>
                 <th>Mã đơn</th>
-                <th>Người dùng</th>
+                <th>Khách hàng</th>
                 <th>Sản phẩm</th>
                 <th>Sàn</th>
-                <th>Giá trị</th>
+                <th>Giá trị đơn</th>
                 <th>Hoa hồng</th>
-                <th>Trạng thái</th>
+                <th>Cashback</th>
+                <th>Trạng thái đơn</th>
+                <th>Trạng thái cashback</th>
+                <th>Thời gian</th>
                 <th>Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((item) => (
+              {filteredOrders.map((item) => {
+                const cashback = cashbackByOrder.get(item.id);
+                return (
                 <tr key={item.id}>
                   <td><CopyIdChip value={item.id} /></td>
                   <td>{userLabel(users, item.userId)}</td>
@@ -570,18 +623,30 @@ export default function AdminOrdersPage() {
                   <td>{PLATFORM_LABEL[item.platform] ?? item.platform}</td>
                   <td>{formatCurrency(item.orderValue, lang)}</td>
                   <td>{formatCurrency(item.commissionAmount, lang)}</td>
+                  <td>{cashback ? formatCurrency(cashback.amount, lang) : '—'}</td>
                   <td><span className={`badge ${statusBadge[item.status] ?? 'badge-neutral'}`}>{ORDER_STATUS_LABEL[item.status] ?? item.status}</span></td>
                   <td>
-                    {item.status === 'CONFIRMED' && (
-                      <button className="btn-reject" disabled={busyId === item.id} onClick={() => changeStatus(item, 'REFUNDED')}>Trả hàng</button>
+                    {cashback ? (
+                      <span className={`badge ${CASHBACK_STATUS_BADGE[cashback.status]}`}>{CASHBACK_STATUS_LABEL[cashback.status]}</span>
+                    ) : (
+                      <span className="muted-copy">—</span>
                     )}
-                    {item.status !== 'CONFIRMED' && <span className="muted-copy">—</span>}
+                  </td>
+                  <td>{item.orderDate ? item.orderDate.toDate().toLocaleString('vi-VN') : '—'}</td>
+                  <td>
+                    <div className="admin-action-row">
+                      <button className="button button-secondary" onClick={() => setDetailOrderId(item.id)}>👁 Chi tiết</button>
+                      {item.status === 'CONFIRMED' && (
+                        <button className="btn-reject" disabled={busyId === item.id} onClick={() => changeStatus(item, 'REFUNDED')}>Trả hàng</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filteredOrders.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="muted-copy">
+                  <td colSpan={11} className="muted-copy">
                     {orders.length === 0 ? 'Chưa có đơn hàng nào — bấm "Nhập đơn hàng" để thêm.' : 'Không tìm thấy đơn hàng phù hợp.'}
                   </td>
                 </tr>
@@ -599,6 +664,58 @@ export default function AdminOrdersPage() {
       </p>
       </>
       )}
+
+      <Modal open={!!detailOrderId} onClose={() => setDetailOrderId(null)}>
+        {detailOrder && (
+          <>
+            <h3 style={{ marginTop: 0 }}>Chi tiết đơn hàng</h3>
+            <div className="modal-field-list">
+              <div className="modal-field-row">
+                <span>Mã đơn</span>
+                <span className="modal-code-row">{detailOrder.id}<CopyIdChip value={detailOrder.id} /></span>
+              </div>
+              <div className="modal-field-row">
+                <span>Khách hàng</span>
+                <span>{userLabel(users, detailOrder.userId)}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Nguồn đơn</span>
+                <span>{detailOrder.source === 'AFFILIATE' ? `Tự động (${detailOrder.affiliateProvider ?? 'affiliate'})` : 'Nhập thủ công'}</span>
+              </div>
+              {detailOrder.cashbackClawback && (
+                <div className="modal-field-row">
+                  <span>Cashback thu hồi</span>
+                  <span style={{ color: '#dc2626' }}>
+                    {detailOrder.cashbackClawback === 'RELEASED_FLAGGED' ? 'Đã giải phóng — đang chờ Admin xử lý thu hồi' : 'Đã hủy trước khi giải phóng'}
+                  </span>
+                </div>
+              )}
+              <div className="modal-field-row">
+                <span>External Order ID (sàn/ACCESSTRADE)</span>
+                <span>{detailOrder.externalOrderId || '—'}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Sub ID / Tracking ID</span>
+                <span>{detailOrder.subId || detailOrder.trackingId || '—'}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Affiliate Conversion ID</span>
+                <span>{detailOrder.affiliateConversionId || '—'}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Commission Status (provider)</span>
+                <span>{detailOrder.commissionStatus || '—'}</span>
+              </div>
+              {detailOrder.productUrl && (
+                <div className="modal-field-row">
+                  <span>Link sản phẩm</span>
+                  <a href={detailOrder.productUrl} target="_blank" rel="noreferrer" className="text-link">Mở link ↗</a>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </Modal>
     </AdminShell>
   );
 }
