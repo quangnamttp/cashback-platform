@@ -620,6 +620,40 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
   // nothing to do this cycle.
 }
 
+// order-list's own docs mention `page` as an available param but never
+// document its exact convention (1-indexed? 0-indexed? a token instead?).
+// UNVERIFIED like everything else flagged at the top of this file — this
+// assumes the common 1-indexed convention and stops as soon as a page
+// comes back shorter than `limit` (the standard "that was the last page"
+// signal) or after MAX_PAGES as a hard safety cap. On this platform's
+// realistic order volume, a single page has never been expected to be
+// insufficient — this exists so a real future volume spike doesn't
+// silently drop orders past page 1 rather than because it's needed today.
+const ORDER_LIST_PAGE_SIZE = 300;
+const ORDER_LIST_MAX_PAGES = 5;
+
+async function fetchAllOrderListPages(env, platform, merchant, sinceSec, nowSec) {
+  const all = [];
+  for (let page = 1; page <= ORDER_LIST_MAX_PAGES; page++) {
+    const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-list', {
+      query: { since: String(sinceSec), until: String(nowSec), merchant, limit: String(ORDER_LIST_PAGE_SIZE), page: String(page) },
+    });
+    if (!ok) {
+      console.error(`order-list fetch failed for ${platform}/${merchant} (page ${page})`);
+      break;
+    }
+    const pageOrders = json?.data?.orders || json?.data || [];
+    if (!Array.isArray(pageOrders)) {
+      console.error(`order-list response for ${platform} (page ${page}) wasn't the expected array shape:`, JSON.stringify(json).slice(0, 500));
+      break;
+    }
+    all.push(...pageOrders);
+    if (pageOrders.length < ORDER_LIST_PAGE_SIZE) break; // last page
+    if (page < ORDER_LIST_MAX_PAGES) await sleep(ORDER_PRODUCTS_THROTTLE_MS); // stay under 10 req/min across pages too
+  }
+  return all;
+}
+
 async function pollOrders(env) {
   const idToken = await firestoreSignIn(env);
   const nowSec = Math.floor(Date.now() / 1000);
@@ -630,18 +664,7 @@ async function pollOrders(env) {
   const sinceSec = nowSec - 3 * 60 * 60;
 
   for (const [platform, merchant] of configuredMerchants(env)) {
-    const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-list', {
-      query: { since: String(sinceSec), until: String(nowSec), merchant, limit: '300' },
-    });
-    if (!ok) {
-      console.error(`order-list fetch failed for ${platform}/${merchant}`);
-      continue;
-    }
-    const orders = json?.data?.orders || json?.data || [];
-    if (!Array.isArray(orders)) {
-      console.error(`order-list response for ${platform} wasn't the expected array shape:`, JSON.stringify(json).slice(0, 500));
-      continue;
-    }
+    const orders = await fetchAllOrderListPages(env, platform, merchant, sinceSec, nowSec);
     console.log(`order-list ${platform}/${merchant}: ${orders.length} order(s) in window`);
     for (const order of orders) {
       try {

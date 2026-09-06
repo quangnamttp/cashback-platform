@@ -400,7 +400,14 @@ export default function AdminOrdersPage() {
                       />
                     </td>
                     <td>{userLabel(users, order.userId)}</td>
-                    <td><CopyIdChip value={order.id} /></td>
+                    <td>
+                      <CopyIdChip value={order.id} />
+                      {order.source === 'AFFILIATE' && (
+                        <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title={`Tự động từ ${order.affiliateProvider ?? 'affiliate provider'} — chưa qua kiểm tra thủ công`}>
+                          🤖 {order.affiliateProvider ?? 'AUTO'}
+                        </span>
+                      )}
+                    </td>
                     <td><strong>{formatCurrency(order.commissionAmount, lang)}</strong></td>
                     <td className="muted-copy">
                       {formatCurrency(split.customerAmount, lang)}
@@ -620,7 +627,14 @@ export default function AdminOrdersPage() {
                       <span>{item.productName}</span>
                     </div>
                   </td>
-                  <td>{PLATFORM_LABEL[item.platform] ?? item.platform}</td>
+                  <td>
+                    {PLATFORM_LABEL[item.platform] ?? item.platform}
+                    {item.source === 'AFFILIATE' && (
+                      <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title={`Tự động từ ${item.affiliateProvider ?? 'affiliate provider'}`}>
+                        🤖 {item.affiliateProvider ?? 'AUTO'}
+                      </span>
+                    )}
+                  </td>
                   <td>{formatCurrency(item.orderValue, lang)}</td>
                   <td>{formatCurrency(item.commissionAmount, lang)}</td>
                   <td>{cashback ? formatCurrency(cashback.amount, lang) : '—'}</td>

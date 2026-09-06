@@ -32,9 +32,15 @@ export function RightPanel() {
     const unsubWithdrawals = onSnapshot(query(collection(db, 'withdrawalRequests'), where('userId', '==', uid)), (snap) => {
       setWithdrawals(snap.docs.map((d) => d.data() as WithdrawalDoc));
     });
-    const unsubOrders = onSnapshot(query(collection(db, 'orders'), where('userId', '==', uid)), (snap) => {
-      setOrderCount(snap.size);
-    });
+    // customerVisible filter required here too — without it, Firestore
+    // would reject this whole query the moment this user has even one
+    // AFFILIATE order still PENDING Admin review (a `list` query is
+    // validated against its own filters, not live data — see
+    // firestore.rules' orders comment), not just silently omit it.
+    const unsubOrders = onSnapshot(
+      query(collection(db, 'orders'), where('userId', '==', uid), where('customerVisible', '==', true)),
+      (snap) => setOrderCount(snap.size),
+    );
     return () => {
       unsubLedger();
       unsubWithdrawals();
