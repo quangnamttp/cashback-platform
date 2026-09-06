@@ -1799,6 +1799,22 @@ p {
   gap: 2px;
 }
 
+.admin-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.admin-nav-group-label {
+  padding: 6px 12px 2px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.75;
+}
+
 .admin-nav a {
   display: flex;
   align-items: center;
@@ -6267,7 +6283,9 @@ p {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  font-size: 0.85rem;
+  /* 16px, not the previous 13.6px — iOS Safari auto-zooms the page on
+     focus for any input/textarea with a computed font-size below 16px. */
+  font-size: 1rem;
   margin-bottom: 10px;
 }
 
@@ -6277,7 +6295,7 @@ p {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  font-size: 0.85rem;
+  font-size: 1rem;
   resize: vertical;
   margin-bottom: 10px;
   font-family: inherit;

@@ -13,6 +13,14 @@ type FraudSignal = {
   riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
 };
 
+type UserOption = { id: string; fullName?: string; email?: string };
+
+function userLabel(users: UserOption[], userId: string): string {
+  const user = users.find((u) => u.id === userId);
+  if (!user) return userId;
+  return user.fullName || user.email || userId;
+}
+
 const RISK_LABEL: Record<FraudSignal['riskLevel'], string> = {
   HIGH: 'Cao',
   MEDIUM: 'Trung bình',
@@ -35,11 +43,15 @@ export default function AdminPage() {
   const [pendingPayoutCount, setPendingPayoutCount] = useState(0);
   const [pendingWithdrawalCount, setPendingWithdrawalCount] = useState(0);
   const [recentSignals, setRecentSignals] = useState<FraudSignal[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
 
   useEffect(() => {
     const db = getFirebaseDb();
     const unsubscribers = [
-      onSnapshot(collection(db, 'users'), (snap) => setUserCount(snap.size)),
+      onSnapshot(collection(db, 'users'), (snap) => {
+        setUserCount(snap.size);
+        setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserOption)));
+      }),
       onSnapshot(query(collection(db, 'sessions'), where('status', '==', 'ACTIVE')), (snap) => {
         const cutoff = Date.now() - RECENT_SESSION_WINDOW_MS;
         const recent = snap.docs.filter((d) => {
@@ -97,7 +109,7 @@ export default function AdminPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Người dùng (uid)</th>
+                <th>Người dùng</th>
                 <th>Lý do</th>
                 <th>Mức rủi ro</th>
               </tr>
@@ -105,10 +117,10 @@ export default function AdminPage() {
             <tbody>
               {recentSignals.map((signal) => (
                 <tr key={signal.id}>
-                  <td>{signal.userId}</td>
+                  <td>{userLabel(users, signal.userId)}</td>
                   <td>{signal.reason}</td>
                   <td>
-                    <span className={`badge badge-${signal.riskLevel === 'HIGH' ? 'danger' : 'warning'}`}>
+                    <span className={`badge badge-${signal.riskLevel === 'HIGH' ? 'danger' : signal.riskLevel === 'MEDIUM' ? 'warning' : 'neutral'}`}>
                       {RISK_LABEL[signal.riskLevel] ?? signal.riskLevel}
                     </span>
                   </td>

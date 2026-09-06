@@ -127,7 +127,7 @@ export default function AdminOrdersPage() {
   const pendingOrders = useMemo(() => orders.filter((o) => o.status === 'PENDING'), [orders]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((item) => {
+    const filtered = orders.filter((item) => {
       if (statusFilter !== 'all' && item.status !== statusFilter) return false;
       if (!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
@@ -141,6 +141,12 @@ export default function AdminOrdersPage() {
         String(item.commissionAmount).includes(q)
       );
     });
+    // PENDING rows first regardless of the base orderDate-desc query order —
+    // so a newly-arrived order (or one an admin just left pending) never
+    // gets buried under older already-settled rows in the mixed "Tất cả"
+    // view. A stable sort (Array.prototype.sort is stable per spec) keeps
+    // the existing orderDate-desc order intact within each group.
+    return [...filtered].sort((a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING'));
   }, [orders, users, searchQuery, statusFilter]);
   const allPendingSelected = pendingOrders.length > 0 && pendingOrders.every((o) => selectedIds.has(o.id));
 

@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   type DocumentReference,
+  type QuerySnapshot,
   getDoc,
   getDocs,
   limit,
@@ -67,7 +68,68 @@ export const COMMISSION_SPLIT = {
 
 export type LedgerEntryType = 'CUSTOMER_CASHBACK' | 'REFERRAL_BONUS' | 'PLATFORM_REVENUE';
 
+// --- Refund/clawback fraud-signal severity ------------------------------
+// Previously: ANY refund of an order >= HIGH_VALUE_ORDER_THRESHOLD_VND, or
+// ANY refund after the cashback had already been RELEASED, was flagged
+// riskLevel:'HIGH' on the very first occurrence — literally "1 refund =
+// HIGH", with no notion of how often this customer does this or what
+// fraction of their orders it is. Replaced with a repeat-behavior check:
+// a single ordinary refund is normal customer behavior (a real return),
+// not fraud — severity only escalates once a PATTERN shows up (several
+// refunds, or a high refund rate against this customer's own order
+// history). Every threshold below is a named constant specifically so it
+// can be tuned later without hunting through the classification logic.
 const HIGH_VALUE_ORDER_THRESHOLD_VND = 2000000;
+// >= this many refunds (this one included) against the same customer ->
+// treated as a real repeated pattern regardless of their total order count.
+const FRAUD_REPEAT_COUNT_THRESHOLD = 3;
+// Refund rate above this (of the customer's own CONFIRMED-or-REFUNDED
+// orders) also counts as a pattern — only applied once there are at least
+// FRAUD_MIN_SAMPLE_FOR_RATE orders to compute a rate from, so a single
+// refund out of a single order (100%) doesn't trip this on its own.
+const FRAUD_REPEAT_RATE_THRESHOLD = 0.5;
+const FRAUD_MIN_SAMPLE_FOR_RATE = 2;
+
+export type FraudRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+/**
+ * Decides the severity of a refund/clawback fraud signal — or null,
+ * meaning "don't create one at all" (a real, ordinary first-time return of
+ * an unremarkable order isn't a fraud-worthy event and would just be noise
+ * on the Fraud page). Mirrors the 4 tiers requested: null=NORMAL (no
+ * signal), 'LOW'=WATCH, 'MEDIUM'=WARNING/HIGH RISK, 'HIGH'=SERIOUS FRAUD —
+ * reusing fraudSignals' existing 3-value riskLevel field rather than adding
+ * a 4th enum value app-wide.
+ *
+ * refundCount includes the refund currently being processed; totalOrders is
+ * this customer's total CONFIRMED-or-REFUNDED order count (the population a
+ * refund RATE is measured against — a CANCELLED/PENDING order was never
+ * paid out, so it isn't part of this ratio).
+ */
+export function classifyClawbackRisk(params: {
+  alreadyReleased: boolean;
+  refundCount: number;
+  totalOrders: number;
+  orderValue: number;
+}): FraudRiskLevel | null {
+  const { alreadyReleased, refundCount, totalOrders, orderValue } = params;
+  const rate = totalOrders > 0 ? refundCount / totalOrders : 1;
+  const isRepeatedPattern =
+    refundCount >= FRAUD_REPEAT_COUNT_THRESHOLD || (totalOrders >= FRAUD_MIN_SAMPLE_FOR_RATE && rate > FRAUD_REPEAT_RATE_THRESHOLD);
+
+  if (alreadyReleased) {
+    // Money already left the system — never fully "normal" (worth at
+    // least a low-priority note the first time), and escalates to the
+    // most serious tier the moment it happens more than once. A
+    // FROZEN-only refund below can stay silent on a true first offense;
+    // this one can't, since real money already moved.
+    return refundCount >= 2 ? 'HIGH' : 'MEDIUM';
+  }
+
+  if (isRepeatedPattern) return 'HIGH';
+  if (refundCount === 1 && orderValue < HIGH_VALUE_ORDER_THRESHOLD_VND) return null;
+  return refundCount >= 2 ? 'MEDIUM' : 'LOW';
+}
 
 export type UpsertOrderInput = {
   orderId?: string;
@@ -357,43 +419,100 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
     return { orderId };
   }
 
-  const batch = writeBatch(db);
-  batch.set(orderRef, orderFields, { merge: true });
+  // Reads for the REFUNDED path happen before any write, same reason as
+  // the CONFIRMED path above — and specifically before orderFields is
+  // handed to batch.set below, since a WriteBatch serializes each set()
+  // call's data immediately (mutating orderFields afterwards wouldn't
+  // reach the queued write).
+  let clawbackFlag: 'FROZEN_REJECTED' | 'RELEASED_FLAGGED' | null = null;
+  let ledgerSnap: QuerySnapshot | null = null;
+  let frozenAmount = 0;
+  let releasedAmount = 0;
+  let refundRisk: { frozen: FraudRiskLevel | null; released: FraudRiskLevel | null; refundCount: number; totalOrders: number } | null = null;
 
   if (statusChanged && input.status === 'REFUNDED') {
-    const ledgerSnap = await getDocs(query(collection(db, 'cashbackLedger'), where('orderId', '==', orderId)));
-    const isHighValue = input.orderValue >= HIGH_VALUE_ORDER_THRESHOLD_VND;
+    ledgerSnap = await getDocs(query(collection(db, 'cashbackLedger'), where('orderId', '==', orderId)));
     let clawedBackFrozen = false;
     let clawedBackReleased = false;
-
     ledgerSnap.docs.forEach((ledgerDoc) => {
       const ledger = ledgerDoc.data();
       if (ledger.status === 'FROZEN') {
-        batch.update(ledgerDoc.ref, { status: 'REJECTED' });
         clawedBackFrozen = true;
+        frozenAmount += ledger.amount ?? 0;
       } else if (ledger.status === 'RELEASED') {
         clawedBackReleased = true;
+        releasedAmount += ledger.amount ?? 0;
       }
     });
 
-    if (clawedBackFrozen) {
+    if (clawedBackFrozen || clawedBackReleased) {
+      // This customer's own refund history decides whether this is an
+      // isolated return or a repeated pattern (see classifyClawbackRisk) —
+      // counted from CONFIRMED-or-REFUNDED orders only (a CANCELLED/PENDING
+      // order was never paid out, so it isn't part of a refund rate).
+      // orderId's own doc still reads back as CONFIRMED here (this
+      // function's own REFUNDED write hasn't committed yet), so it's
+      // counted explicitly as the refund it's about to become.
+      const customerOrdersSnap = await getDocs(query(collection(db, 'orders'), where('userId', '==', input.userId)));
+      const relevant = customerOrdersSnap.docs
+        .map((d) => (d.id === orderId ? 'REFUNDED' : (d.data().status as OrderStatus)))
+        .filter((status) => status === 'CONFIRMED' || status === 'REFUNDED');
+      const totalOrders = relevant.length;
+      const refundCount = relevant.filter((status) => status === 'REFUNDED').length;
+
+      refundRisk = {
+        refundCount,
+        totalOrders,
+        frozen: clawedBackFrozen
+          ? classifyClawbackRisk({ alreadyReleased: false, refundCount, totalOrders, orderValue: input.orderValue })
+          : null,
+        released: clawedBackReleased
+          ? classifyClawbackRisk({ alreadyReleased: true, refundCount, totalOrders, orderValue: input.orderValue })
+          : null,
+      };
+      clawbackFlag = clawedBackReleased ? 'RELEASED_FLAGGED' : 'FROZEN_REJECTED';
+    }
+  }
+
+  if (clawbackFlag) orderFields.cashbackClawback = clawbackFlag;
+
+  const batch = writeBatch(db);
+  batch.set(orderRef, orderFields, { merge: true });
+
+  if (ledgerSnap && refundRisk) {
+    ledgerSnap.docs.forEach((ledgerDoc) => {
+      if (ledgerDoc.data().status === 'FROZEN') {
+        batch.update(ledgerDoc.ref, { status: 'REJECTED' });
+      }
+    });
+
+    const { refundCount, totalOrders } = refundRisk;
+    if (refundRisk.frozen) {
       batch.set(doc(collection(db, 'fraudSignals')), {
         userId: input.userId,
         orderId,
         signalType: 'ORDER_REFUNDED_AFTER_CONFIRM',
-        riskLevel: isHighValue ? 'HIGH' : 'MEDIUM',
-        reason: `Đơn hàng giá trị ${input.orderValue.toLocaleString('vi-VN')}đ bị trả hàng sau khi hoa hồng đã được xác nhận. Các khoản hoàn tiền/hoa hồng liên quan (khách hàng, giới thiệu, ví admin) đã bị thu hồi trước khi giải phóng.`,
+        riskLevel: refundRisk.frozen,
+        orderValue: input.orderValue,
+        cashbackAmount: frozenAmount,
+        refundCount,
+        totalOrders,
+        reason: `Đơn hàng giá trị ${input.orderValue.toLocaleString('vi-VN')}đ bị trả hàng sau khi hoa hồng đã được xác nhận (lần trả hàng thứ ${refundCount}/${totalOrders} đơn đã xác nhận của khách này). Các khoản hoàn tiền/hoa hồng liên quan (khách hàng, giới thiệu, ví admin) đã bị thu hồi trước khi giải phóng.`,
         status: 'OPEN',
         createdAt: serverTimestamp(),
       });
     }
-    if (clawedBackReleased) {
+    if (refundRisk.released) {
       batch.set(doc(collection(db, 'fraudSignals')), {
         userId: input.userId,
         orderId,
         signalType: 'REFUND_AFTER_RELEASE',
-        riskLevel: 'HIGH',
-        reason: `Đơn hàng giá trị ${input.orderValue.toLocaleString('vi-VN')}đ bị trả hàng SAU KHI một phần tiền đã được giải phóng. Cần Admin xem xét thủ công — hệ thống không tự động khóa hay thu hồi tiền đã giải phóng.`,
+        riskLevel: refundRisk.released,
+        orderValue: input.orderValue,
+        cashbackAmount: releasedAmount,
+        refundCount,
+        totalOrders,
+        reason: `Đơn hàng giá trị ${input.orderValue.toLocaleString('vi-VN')}đ bị trả hàng SAU KHI ${formatVnd(releasedAmount)} đã được giải phóng (lần thứ ${refundCount}/${totalOrders} đơn đã xác nhận của khách này). Cần Admin xem xét thủ công — hệ thống không tự động khóa hay thu hồi tiền đã giải phóng.`,
         status: 'OPEN',
         createdAt: serverTimestamp(),
       });

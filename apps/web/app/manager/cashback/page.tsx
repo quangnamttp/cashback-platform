@@ -5,6 +5,7 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
+import { Modal } from '../../../components/ui/Modal';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { getFirebaseDb } from '../../../lib/firebase';
@@ -63,6 +64,8 @@ export default function AdminCashbackPage() {
   const [users, setUsers] = useState<UserOption[]>([]);
   const [filter, setFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [view, setView] = useState<'flat' | 'byCustomer'>('byCustomer');
+  const [drilldownUserId, setDrilldownUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const db = getFirebaseDb();
@@ -97,6 +100,40 @@ export default function AdminCashbackPage() {
     return { frozen: sum('FROZEN'), released: sum('RELEASED') };
   }, [entries]);
 
+  // Per-customer rollup (section 6.A: "Hoàn tiền cho khách" tổng quan) —
+  // pure client-side groupBy over the same entries already fetched above,
+  // no new reads/writes. Excludes ADMIN_WALLET (that's the platform's own
+  // 20% share, not a customer) and only ever reads cashbackLedger — never
+  // touches or displays anything from walletBalances/withdrawalRequests, so
+  // this can't be confused with (or drift from) the customer's own wallet
+  // page's live-summed balance.
+  const customerRollup = useMemo(() => {
+    const map = new Map<string, { userId: string; released: number; frozen: number; rejected: number; orderIds: Set<string> }>();
+    entries.forEach((e) => {
+      if (e.userId === ADMIN_WALLET_ID) return;
+      if (!map.has(e.userId)) map.set(e.userId, { userId: e.userId, released: 0, frozen: 0, rejected: 0, orderIds: new Set() });
+      const row = map.get(e.userId)!;
+      if (e.status === 'RELEASED') row.released += e.amount;
+      else if (e.status === 'FROZEN') row.frozen += e.amount;
+      else if (e.status === 'REJECTED') row.rejected += e.amount;
+      if (e.orderId) row.orderIds.add(e.orderId);
+    });
+    return Array.from(map.values())
+      .map((row) => ({ ...row, total: row.released + row.frozen, orderCount: row.orderIds.size }))
+      .sort((a, b) => b.total - a.total);
+  }, [entries]);
+
+  const filteredCustomerRollup = useMemo(() => {
+    if (!searchQuery.trim()) return customerRollup;
+    const q = searchQuery.trim().toLowerCase();
+    return customerRollup.filter((row) => row.userId.toLowerCase().includes(q) || userLabel(users, row.userId).toLowerCase().includes(q));
+  }, [customerRollup, users, searchQuery]);
+
+  const drilldownEntries = useMemo(() => {
+    if (!drilldownUserId) return [];
+    return entries.filter((e) => e.userId === drilldownUserId).sort((a, b) => (b.confirmedAt?.toDate?.().getTime() ?? 0) - (a.confirmedAt?.toDate?.().getTime() ?? 0));
+  }, [entries, drilldownUserId]);
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -117,57 +154,161 @@ export default function AdminCashbackPage() {
         </div>
       </div>
 
-      <AdminSearchToolbar
-        query={searchQuery}
-        onQueryChange={setSearchQuery}
-        placeholder="Tìm theo mã khoản, mã đơn, tên người dùng..."
-        filterValue={filter}
-        onFilterChange={setFilter}
-        filterOptions={FILTERS}
-        resultCount={filtered.length}
-        resultLabel="khoản"
-      />
-
-      <div className="panel admin-table-panel">
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Người dùng</th>
-                <th>Loại khoản</th>
-                <th>Đơn hàng</th>
-                <th>Số tiền</th>
-                <th>Trạng thái</th>
-                <th>Xác nhận lúc</th>
-                <th>Giải phóng/xử lý lúc</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((entry) => (
-                <tr key={entry.id}>
-                  <td>{userLabel(users, entry.userId)}</td>
-                  <td>{entry.type ? TYPE_LABEL[entry.type] : '—'}</td>
-                  <td>{entry.orderId ? <CopyIdChip value={entry.orderId} /> : '—'}</td>
-                  <td><strong>{formatCurrency(entry.amount, lang)}</strong></td>
-                  <td><span className={`badge ${STATUS_BADGE[entry.status]}`}>{STATUS_LABEL[entry.status]}</span></td>
-                  <td>{entry.confirmedAt ? entry.confirmedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
-                  <td>{entry.releasedAt ? entry.releasedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="muted-copy">Không tìm thấy khoản nào phù hợp.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div className="sv-platform-tabs" style={{ marginBottom: 16 }}>
+        <button className={view === 'byCustomer' ? 'active' : ''} onClick={() => setView('byCustomer')}>
+          👤 Theo khách hàng
+        </button>
+        <button className={view === 'flat' ? 'active' : ''} onClick={() => setView('flat')}>
+          📋 Theo khoản
+        </button>
       </div>
 
-      <p className="mock-note">
-        Dữ liệu thật, chỉ đọc, từ Firestore (collection <code>cashbackLedger</code>) — xem toàn bộ lịch sử cả những
-        khoản đã xử lý xong. Để duyệt/từ chối các khoản đang giữ, dùng trang Duyệt hoàn tiền.
-      </p>
+      {view === 'byCustomer' ? (
+        <>
+          <AdminSearchToolbar
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            placeholder="Tìm theo tên khách hàng..."
+            resultCount={filteredCustomerRollup.length}
+            resultLabel="khách hàng"
+          />
+          <div className="panel admin-table-panel">
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Khách hàng</th>
+                    <th>Số đơn có cashback</th>
+                    <th>Tổng cashback (đã + đang giữ)</th>
+                    <th>Đã giải phóng</th>
+                    <th>Đang giữ (FROZEN)</th>
+                    <th>Bị từ chối/thu hồi</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCustomerRollup.map((row) => (
+                    <tr key={row.userId}>
+                      <td>{userLabel(users, row.userId)}</td>
+                      <td>{row.orderCount}</td>
+                      <td><strong>{formatCurrency(row.total, lang)}</strong></td>
+                      <td>{formatCurrency(row.released, lang)}</td>
+                      <td>{formatCurrency(row.frozen, lang)}</td>
+                      <td>{formatCurrency(row.rejected, lang)}</td>
+                      <td>
+                        <button className="button button-secondary" onClick={() => setDrilldownUserId(row.userId)}>
+                          👁 Chi tiết
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredCustomerRollup.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="muted-copy">Không tìm thấy khách hàng nào phù hợp.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p className="mock-note">
+            Tổng hợp trực tiếp từ <code>cashbackLedger</code> (nhóm theo khách hàng, tính lại mỗi lần tải trang — không
+            lưu số liệu tổng hợp riêng nên luôn khớp thực tế). Bấm &quot;Chi tiết&quot; để xem từng đơn/khoản của một
+            khách cụ thể.
+          </p>
+        </>
+      ) : (
+        <>
+          <AdminSearchToolbar
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            placeholder="Tìm theo mã khoản, mã đơn, tên người dùng..."
+            filterValue={filter}
+            onFilterChange={setFilter}
+            filterOptions={FILTERS}
+            resultCount={filtered.length}
+            resultLabel="khoản"
+          />
+
+          <div className="panel admin-table-panel">
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Người dùng</th>
+                    <th>Loại khoản</th>
+                    <th>Đơn hàng</th>
+                    <th>Số tiền</th>
+                    <th>Trạng thái</th>
+                    <th>Xác nhận lúc</th>
+                    <th>Giải phóng/xử lý lúc</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{userLabel(users, entry.userId)}</td>
+                      <td>{entry.type ? TYPE_LABEL[entry.type] : '—'}</td>
+                      <td>{entry.orderId ? <CopyIdChip value={entry.orderId} /> : '—'}</td>
+                      <td><strong>{formatCurrency(entry.amount, lang)}</strong></td>
+                      <td><span className={`badge ${STATUS_BADGE[entry.status]}`}>{STATUS_LABEL[entry.status]}</span></td>
+                      <td>{entry.confirmedAt ? entry.confirmedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
+                      <td>{entry.releasedAt ? entry.releasedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="muted-copy">Không tìm thấy khoản nào phù hợp.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="mock-note">
+            Dữ liệu thật, chỉ đọc, từ Firestore (collection <code>cashbackLedger</code>) — xem toàn bộ lịch sử cả những
+            khoản đã xử lý xong. Để duyệt/từ chối các khoản đang giữ, dùng trang Duyệt hoàn tiền.
+          </p>
+        </>
+      )}
+
+      <Modal open={!!drilldownUserId} onClose={() => setDrilldownUserId(null)}>
+        {drilldownUserId && (
+          <>
+            <h3 style={{ marginTop: 0 }}>{userLabel(users, drilldownUserId)}</h3>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Đơn hàng</th>
+                    <th>Loại khoản</th>
+                    <th>Số tiền</th>
+                    <th>Trạng thái</th>
+                    <th>Ngày</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drilldownEntries.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{entry.orderId ? <CopyIdChip value={entry.orderId} /> : '—'}</td>
+                      <td>{entry.type ? TYPE_LABEL[entry.type] : '—'}</td>
+                      <td><strong>{formatCurrency(entry.amount, lang)}</strong></td>
+                      <td><span className={`badge ${STATUS_BADGE[entry.status]}`}>{STATUS_LABEL[entry.status]}</span></td>
+                      <td>{entry.confirmedAt ? entry.confirmedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
+                    </tr>
+                  ))}
+                  {drilldownEntries.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="muted-copy">Không có khoản nào.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </Modal>
     </AdminShell>
   );
 }

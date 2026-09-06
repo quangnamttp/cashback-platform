@@ -8,6 +8,8 @@ import { logAdminAction } from '../../../lib/adminAudit';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
+import { useLanguage } from '../../../lib/i18n';
+import { formatCurrency } from '../../../lib/currency';
 import { usePageTitle } from '../../../lib/use-page-title';
 
 const FRAUD_FILTER_OPTIONS = [
@@ -24,6 +26,20 @@ type FraudSignal = {
   riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
   reason: string;
   status: 'OPEN' | 'RESOLVED_LOCKED' | 'RESOLVED_FROZEN' | 'RESOLVED_IGNORED';
+  // Structured fields — only present on signals created after the
+  // repeat-behavior fraud rewrite (lib/orderEntry.ts's classifyClawbackRisk).
+  // Older signals still render fine with these columns showing '—', the
+  // full explanation stays readable in `reason` either way.
+  orderValue?: number;
+  cashbackAmount?: number;
+  refundCount?: number;
+  totalOrders?: number;
+};
+
+const RISK_EXPLAIN: Record<FraudSignal['riskLevel'], string> = {
+  LOW: 'Watch — lần đầu bất thường, giá trị cao hoặc bắt đầu lặp lại',
+  MEDIUM: 'Warning — hành vi trả hàng đang lặp lại',
+  HIGH: 'Serious — tỷ lệ/tần suất trả hàng cao hoặc đã lặp lại sau khi tiền đã giải phóng',
 };
 
 const STATUS_BY_RESOLUTION: Record<'LOCK' | 'FREEZE' | 'IGNORE', string> = {
@@ -55,6 +71,7 @@ function userLabel(users: UserOption[], userId: string): string {
 
 export default function AdminFraudPage() {
   usePageTitle('Cảnh báo gian lận');
+  const { lang } = useLanguage();
   const { uid, userEmail } = useAuth();
   const [signals, setSignals] = useState<FraudSignal[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -159,6 +176,9 @@ export default function AdminFraudPage() {
                 <th>Mã cảnh báo</th>
                 <th>Người dùng</th>
                 <th>Đơn hàng</th>
+                <th>Giá trị đơn</th>
+                <th>Cashback cần thu hồi</th>
+                <th>Số lần trả hàng</th>
                 <th>Lý do</th>
                 <th>Mức rủi ro</th>
                 <th>Trạng thái</th>
@@ -171,9 +191,17 @@ export default function AdminFraudPage() {
                   <td><CopyIdChip value={signal.id} /></td>
                   <td>{userLabel(users, signal.userId)}</td>
                   <td>{signal.orderId ? <CopyIdChip value={signal.orderId} /> : '—'}</td>
+                  <td>{typeof signal.orderValue === 'number' ? formatCurrency(signal.orderValue, lang) : '—'}</td>
+                  <td>{typeof signal.cashbackAmount === 'number' ? formatCurrency(signal.cashbackAmount, lang) : '—'}</td>
+                  <td>{typeof signal.refundCount === 'number' ? `${signal.refundCount}/${signal.totalOrders} đơn` : '—'}</td>
                   <td>{signal.reason}</td>
                   <td>
-                    <span className={`badge badge-${signal.riskLevel === 'HIGH' ? 'danger' : 'warning'}`}>{RISK_LABEL[signal.riskLevel] ?? signal.riskLevel}</span>
+                    <span
+                      className={`badge badge-${signal.riskLevel === 'HIGH' ? 'danger' : signal.riskLevel === 'MEDIUM' ? 'warning' : 'neutral'}`}
+                      title={RISK_EXPLAIN[signal.riskLevel] ?? ''}
+                    >
+                      {RISK_LABEL[signal.riskLevel] ?? signal.riskLevel}
+                    </span>
                   </td>
                   <td>
                     {signal.status === 'OPEN' ? (
@@ -195,7 +223,7 @@ export default function AdminFraudPage() {
               ))}
               {!loading && filteredSignals.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted-copy">
+                  <td colSpan={10} className="muted-copy">
                     {signals.length === 0 ? 'Chưa có cảnh báo gian lận nào.' : 'Không tìm thấy cảnh báo nào phù hợp.'}
                   </td>
                 </tr>

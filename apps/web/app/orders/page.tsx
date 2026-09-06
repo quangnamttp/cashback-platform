@@ -22,6 +22,10 @@ type OrderDoc = {
   commissionAmount: number;
   status: OrderStatus;
   orderDate?: { toDate: () => Date };
+  // Set by lib/orderEntry.ts's upsertOrder when a REFUNDED order had
+  // cashback that needed clawing back — customer-visible so a return
+  // doesn't look like it silently kept a cashback it never really settled.
+  cashbackClawback?: 'FROZEN_REJECTED' | 'RELEASED_FLAGGED';
 };
 
 const statusKeyMap: Record<OrderStatus, string> = {
@@ -184,6 +188,11 @@ export default function OrdersPage() {
                           ● {t(statusKeyMap[item.status] as any) || item.status}
                         </span>
                         <div className="order-table-date">{date ? date.toLocaleString('vi-VN') : '—'}</div>
+                        {item.cashbackClawback && (
+                          <div className="muted-copy" style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: 4 }}>
+                            ⚠️ Đơn hàng #{item.id} đã được xác nhận trả hàng. Khoản cashback của đơn hàng này sẽ được thu hồi.
+                          </div>
+                        )}
                       </td>
                       <td>
                         <button className="button button-secondary order-card-view" onClick={() => setActiveOrder(item)}>

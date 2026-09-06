@@ -427,7 +427,7 @@ const dict = {
     chat_widget_send_another: 'Gửi tin nhắn khác',
     chat_widget_not_configured: 'Hệ thống chat chưa được cấu hình (thiếu Telegram Bot Token). Vui lòng liên hệ qua trang Hỗ trợ.',
     chat_widget_error: 'Không gửi được tin nhắn, vui lòng thử lại sau hoặc liên hệ qua trang Hỗ trợ.',
-    chat_widget_image_too_large: 'Ảnh quá lớn (tối đa khoảng 650KB), vui lòng chọn ảnh nhỏ hơn.',
+    chat_widget_image_too_large: 'Không thể nén ảnh này đủ nhỏ để gửi, vui lòng chọn ảnh khác.',
 
     account_download_app: 'Tải về',
     download_install_title: 'Cài đặt ứng dụng',
@@ -868,7 +868,7 @@ const dict = {
     chat_widget_send_another: 'Send another message',
     chat_widget_not_configured: 'The chat system is not configured yet (missing Telegram bot token). Please reach out via the Support page instead.',
     chat_widget_error: 'Could not send your message, please try again later or reach out via the Support page.',
-    chat_widget_image_too_large: 'Image is too large (max ~650KB), please pick a smaller one.',
+    chat_widget_image_too_large: "Couldn't compress this image small enough to send, please pick another one.",
 
     account_download_app: 'Download',
     download_install_title: 'Install app',

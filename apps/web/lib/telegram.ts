@@ -31,10 +31,22 @@ export function isTelegramRelayConfigured(): boolean {
 // doesn't get lost between cashback approvals and general support-chat
 // activity. Mirrored in workers/telegram-bot/src/index.js — keep both in
 // sync if a topic ever changes.
+//
+// ORDER_APPROVAL (33) and CASHBACK (13) are deliberately two different
+// topics even though both are steps of the same order->cashback pipeline
+// (order approval PENDING->CONFIRMED vs cashback release FROZEN->RELEASED —
+// see lib/orderEntry.ts) — verified live against the real group (2026-09,
+// sendMessage to thread 33 echoed back forum_topic_created.name:"Duyệt
+// Đơn") before wiring this in. Only notifyOrderApprovalToTelegram below
+// uses ORDER_APPROVAL; every cashback-release message (pending/approved/
+// rejected) still uses CASHBACK, unchanged. The Worker needs NO changes
+// for this split — callback routing is keyed off callback_data prefixes
+// (order_approve:/cb_approve:), not the topic a message lives in.
 export const TELEGRAM_TOPICS = {
   SUPPORT: 11,
   WITHDRAWAL: 14,
   CASHBACK: 13,
+  ORDER_APPROVAL: 33,
 } as const;
 
 function escapeHtml(value: string): string {
@@ -326,19 +338,20 @@ export function syncCashbackStatusToTelegram(
 
 // ---------------------------------------------------------------------
 // Order approval (PENDING -> CONFIRMED, the step that creates the FROZEN
-// ledger entry above) — same TELEGRAM_TOPICS.CASHBACK topic as the
-// cashback-release messages, since from the admin's point of view both are
-// steps in the same "duyệt hoàn tiền" pipeline: this fires the moment an
-// order is entered as PENDING (see lib/orderEntry.ts's upsertOrder), so
-// approving never has to start on the web — tapping "✅ Duyệt đơn hàng"
-// here does the full PENDING->CONFIRMED transition (referrer lookup,
-// commission split, FROZEN ledger entries — see workers/telegram-bot's
-// handleOrderDecision) and, on success, that same Worker sends the
-// cashback-release message above as a follow-up. Deliberately still two
-// separate approvals, not one: confirming an order and releasing money to
-// a wallet are different decisions with different stakes, and collapsing
-// them would remove the "hold, then decide when to release" step the rest
-// of this app is built around (see /manager/payouts).
+// ledger entry above) — its own TELEGRAM_TOPICS.ORDER_APPROVAL topic,
+// separate from the cashback-release messages' TELEGRAM_TOPICS.CASHBACK:
+// confirming an order and releasing money to a wallet are different
+// decisions with different stakes (see /manager/orders vs /manager/payouts
+// on the web side), so they get different Telegram topics too, not just
+// different messages in the same stream. This fires the moment an order is
+// entered as PENDING (see lib/orderEntry.ts's upsertOrder), so approving
+// never has to start on the web — tapping "✅ Duyệt đơn hàng" here does the
+// full PENDING->CONFIRMED transition (referrer lookup, commission split,
+// FROZEN ledger entries — see workers/telegram-bot's handleOrderDecision)
+// and, on success, that same Worker sends the cashback-release message
+// above (still to TELEGRAM_TOPICS.CASHBACK) as a follow-up in the OTHER
+// topic — this is the "chờ duyệt hoàn tiền" hand-off from topic 1 to
+// topic 2, still two separate approvals, never collapsed into one.
 // ---------------------------------------------------------------------
 
 export type OrderApprovalMessageFields = {
@@ -413,7 +426,7 @@ export async function notifyOrderApprovalToTelegram(fields: OrderApprovalMessage
 
   const result = await callTelegramApi<{ message_id: number; chat: { id: number } }>('sendMessage', {
     chat_id: CHAT_ID,
-    message_thread_id: TELEGRAM_TOPICS.CASHBACK,
+    message_thread_id: TELEGRAM_TOPICS.ORDER_APPROVAL,
     parse_mode: 'HTML',
     text: orderApprovalMessageText(fields, 'pending'),
     reply_markup: { inline_keyboard: orderApprovalKeyboard(fields, 'pending') },

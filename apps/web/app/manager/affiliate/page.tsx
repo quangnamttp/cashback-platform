@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { mockPlatforms } from '../../../lib/mock-data';
 import { AdminShell } from '../../../components/layout/AdminShell';
@@ -156,6 +156,15 @@ export default function AdminAffiliatePage() {
         await updateDoc(doc(db, 'socialVouchers', editingId), { ...form });
       } else {
         await addDoc(collection(db, 'socialVouchers'), { ...form, createdAt: new Date() });
+        // Bell notification for every signed-in customer (SiteHeader.tsx) —
+        // only for a genuinely NEW voucher, never on an edit (editing the
+        // same code repeatedly shouldn't re-notify everyone each time).
+        await addDoc(collection(db, 'notifications'), {
+          type: 'VOUCHER',
+          title: `🎁 Voucher mới: ${form.code}`,
+          body: [form.discount, form.condition, form.expiry ? `HSD: ${form.expiry}` : null].filter(Boolean).join(' — '),
+          createdAt: serverTimestamp(),
+        }).catch((err) => console.error('voucher notification failed', err));
       }
       setShowForm(false);
     } catch (err) {
@@ -184,6 +193,14 @@ export default function AdminAffiliatePage() {
         batch.set(doc(collection(db, 'socialVouchers')), { ...v, createdAt: new Date() });
       });
       await batch.commit();
+      // One combined bell notification for the whole batch — not one per
+      // voucher, which would spam every customer's bell on a large paste.
+      await addDoc(collection(db, 'notifications'), {
+        type: 'VOUCHER',
+        title: `🎁 ${toAdd.length} voucher mới`,
+        body: toAdd.map((v) => v.code).join(', '),
+        createdAt: serverTimestamp(),
+      }).catch((err) => console.error('voucher notification (bulk) failed', err));
       setQuickAddResult({ added: toAdd.length, errors });
       setQuickAddText('');
     } catch (err) {

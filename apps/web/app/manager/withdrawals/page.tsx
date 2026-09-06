@@ -135,23 +135,32 @@ export default function AdminWithdrawalsPage() {
     return result;
   }, [ledger, rows]);
 
-  const filteredRows = rows.filter((row) => {
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'DONE' ? row.status === 'APPROVED' || row.status === 'PAID' : row.status === statusFilter);
-    if (!matchesStatus) return false;
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.trim().toLowerCase();
-    const requester = requesterLabel(users, row.userId, row.requesterName);
-    return (
-      row.id.toLowerCase().includes(q) ||
-      requester.toLowerCase().includes(q) ||
-      (row.accountHolder ?? '').toLowerCase().includes(q) ||
-      (row.accountNumber ?? '').toLowerCase().includes(q) ||
-      (row.bank ?? row.method ?? '').toLowerCase().includes(q) ||
-      String(row.amount).includes(q)
-    );
-  });
+  const filteredRows = rows
+    .filter((row) => {
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'DONE' ? row.status === 'APPROVED' || row.status === 'PAID' : row.status === statusFilter);
+      if (!matchesStatus) return false;
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.trim().toLowerCase();
+      const requester = requesterLabel(users, row.userId, row.requesterName);
+      return (
+        row.id.toLowerCase().includes(q) ||
+        requester.toLowerCase().includes(q) ||
+        (row.accountHolder ?? '').toLowerCase().includes(q) ||
+        (row.accountNumber ?? '').toLowerCase().includes(q) ||
+        (row.bank ?? row.method ?? '').toLowerCase().includes(q) ||
+        String(row.amount).includes(q)
+      );
+    })
+    // Still-open requests (waiting on an admin decision) first, regardless
+    // of the base requestedAt-desc query order — same reasoning as
+    // manager/orders' PENDING-first sort. Stable sort keeps requestedAt-desc
+    // order intact within each group.
+    .sort((a, b) => {
+      const openRank = (s: WithdrawalRequest['status']) => (s === 'PENDING_ADMIN' || s === 'APPROVED' ? 1 : 0);
+      return openRank(b.status) - openRank(a.status);
+    });
 
   // "Available to withdraw" is still always computed live from
   // cashbackLedger for display (unchanged) — but the request's `amount` was

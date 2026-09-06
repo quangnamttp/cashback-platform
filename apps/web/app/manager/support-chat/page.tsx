@@ -17,15 +17,12 @@ import { Modal } from '../../../components/ui/Modal';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { compressImageForChat } from '../../../lib/imageCompress';
 
 const CHAT_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả' },
   { value: 'unread', label: 'Chưa đọc' },
 ];
-
-// Same cap as the customer-facing widget (lib note there: Firestore
-// documents cap at 1MB and base64 inflates ~33%, so this leaves headroom).
-const MAX_IMAGE_BYTES = 650 * 1024;
 
 type ChatThread = {
   id: string;
@@ -35,6 +32,7 @@ type ChatThread = {
   lastMessagePreview: string;
   lastMessageAt?: Timestamp;
   hasUnreadForAdmin?: boolean;
+  clearedAt?: Timestamp;
 };
 
 type ChatMessage = {
@@ -67,6 +65,13 @@ export default function AdminSupportChatPage() {
     return unsubscribe;
   }, []);
 
+  // Read once per render from `threads` (already kept live by the effect
+  // above) instead of inside the messages effect below — this becomes a
+  // primitive dependency the effect can react to, so a "Xóa lịch sử chat"
+  // click while the thread is already open immediately re-filters what's
+  // on screen instead of waiting for the admin to close and reopen it.
+  const activeClearedAtMs = threads.find((t) => t.id === activeThreadId)?.clearedAt?.toMillis?.() ?? 0;
+
   useEffect(() => {
     if (!activeThreadId) {
       setActiveMessages([]);
@@ -77,10 +82,11 @@ export default function AdminSupportChatPage() {
       orderBy('createdAt', 'asc'),
     );
     const unsubscribe = onSnapshot(q, (snap) => {
-      setActiveMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChatMessage));
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChatMessage);
+      setActiveMessages(activeClearedAtMs ? all.filter((m) => (m.createdAt?.toMillis?.() ?? 0) > activeClearedAtMs) : all);
     });
     return unsubscribe;
-  }, [activeThreadId]);
+  }, [activeThreadId, activeClearedAtMs]);
 
   const activeThread = threads.find((t) => t.id === activeThreadId) ?? null;
 
@@ -107,17 +113,16 @@ export default function AdminSupportChatPage() {
     }
   };
 
-  const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) {
+    setImageError(false);
+    const compressed = await compressImageForChat(file).catch(() => null);
+    if (!compressed) {
       setImageError(true);
       return;
     }
-    setImageError(false);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    setImagePreview(compressed);
   };
 
   const clearImage = () => setImagePreview(null);
@@ -140,6 +145,31 @@ export default function AdminSupportChatPage() {
       lastMessagePreview: preview,
       hasUnreadForUser: true,
     });
+  };
+
+  const [clearingHistory, setClearingHistory] = useState(false);
+
+  // Soft delete only — sets supportChats/{uid}.clearedAt and both this
+  // page's and the customer widget's message queries filter anything at or
+  // before it out of view (see the messages effect above and
+  // SupportChatWidget.tsx). Nothing is actually deleted from Firestore, and
+  // nothing outside this one chat thread's messages is ever touched —
+  // orders/cashbackLedger/wallet/withdrawal data lives in entirely separate
+  // collections this page never writes to. firestore.rules restricts
+  // writing `clearedAt` to isAdmin() only.
+  const clearChatHistory = async () => {
+    if (!activeThreadId) return;
+    if (!window.confirm('Xóa lịch sử trò chuyện với khách này? Tin nhắn cũ sẽ không còn hiển thị (với cả bạn và khách), tin nhắn mới vẫn gửi/nhận bình thường.')) {
+      return;
+    }
+    setClearingHistory(true);
+    try {
+      await updateDoc(doc(getFirebaseDb(), 'supportChats', activeThreadId), { clearedAt: serverTimestamp() });
+    } catch (err) {
+      console.error('clear chat history failed', err);
+    } finally {
+      setClearingHistory(false);
+    }
   };
 
   return (
@@ -214,6 +244,16 @@ export default function AdminSupportChatPage() {
                   <span className="support-chat-header-email">{activeThread.userEmail}</span>
                 </div>
               </div>
+              <button
+                type="button"
+                className="btn-reject"
+                style={{ marginRight: 8, fontSize: '0.78rem', padding: '6px 10px' }}
+                disabled={clearingHistory || activeMessages.length === 0}
+                onClick={clearChatHistory}
+                title="Ẩn toàn bộ tin nhắn cũ của cuộc trò chuyện này — không ảnh hưởng đơn hàng/ví/tài chính"
+              >
+                🗑 {clearingHistory ? 'Đang xóa...' : 'Xóa lịch sử'}
+              </button>
               <button className="support-chat-close" onClick={() => setActiveThreadId(null)} aria-label="Đóng">✕</button>
             </div>
 
@@ -249,7 +289,7 @@ export default function AdminSupportChatPage() {
                   <button onClick={clearImage} aria-label="Xóa ảnh">✕</button>
                 </div>
               )}
-              {imageError && <p className="admin-gate-error">Ảnh quá lớn, vui lòng chọn ảnh nhỏ hơn 650KB.</p>}
+              {imageError && <p className="admin-gate-error">Không thể nén ảnh này đủ nhỏ để gửi, vui lòng chọn ảnh khác.</p>}
 
               <div className="support-chat-input-row">
                 <input

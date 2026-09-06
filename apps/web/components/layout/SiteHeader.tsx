@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, limit, onSnapshot, orderBy, query, where, type Timestamp } from 'firebase/firestore';
 import { LANGS, useLanguage } from '../../lib/i18n';
 import { useTheme } from '../../lib/theme';
 import { useAuth } from '../../lib/auth';
@@ -14,6 +14,7 @@ import { Modal } from '../ui/Modal';
 
 type LedgerRow = { id: string; orderId?: string; amount: number; status: string; releasedAt?: { toDate: () => Date } };
 type WithdrawalRow = { id: string; amount: number; status: string; decidedAt?: { toDate: () => Date } };
+type BroadcastNotif = { id: string; title: string; body: string; createdAt?: Timestamp };
 
 function timeAgo(date: Date): string {
   const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
@@ -57,6 +58,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   // the exact same fake order/withdrawal regardless of their real activity.
   const [recentLedger, setRecentLedger] = useState<LedgerRow[]>([]);
   const [recentWithdrawals, setRecentWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [broadcastNotifs, setBroadcastNotifs] = useState<BroadcastNotif[]>([]);
 
   useEffect(() => {
     if (!uid) {
@@ -79,6 +81,23 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
     };
   }, [uid]);
 
+  // Broadcast marketing notifications (currently just "voucher mới" — see
+  // manager/affiliate/page.tsx) — same shared collection every signed-in
+  // customer reads (firestore.rules), merged into the same bell dropdown
+  // below rather than a separate UI.
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setBroadcastNotifs([]);
+      return undefined;
+    }
+    const db = getFirebaseDb();
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(5)),
+      (snap) => setBroadcastNotifs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BroadcastNotif))),
+    );
+    return unsubscribe;
+  }, [isLoggedIn]);
+
   const notifications = useMemo(() => {
     type Row = { id: string; text: string; time: Date };
     const rows: Row[] = [];
@@ -100,11 +119,16 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
           time: w.decidedAt!.toDate(),
         });
       });
+    broadcastNotifs
+      .filter((n) => n.createdAt)
+      .forEach((n) => {
+        rows.push({ id: `bc-${n.id}`, text: `${n.title}\n${n.body}`, time: n.createdAt!.toDate() });
+      });
     return rows
       .sort((a, b) => b.time.getTime() - a.time.getTime())
       .slice(0, 5)
       .map((row) => ({ id: row.id, text: row.text, time: timeAgo(row.time) }));
-  }, [recentLedger, recentWithdrawals, lang]);
+  }, [recentLedger, recentWithdrawals, broadcastNotifs, lang]);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 8);
@@ -211,7 +235,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                 ) : (
                   notifications.map((item) => (
                     <div key={item.id} className="notif-item">
-                      <p>{item.text}</p>
+                      <p style={{ whiteSpace: 'pre-line' }}>{item.text}</p>
                       <span>{item.time}</span>
                     </div>
                   ))

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { FirebaseError } from 'firebase/app';
@@ -29,6 +29,21 @@ function LoginPageInner() {
   const [remember, setRemember] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // `output: 'export'` ships the static HTML (buttons included) before
+  // React hydrates, and hydration can take a real, human-noticeable moment
+  // on a slow mobile connection/CPU. A tap on the submit button in that
+  // window hits a plain <button type="submit"> with no onSubmit handler
+  // attached yet, so the BROWSER runs its own native form submission
+  // (full-page reload to the current URL) instead of this component's
+  // handleSubmit — no error shown, the page just reloads with empty
+  // fields, and the SECOND tap (now hydrated) finally works. This is
+  // exactly the "have to press login twice on mobile" symptom. Fixed by
+  // rendering the button natively `disabled` until this effect runs —
+  // since `mounted` starts false, the pre-rendered static HTML itself
+  // already carries the disabled attribute, so the browser refuses to
+  // submit the form at all until React has taken over and re-enabled it.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const mapFirebaseError = (err: unknown): string => {
     if (err instanceof Error && err.message === 'firebase-not-configured') {
@@ -190,7 +205,7 @@ function LoginPageInner() {
 
           {error && <p className="admin-gate-error">{error}</p>}
 
-          <button type="submit" className="button button-primary wide-button" disabled={submitting}>
+          <button type="submit" className="button button-primary wide-button" disabled={!mounted || submitting}>
             {submitting ? (
               t('login_submitting')
             ) : tab === 'login' ? (
@@ -203,7 +218,7 @@ function LoginPageInner() {
 
         <div className="login-divider"><span>{t('login_or')}</span></div>
 
-        <button type="button" className="login-google-btn" onClick={handleGoogle} disabled={submitting}>
+        <button type="button" className="login-google-btn" onClick={handleGoogle} disabled={!mounted || submitting}>
           <span className="login-google-icon">G</span>
           {t('continue_google')}
         </button>

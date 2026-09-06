@@ -27,21 +27,36 @@ type Session = {
   lastSeenAt?: { toDate: () => Date };
 };
 
+type UserOption = { id: string; fullName?: string; email?: string };
+
+function userLabel(users: UserOption[], userId: string): string {
+  const user = users.find((u) => u.id === userId);
+  if (!user) return userId;
+  return user.fullName || user.email || userId;
+}
+
 export default function AdminDevicesPage() {
   usePageTitle('Phiên đăng nhập thiết bị');
   const { uid, userEmail } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [cleaning, setCleaning] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(getFirebaseDb(), 'sessions'), orderBy('lastSeenAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snap) => {
+    const db = getFirebaseDb();
+    const unsubSessions = onSnapshot(query(collection(db, 'sessions'), orderBy('lastSeenAt', 'desc')), (snap) => {
       setSessions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Session)));
     });
-    return unsubscribe;
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserOption)));
+    });
+    return () => {
+      unsubSessions();
+      unsubUsers();
+    };
   }, []);
 
   const forceLogout = async (sessionDocId: string) => {
@@ -109,10 +124,11 @@ export default function AdminDevicesPage() {
       return (
         session.id.toLowerCase().includes(q) ||
         session.userId.toLowerCase().includes(q) ||
+        userLabel(users, session.userId).toLowerCase().includes(q) ||
         (session.userAgent ?? '').toLowerCase().includes(q)
       );
     });
-  }, [sessions, searchQuery, statusFilter]);
+  }, [sessions, users, searchQuery, statusFilter]);
 
   return (
     <AdminShell>
@@ -145,7 +161,7 @@ export default function AdminDevicesPage() {
             <thead>
               <tr>
                 <th>Mã phiên</th>
-                <th>Người dùng (uid)</th>
+                <th>Người dùng</th>
                 <th>Loại thiết bị</th>
                 <th>Trình duyệt / thiết bị</th>
                 <th>Hoạt động gần nhất</th>
@@ -157,7 +173,7 @@ export default function AdminDevicesPage() {
               {filteredSessions.map((session) => (
                 <tr key={session.id}>
                   <td><CopyIdChip value={session.id} /></td>
-                  <td>{session.userId}</td>
+                  <td>{userLabel(users, session.userId)}</td>
                   <td>{session.deviceType === 'mobile' ? '📱 Di động' : '🖥️ Máy tính'}</td>
                   <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.userAgent ?? ''}>
                     {session.userAgent ?? '—'}

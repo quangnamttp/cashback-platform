@@ -22,6 +22,7 @@ import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
 import { loadAutoReplyMessage } from '../../lib/auto-reply-store';
 import { forwardChatMessageToTelegram } from '../../lib/telegram';
+import { compressImageForChat } from '../../lib/imageCompress';
 
 type ChatMessage = {
   id: string;
@@ -32,9 +33,6 @@ type ChatMessage = {
 };
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-// Firestore documents cap at 1MB; base64 inflates by ~33%, so this leaves
-// comfortable headroom for the rest of the message doc's fields.
-const MAX_IMAGE_BYTES = 650 * 1024;
 
 export function SupportChatWidget() {
   const { t } = useLanguage();
@@ -43,6 +41,7 @@ export function SupportChatWidget() {
   const [message, setMessage] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [clearedAtMs, setClearedAtMs] = useState(0);
   const [hasUnread, setHasUnread] = useState(false);
   const [sending, setSending] = useState(false);
   const [errorState, setErrorState] = useState<'error' | 'too_large' | null>(null);
@@ -57,6 +56,8 @@ export function SupportChatWidget() {
     if (!uid) return undefined;
     const unsubscribe = onSnapshot(doc(getFirebaseDb(), 'supportChats', uid), (snap) => {
       setHasUnread(!!snap.data()?.hasUnreadForUser);
+      const clearedAt = snap.data()?.clearedAt as Timestamp | undefined;
+      setClearedAtMs(clearedAt?.toMillis?.() ?? 0);
     });
     return unsubscribe;
   }, [uid]);
@@ -69,7 +70,12 @@ export function SupportChatWidget() {
       orderBy('createdAt', 'asc'),
     );
     const unsubscribe = onSnapshot(messagesQuery, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChatMessage));
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ChatMessage);
+      // Admin's "Xóa lịch sử chat" sets supportChats/{uid}.clearedAt — a
+      // soft clear, not a real delete: messages before that moment simply
+      // stop rendering here (and in the admin's own view), nothing is
+      // removed from Firestore.
+      setMessages(clearedAtMs ? all.filter((m) => (m.createdAt?.toMillis?.() ?? 0) > clearedAtMs) : all);
     });
 
     updateDoc(doc(getFirebaseDb(), 'supportChats', uid), { hasUnreadForUser: false }).catch(() => undefined);
@@ -86,7 +92,7 @@ export function SupportChatWidget() {
     }
 
     return unsubscribe;
-  }, [open, uid]);
+  }, [open, uid, clearedAtMs]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -96,17 +102,16 @@ export function SupportChatWidget() {
     return null;
   }
 
-  const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) {
+    setErrorState(null);
+    const compressed = await compressImageForChat(file).catch(() => null);
+    if (!compressed) {
       setErrorState('too_large');
       return;
     }
-    setErrorState(null);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
-    reader.readAsDataURL(file);
+    setImagePreview(compressed);
   };
 
   const clearImage = () => setImagePreview(null);

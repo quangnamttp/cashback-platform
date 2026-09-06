@@ -238,6 +238,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Broadcast marketing notifications (currently: "voucher mới" — see
+    // manager/affiliate/page.tsx) shown in every signed-in customer's bell
+    // (SiteHeader.tsx). Same trust model as socialVouchers: one shared,
+    // non-sensitive collection every customer reads, admin-only to write.
+    // No per-user unread tracking beyond what the header already keeps
+    // client-side — this is marketing content, not a security-relevant
+    // channel.
+    match /notifications/{notifId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     // Registry of files each user/admin uploaded to their OWN personal
     // Google Drive (client-side OAuth, see lib/googleDrive.ts) — Firestore
     // only ever stores the resulting public URL, never file bytes.
@@ -251,7 +264,14 @@ service cloud.firestore {
     // for lowest-latency real-time delivery.
     match /supportChats/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow create, update: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) || isAdmin();
+      // clearedAt (Admin's "Xóa lịch sử chat" — a soft clear, see
+      // SupportChatWidget.tsx / manager/support-chat/page.tsx filtering
+      // messages by createdAt > clearedAt) is admin-only to set; the owner
+      // keeps every other existing field they already write (userName,
+      // lastMessageAt, hasUnreadForUser, ...).
+      allow update: if (isOwner(uid) || isAdmin())
+        && (isAdmin() || !('clearedAt' in request.resource.data.diff(resource.data).affectedKeys()));
       allow delete: if false;
 
       match /messages/{messageId} {
