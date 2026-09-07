@@ -35,20 +35,16 @@ ACCESSTRADE_MERCHANT_SHOPEE = "shopee"
 # what order-list/order-products actually need.
 ACCESSTRADE_CAMPAIGN_TIKTOKSHOP = "6648523843406889655"
 ACCESSTRADE_MERCHANT_TIKTOKSHOP = "tiktokshop"
-# Lazada's real values — stored and ready, but NOT active (see
-# ACCESSTRADE_ENABLED_PLATFORMS below). Its campaign isn't approved yet;
-# once it is, the only change needed is adding LAZADA to that list — never
-# blank these out, never touch the code again.
+# Lazada — campaign approved 2026-09-07, now enabled below alongside
+# Shopee/TikTok Shop.
 ACCESSTRADE_CAMPAIGN_LAZADA = "5087153089503673507"
 ACCESSTRADE_MERCHANT_LAZADA = "lazada"
 
 # The ONE switch controlling which platforms actually run (link creation
 # AND order sync) — deliberately separate from whether campaign_id/
-# merchant above are filled in, so Lazada's real values can sit ready
-# without Lazada ever being called. Comma-separated, no spaces needed
-# (isPlatformEnabled trims them anyway). Add LAZADA here (and nothing
-# else) once its campaign is approved.
-ACCESSTRADE_ENABLED_PLATFORMS = "SHOPEE,TIKTOK_SHOP"
+# merchant above are filled in. Comma-separated, no spaces needed
+# (isPlatformEnabled trims them anyway).
+ACCESSTRADE_ENABLED_PLATFORMS = "SHOPEE,TIKTOK_SHOP,LAZADA"
 
 # Secrets (never put these here — set via `wrangler secret put <NAME>`):
 #   ACCESSTRADE_API_KEY   the Publisher API Access Key from your ACCESSTRADE account
