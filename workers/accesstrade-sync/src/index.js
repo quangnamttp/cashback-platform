@@ -705,6 +705,11 @@ export default {
     return new Response('OK', { status: 200 });
   },
   async scheduled(event, env, ctx) {
+    // Diagnostic only — confirms Cloudflare actually invoked scheduled()
+    // independent of whatever pollOrders() does next (its own first log
+    // line is gated behind an awaited Firebase sign-in call, so this is
+    // the only way to see a tick land before any network I/O happens).
+    console.log(`[CRON] scheduled fired ${new Date().toISOString()} (cron="${event.cron}")`);
     ctx.waitUntil(pollOrders(env).catch((err) => console.error('pollOrders failed:', err.message)));
   },
 };
