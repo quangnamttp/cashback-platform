@@ -360,6 +360,7 @@ const dict = {
     login_error_email_in_use: 'Email này đã được đăng ký, hãy chuyển sang tab Đăng nhập.',
     login_error_weak_password: 'Mật khẩu quá ngắn, cần ít nhất 6 ký tự.',
     login_error_popup_closed: 'Cửa sổ đăng nhập Google đã bị đóng trước khi hoàn tất.',
+    login_error_popup_timeout: 'Đăng nhập Google quá thời gian chờ — vui lòng thử lại. Nếu bạn đang mở từ Messenger/Zalo/Instagram, hãy mở bằng trình duyệt Chrome/Safari thay vì trong app đó.',
     login_error_not_configured: 'Hệ thống đăng nhập chưa được cấu hình (thiếu thông tin Firebase). Vui lòng liên hệ quản trị viên.',
     login_error_generic: 'Có lỗi xảy ra, vui lòng thử lại.',
 
@@ -801,6 +802,7 @@ const dict = {
     login_error_email_in_use: 'This email is already registered — switch to the Sign in tab.',
     login_error_weak_password: 'Password is too short, at least 6 characters required.',
     login_error_popup_closed: 'The Google sign-in window was closed before finishing.',
+    login_error_popup_timeout: 'Google sign-in timed out — please try again. If you opened this from Messenger/Zalo/Instagram, open it in Chrome/Safari instead of that app.',
     login_error_not_configured: 'The login system is not configured yet (missing Firebase setup). Please contact an admin.',
     login_error_generic: 'Something went wrong, please try again.',
 

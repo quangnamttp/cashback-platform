@@ -6629,6 +6629,82 @@ p {
   border-top-right-radius: 4px;
 }
 
+.support-chat-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.support-chat-bubble-row.customer {
+  align-self: flex-start;
+}
+
+.support-chat-bubble-row.admin {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.support-chat-msg-delete {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 6px;
+  opacity: 0.35;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.support-chat-msg-delete:hover {
+  opacity: 1;
+  background: var(--bg-secondary);
+}
+
+.support-chat-bubble-image {
+  cursor: zoom-in;
+}
+
+.image-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(10, 12, 20, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.image-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.image-lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 1.15rem;
+  cursor: pointer;
+  z-index: 501;
+}
+
+.image-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 .download-steps li {
   margin-bottom: 10px;
   line-height: 1.6;

@@ -5,6 +5,7 @@ import {
   Timestamp,
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -15,6 +16,7 @@ import {
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { Modal } from '../../../components/ui/Modal';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
+import { ImageLightbox } from '../../../components/ui/ImageLightbox';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { usePageTitle } from '../../../lib/use-page-title';
 import { compressImageForChat } from '../../../lib/imageCompress';
@@ -147,28 +149,21 @@ export default function AdminSupportChatPage() {
     });
   };
 
-  const [clearingHistory, setClearingHistory] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
-  // Soft delete only — sets supportChats/{uid}.clearedAt and both this
-  // page's and the customer widget's message queries filter anything at or
-  // before it out of view (see the messages effect above and
-  // SupportChatWidget.tsx). Nothing is actually deleted from Firestore, and
-  // nothing outside this one chat thread's messages is ever touched —
-  // orders/cashbackLedger/wallet/withdrawal data lives in entirely separate
-  // collections this page never writes to. firestore.rules restricts
-  // writing `clearedAt` to isAdmin() only.
-  const clearChatHistory = async () => {
+  // Hard delete of exactly one message — firestore.rules already allows
+  // isAdmin() to delete any message doc in any thread (see supportChats/
+  // {uid}/messages' own delete rule); this was simply never used from the
+  // UI before (only the old bulk "clearedAt" thread-level soft-hide was).
+  // Nothing else — the order/wallet/ledger the thread might reference
+  // lives in entirely separate collections this page never touches.
+  const deleteMessage = async (messageId: string) => {
     if (!activeThreadId) return;
-    if (!window.confirm('Xóa lịch sử trò chuyện với khách này? Tin nhắn cũ sẽ không còn hiển thị (với cả bạn và khách), tin nhắn mới vẫn gửi/nhận bình thường.')) {
-      return;
-    }
-    setClearingHistory(true);
+    if (!window.confirm('Xóa tin nhắn này? Không thể hoàn tác.')) return;
     try {
-      await updateDoc(doc(getFirebaseDb(), 'supportChats', activeThreadId), { clearedAt: serverTimestamp() });
+      await deleteDoc(doc(getFirebaseDb(), 'supportChats', activeThreadId, 'messages', messageId));
     } catch (err) {
-      console.error('clear chat history failed', err);
-    } finally {
-      setClearingHistory(false);
+      console.error('delete message failed', err);
     }
   };
 
@@ -244,16 +239,6 @@ export default function AdminSupportChatPage() {
                   <span className="support-chat-header-email">{activeThread.userEmail}</span>
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn-reject"
-                style={{ marginRight: 8, fontSize: '0.78rem', padding: '6px 10px' }}
-                disabled={clearingHistory || activeMessages.length === 0}
-                onClick={clearChatHistory}
-                title="Ẩn toàn bộ tin nhắn cũ của cuộc trò chuyện này — không ảnh hưởng đơn hàng/ví/tài chính"
-              >
-                🗑 {clearingHistory ? 'Đang xóa...' : 'Xóa lịch sử'}
-              </button>
               <button className="support-chat-close" onClick={() => setActiveThreadId(null)} aria-label="Đóng">✕</button>
             </div>
 
@@ -261,25 +246,41 @@ export default function AdminSupportChatPage() {
               {activeMessages.map((msg, idx) => {
                 const prev = activeMessages[idx - 1];
                 const showTail = !prev || prev.sender !== msg.sender;
+                const side = msg.sender === 'admin' ? 'admin' : 'customer';
                 return (
-                  <div
-                    key={msg.id}
-                    className={`support-chat-bubble ${msg.sender === 'admin' ? 'admin' : 'customer'}${showTail ? ' tail' : ''}`}
-                  >
-                    {msg.imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={msg.imageUrl} alt="attachment" className="support-chat-bubble-image" />
-                    )}
-                    {msg.text && <p>{msg.text}</p>}
-                    <span>
-                      {msg.createdAt
-                        ? msg.createdAt.toDate().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-                        : ''}
-                    </span>
+                  <div key={msg.id} className={`support-chat-bubble-row ${side}`}>
+                    <div className={`support-chat-bubble ${side}${showTail ? ' tail' : ''}`}>
+                      {msg.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={msg.imageUrl}
+                          alt="attachment"
+                          className="support-chat-bubble-image"
+                          onClick={() => setLightboxUrl(msg.imageUrl!)}
+                        />
+                      )}
+                      {msg.text && <p>{msg.text}</p>}
+                      <span>
+                        {msg.createdAt
+                          ? msg.createdAt.toDate().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="support-chat-msg-delete"
+                      onClick={() => deleteMessage(msg.id)}
+                      aria-label="Xóa tin nhắn này"
+                      title="Xóa tin nhắn này"
+                    >
+                      🗑️
+                    </button>
                   </div>
                 );
               })}
             </div>
+
+            {lightboxUrl && <ImageLightbox src={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
 
             <div className="support-chat-composer">
               {imagePreview && (

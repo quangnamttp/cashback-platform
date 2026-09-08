@@ -49,6 +49,9 @@ function LoginPageInner() {
     if (err instanceof Error && err.message === 'firebase-not-configured') {
       return t('login_error_not_configured');
     }
+    if (err instanceof Error && err.message === 'popup-timeout') {
+      return t('login_error_popup_timeout');
+    }
     if (err instanceof FirebaseError) {
       switch (err.code) {
         case 'auth/invalid-email':

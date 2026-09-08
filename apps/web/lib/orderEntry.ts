@@ -33,8 +33,11 @@ export type OrderSource = 'MANUAL' | 'AFFILIATE';
 // REFUNDED decision) and from the cashbackLedger status (FROZEN/RELEASED/
 // REJECTED). Only ever meaningful for source:'AFFILIATE' orders; a MANUAL
 // order has no such upstream provider to report one, so this stays
-// undefined for it. Never set automatically by anything today — no real
-// affiliate feed exists yet — this is purely schema preparation.
+// undefined for it. Set by workers/accesstrade-sync's scheduled sync
+// (mirrors ACCESSTRADE's own order_pending/order_approved/order_reject
+// flags — see that Worker's deriveOrderStatus) — this codebase itself
+// never sets it. manager/payouts gates on this being APPROVED before an
+// AFFILIATE order's FROZEN ledger entries can be released.
 export type CommissionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {

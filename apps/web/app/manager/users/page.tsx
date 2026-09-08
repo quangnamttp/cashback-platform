@@ -218,7 +218,6 @@ export default function AdminUsersPage() {
               <div className="modal-field-row">
                 <span>Mã người dùng (UID)</span>
                 <span className="modal-code-row">
-                  {detailUserId}
                   <CopyIdChip value={detailUserId!} />
                 </span>
               </div>

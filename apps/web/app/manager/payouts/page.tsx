@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { collection, doc, onSnapshot, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/adminAudit';
@@ -44,6 +44,26 @@ const TYPE_LABEL: Record<LedgerEntryType, string> = {
 
 type UserOption = { id: string; fullName?: string; email?: string };
 
+type OrderMeta = { source?: string; commissionStatus?: string };
+
+// An AFFILIATE order's commissionAmount at the moment Admin confirms it is
+// whatever ACCESSTRADE had reported so far — which can still be their own
+// PENDING verdict, not yet APPROVED. Gating this queue (not ledger
+// creation itself — that stays exactly as-is, still tied to Admin's own
+// CONFIRMED approval) keeps a still-provisional commission from being
+// released before ACCESSTRADE has actually confirmed it. A MANUAL order
+// (admin-entered commission, no ACCESSTRADE concept at all) is never
+// gated — unchanged from before. An order still loading/not found is
+// treated as eligible too, so a row never flickers hidden while its order
+// doc is still being fetched.
+function isEligibleForPayout(entry: LedgerEntry, orderMeta: Record<string, OrderMeta>): boolean {
+  if (!entry.orderId) return true;
+  const meta = orderMeta[entry.orderId];
+  if (!meta) return true;
+  if (meta.source !== 'AFFILIATE') return true;
+  return meta.commissionStatus === 'APPROVED';
+}
+
 // Previously returned the raw uid for every real customer (only
 // ADMIN_WALLET_ID had a real label) — this table had no way to show who a
 // held commission actually belongs to without opening Firestore directly.
@@ -65,6 +85,8 @@ export default function AdminPayoutsPage() {
   const { uid, userEmail } = useAuth();
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [orderMeta, setOrderMeta] = useState<Record<string, OrderMeta>>({});
+  const fetchedOrderIdsRef = useRef<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState<'approve' | 'reject' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,6 +106,27 @@ export default function AdminPayoutsPage() {
     };
   }, []);
 
+  // One-time reads (not a listener) per referenced order — this set is
+  // always small (only orderIds behind currently-FROZEN entries), and a
+  // commissionStatus flip doesn't need to be instantly live here the way
+  // the ledger itself does; re-opening/refreshing this page picks it up.
+  useEffect(() => {
+    const db = getFirebaseDb();
+    const missing = Array.from(new Set(entries.map((e) => e.orderId).filter((id): id is string => !!id))).filter(
+      (id) => !fetchedOrderIdsRef.current.has(id),
+    );
+    if (missing.length === 0) return;
+    missing.forEach((id) => fetchedOrderIdsRef.current.add(id));
+    missing.forEach((orderId) => {
+      getDoc(doc(db, 'orders', orderId))
+        .then((snap) => {
+          const data = snap.data();
+          setOrderMeta((prev) => ({ ...prev, [orderId]: { source: data?.source, commissionStatus: data?.commissionStatus } }));
+        })
+        .catch(() => setOrderMeta((prev) => ({ ...prev, [orderId]: {} })));
+    });
+  }, [entries]);
+
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
       if (typeFilter !== 'all' && entry.type !== typeFilter) return false;
@@ -98,7 +141,22 @@ export default function AdminPayoutsPage() {
     });
   }, [entries, users, searchQuery, typeFilter]);
 
-  const allSelected = filteredEntries.length > 0 && filteredEntries.every((e) => selectedIds.has(e.id));
+  // Split, not filter-out: an AFFILIATE order still awaiting ACCESSTRADE's
+  // own commission approval stays visible (Admin can see the money is
+  // held and why) but moves to a separate, read-only section below with
+  // no checkbox/select — it simply cannot be approved/released from here
+  // yet, closing the "customer already sees CONFIRMED but cashback gets
+  // released before ACCESSTRADE actually confirmed the commission" gap.
+  const payoutReadyEntries = useMemo(
+    () => filteredEntries.filter((e) => isEligibleForPayout(e, orderMeta)),
+    [filteredEntries, orderMeta],
+  );
+  const awaitingCommissionEntries = useMemo(
+    () => filteredEntries.filter((e) => !isEligibleForPayout(e, orderMeta)),
+    [filteredEntries, orderMeta],
+  );
+
+  const allSelected = payoutReadyEntries.length > 0 && payoutReadyEntries.every((e) => selectedIds.has(e.id));
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -110,14 +168,19 @@ export default function AdminPayoutsPage() {
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(filteredEntries.map((e) => e.id)));
+    setSelectedIds(allSelected ? new Set() : new Set(payoutReadyEntries.map((e) => e.id)));
   };
 
   // Bulk decision on the ledger — a single writeBatch per click (chunked
   // at 450 to stay under Firestore's 500-op cap), no per-entry re-read
   // since everything needed is already in the onSnapshot list in state.
+  // The isEligibleForPayout re-check here is defense-in-depth (nothing in
+  // the UI should ever put an awaiting-commission entry into selectedIds
+  // in the first place, since its row has no checkbox) — mirrors this
+  // codebase's existing pattern of never trusting client-side selection
+  // state alone for a money-releasing action.
   const decideSelected = async (decision: 'RELEASED' | 'REJECTED') => {
-    const targets = entries.filter((e) => selectedIds.has(e.id));
+    const targets = entries.filter((e) => selectedIds.has(e.id) && isEligibleForPayout(e, orderMeta));
     if (!uid || targets.length === 0) return;
     setBulkBusy(decision === 'RELEASED' ? 'approve' : 'reject');
     try {
@@ -198,7 +261,7 @@ export default function AdminPayoutsPage() {
       <div className="panel admin-table-panel">
         <div className="panel-header">
           <h3>Đang giữ, chờ Admin quyết định</h3>
-          <span className="badge badge-warning">{entries.length} khoản</span>
+          <span className="badge badge-warning">{payoutReadyEntries.length} khoản</span>
         </div>
 
         <AdminSearchToolbar
@@ -208,11 +271,11 @@ export default function AdminPayoutsPage() {
           filterValue={typeFilter}
           onFilterChange={setTypeFilter}
           filterOptions={PAYOUT_TYPE_FILTERS}
-          resultCount={filteredEntries.length}
+          resultCount={payoutReadyEntries.length}
           resultLabel="khoản"
         />
 
-        {filteredEntries.length > 0 && (
+        {payoutReadyEntries.length > 0 && (
           <div className="admin-action-row" style={{ marginBottom: 10, alignItems: 'center' }}>
             <span className="muted-copy">{selectedIds.size} đã chọn</span>
             <button
@@ -237,7 +300,7 @@ export default function AdminPayoutsPage() {
             <thead>
               <tr>
                 <th style={{ width: 32 }}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Chọn tất cả" disabled={filteredEntries.length === 0} />
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Chọn tất cả" disabled={payoutReadyEntries.length === 0} />
                 </th>
                 <th>Mã khoản</th>
                 <th>Người dùng</th>
@@ -248,7 +311,7 @@ export default function AdminPayoutsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredEntries.map((entry) => (
+              {payoutReadyEntries.map((entry) => (
                 <tr key={entry.id}>
                   <td>
                     <input
@@ -266,10 +329,10 @@ export default function AdminPayoutsPage() {
                   <td>{entry.confirmedAt ? entry.confirmedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
                 </tr>
               ))}
-              {filteredEntries.length === 0 && (
+              {payoutReadyEntries.length === 0 && (
                 <tr>
                   <td colSpan={7} className="muted-copy">
-                    {entries.length === 0 ? 'Không có khoản nào đang chờ duyệt.' : 'Không tìm thấy khoản nào phù hợp.'}
+                    {entries.length === 0 ? 'Không có khoản nào đang chờ duyệt.' : 'Không có khoản nào đủ điều kiện duyệt.'}
                   </td>
                 </tr>
               )}
@@ -277,6 +340,46 @@ export default function AdminPayoutsPage() {
           </table>
         </div>
       </div>
+
+      {awaitingCommissionEntries.length > 0 && (
+        <div className="panel admin-table-panel" style={{ marginTop: 16 }}>
+          <div className="panel-header">
+            <h3>Đang chờ ACCESSTRADE xác nhận hoa hồng</h3>
+            <span className="badge">{awaitingCommissionEntries.length} khoản</span>
+          </div>
+          <p className="muted-copy" style={{ marginBottom: 10 }}>
+            Các khoản dưới đây thuộc đơn hàng ACCESSTRADE mà Admin đã duyệt, nhưng sàn chưa xác nhận hoa hồng
+            (APPROVED) — chưa thể duyệt/giải phóng từ đây để tránh giải phóng nhầm một mức hoa hồng còn tạm tính.
+            Tiền vẫn đang được giữ (FROZEN) bình thường, không mất.
+          </p>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Mã khoản</th>
+                  <th>Người dùng</th>
+                  <th>Loại khoản</th>
+                  <th>Đơn hàng</th>
+                  <th>Số tiền</th>
+                  <th>Xác nhận lúc</th>
+                </tr>
+              </thead>
+              <tbody>
+                {awaitingCommissionEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td><CopyIdChip value={entry.id} /></td>
+                    <td>{ownerLabel(users, entry.userId)}</td>
+                    <td>{entry.type ? TYPE_LABEL[entry.type] : '—'}</td>
+                    <td>{entry.orderId ? <CopyIdChip value={entry.orderId} /> : '—'}</td>
+                    <td><strong>{formatCurrency(entry.amount, lang)}</strong></td>
+                    <td>{entry.confirmedAt ? entry.confirmedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <p className="mock-note">
         Không giới hạn thời gian, không phân biệt số tiền lớn/nhỏ — Admin toàn quyền bấm duyệt hoặc từ chối bất cứ lúc

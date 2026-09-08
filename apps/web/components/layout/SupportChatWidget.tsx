@@ -23,6 +23,7 @@ import { getFirebaseDb } from '../../lib/firebase';
 import { loadAutoReplyMessage } from '../../lib/auto-reply-store';
 import { forwardChatMessageToTelegram } from '../../lib/telegram';
 import { compressImageForChat } from '../../lib/imageCompress';
+import { ImageLightbox } from '../ui/ImageLightbox';
 
 type ChatMessage = {
   id: string;
@@ -45,6 +46,7 @@ export function SupportChatWidget() {
   const [hasUnread, setHasUnread] = useState(false);
   const [sending, setSending] = useState(false);
   const [errorState, setErrorState] = useState<'error' | 'too_large' | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sweepDoneRef = useRef(false);
@@ -192,6 +194,21 @@ export function SupportChatWidget() {
     }
   };
 
+  // Only ever called on the customer's own messages (see the trash button
+  // below — never rendered on an admin reply) — firestore.rules' isOwner
+  // check on supportChats/{uid}/messages would in fact allow deleting the
+  // whole thread's messages, but the UI deliberately narrows that to "your
+  // own" only, matching what this feature is meant to let a customer do.
+  const deleteMyMessage = async (messageId: string) => {
+    if (!uid) return;
+    if (!window.confirm('Xóa tin nhắn này? Không thể hoàn tác.')) return;
+    try {
+      await deleteDoc(doc(getFirebaseDb(), 'supportChats', uid, 'messages', messageId));
+    } catch (err) {
+      console.error('delete message failed', err);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -230,25 +247,44 @@ export function SupportChatWidget() {
             {messages.map((msg, idx) => {
               const prev = messages[idx - 1];
               const showTail = !prev || prev.sender !== msg.sender;
+              const side = msg.sender === 'user' ? 'admin' : 'customer';
+              const isMine = msg.sender === 'user';
               return (
-                <div
-                  key={msg.id}
-                  className={`support-chat-bubble ${msg.sender === 'user' ? 'admin' : 'customer'}${showTail ? ' tail' : ''}`}
-                >
-                  {msg.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={msg.imageUrl} alt="attachment" className="support-chat-bubble-image" />
+                <div key={msg.id} className={`support-chat-bubble-row ${side}`}>
+                  <div className={`support-chat-bubble ${side}${showTail ? ' tail' : ''}`}>
+                    {msg.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={msg.imageUrl}
+                        alt="attachment"
+                        className="support-chat-bubble-image"
+                        onClick={() => setLightboxUrl(msg.imageUrl!)}
+                      />
+                    )}
+                    {msg.text && <p>{msg.text}</p>}
+                    <span>
+                      {msg.createdAt
+                        ? msg.createdAt.toDate().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                        : ''}
+                    </span>
+                  </div>
+                  {isMine && (
+                    <button
+                      type="button"
+                      className="support-chat-msg-delete"
+                      onClick={() => deleteMyMessage(msg.id)}
+                      aria-label="Xóa tin nhắn này"
+                      title="Xóa tin nhắn này"
+                    >
+                      🗑️
+                    </button>
                   )}
-                  {msg.text && <p>{msg.text}</p>}
-                  <span>
-                    {msg.createdAt
-                      ? msg.createdAt.toDate().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-                      : ''}
-                  </span>
                 </div>
               );
             })}
           </div>
+
+          {lightboxUrl && <ImageLightbox src={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
 
           <div className="support-chat-composer">
             {imagePreview && (

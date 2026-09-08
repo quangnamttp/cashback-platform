@@ -6,12 +6,14 @@ import {
   browserSessionPersistence,
   createUserWithEmailAndPassword,
   EmailAuthProvider,
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
   reauthenticateWithCredential,
   setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   updatePassword,
   updateProfile,
@@ -24,6 +26,25 @@ import { generateShortCode } from './ids';
 
 const NOT_CONFIGURED_ERROR = 'firebase-not-configured';
 const SESSION_TOKEN_KEY = 'cb_session_token';
+
+// Facebook/Messenger, Instagram, Zalo and Line's in-app webviews are the
+// single most common cause of the Google login "Đang xử lý..." freeze in
+// practice — Google's OAuth actively refuses or silently breaks inside
+// them, so signInWithPopup's postMessage-based completion signal never
+// reaches the opener and the promise just never settles. signInWithRedirect
+// (a real page navigation, not a popup) works inside these webviews.
+function isInAppBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /FBAN|FBAV|FB_IAB|Instagram|Zalo|Line\//i.test(navigator.userAgent || '');
+}
+
+// signInWithPopup has no built-in timeout of its own — a blocked popup,
+// strict third-party-storage settings, or a browser that silently drops
+// the popup's completion signal can leave this promise pending forever,
+// which is exactly the "Đang xử lý..." freeze reported on real devices.
+// This race guarantees the UI always recovers; a genuine success/failure
+// from Firebase settles almost immediately in the normal case anyway.
+const GOOGLE_POPUP_TIMEOUT_MS = 25000;
 
 // The ONLY two accounts that can ever hold admin rights — must match
 // firestore.rules' isBootstrapAdminEmail() AND the email allowlist inside
@@ -279,6 +300,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [ensureOwnProfile, registerSessionAndWatch, teardownSessionWatch]);
 
+  // Completes a signInWithRedirect flow (see loginWithGoogle's in-app-
+  // browser branch) — onAuthStateChanged above already fires with the
+  // signed-in user on its own once the SDK processes the redirect, so this
+  // exists purely to surface an error from THAT specific attempt instead of
+  // it being silently swallowed (e.g. the redirect domain not being
+  // authorized in the Firebase console).
+  useEffect(() => {
+    if (!isFirebaseConfigured()) return;
+    getRedirectResult(getFirebaseAuth()).catch((err) => {
+      console.error('getRedirectResult failed', err);
+    });
+  }, []);
+
   const loginWithEmail = useCallback(async (email: string, password: string, remember: boolean) => {
     if (!isFirebaseConfigured()) throw new Error(NOT_CONFIGURED_ERROR);
     const auth = getFirebaseAuth();
@@ -317,7 +351,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // (BOOTSTRAP_ADMIN_EMAILS) that need to switch between each other on
     // the same machine/browser without first signing out of Google itself.
     provider.setCustomParameters({ prompt: 'select_account' });
-    await signInWithPopup(auth, provider);
+
+    if (isInAppBrowser()) {
+      // Navigates away — intentionally doesn't resolve normally here.
+      // onAuthStateChanged (plus the getRedirectResult effect below, for
+      // surfacing any error) picks up the result once the browser returns.
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+
+    await Promise.race([
+      signInWithPopup(auth, provider),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('popup-timeout')), GOOGLE_POPUP_TIMEOUT_MS);
+      }),
+    ]);
   }, []);
 
   const logout = useCallback(() => {
