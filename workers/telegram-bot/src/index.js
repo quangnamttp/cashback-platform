@@ -185,6 +185,9 @@ async function getWithdrawalDoc(env, idToken, requestId) {
     amount: Number(f.amount?.integerValue ?? f.amount?.doubleValue ?? 0),
     requesterName: f.requesterName?.stringValue ?? f.requesterLabel?.stringValue ?? 'Khách hàng',
     requesterEmail: f.requesterEmail?.stringValue ?? '—',
+    // Needed by tryClaimWithdrawalStatus below — an optimistic-concurrency
+    // precondition, not displayed anywhere.
+    updateTime: json.updateTime,
   };
 }
 
@@ -230,7 +233,17 @@ async function creditWalletBalance(env, idToken, uid, amount) {
   console.error('creditWalletBalance: gave up after retries for', uid);
 }
 
-async function markDocSettled(env, idToken, requestId, status) {
+/**
+ * Atomic guard against double-settling the same withdrawal from two
+ * directions at once (a web tab's decide() racing this same Telegram tap,
+ * or two taps on two devices) — same pattern as tryClaimOrderStatus above
+ * (Topic 33's own atomic guard): the PATCH only applies if the doc's
+ * updateTime still matches what was read a moment ago, via Firestore's
+ * currentDocument.updateTime precondition. Losing that race (409/400)
+ * means someone else already settled it — the caller must NOT credit the
+ * wallet back (REJECTED's refund) or treat this tap as the one that paid.
+ */
+async function tryClaimWithdrawalStatus(env, idToken, requestId, expectedUpdateTime, status) {
   const fields = ['status', 'decidedAt', 'decidedBy'];
   if (status === 'REJECTED') fields.push('rejectionReason');
   const mask = fields.map((p) => `updateMask.fieldPaths=${p}`).join('&');
@@ -243,17 +256,25 @@ async function markDocSettled(env, idToken, requestId, status) {
   };
   if (status === 'REJECTED') body.fields.rejectionReason = { stringValue: 'Từ chối qua Telegram' };
 
-  const res = await fetch(`${firestoreDocUrl(env, 'withdrawalRequests', requestId)}?${mask}`, {
+  const precondition = expectedUpdateTime
+    ? `&currentDocument.updateTime=${encodeURIComponent(expectedUpdateTime)}`
+    : '&currentDocument.exists=true';
+  const res = await fetch(`${firestoreDocUrl(env, 'withdrawalRequests', requestId)}?${mask}${precondition}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (res.status === 409 || res.status === 400) {
+    console.log('tryClaimWithdrawalStatus: lost the race for', requestId, '(request changed since read)');
+    return false;
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error('firestore patch failed:', res.status, JSON.stringify(json));
     throw new Error(`firestore patch failed: ${json.error?.message || res.status}`);
   }
   console.log('firestore patch OK for', requestId, '->', status);
+  return true;
 }
 
 async function getLedgerDoc(env, idToken, ledgerId) {
@@ -274,10 +295,22 @@ async function getLedgerDoc(env, idToken, ledgerId) {
     amount: Number(f.amount?.integerValue ?? f.amount?.doubleValue ?? 0),
     requesterName: f.requesterName?.stringValue ?? 'Khách hàng',
     requesterEmail: f.requesterEmail?.stringValue ?? '—',
+    // Needed by tryClaimLedgerStatus below — an optimistic-concurrency
+    // precondition, not displayed anywhere.
+    updateTime: json.updateTime,
   };
 }
 
-async function markLedgerSettled(env, idToken, ledgerId, status) {
+/**
+ * Atomic guard against double-releasing the same cashback ledger entry —
+ * same pattern as tryClaimOrderStatus above (Topic 33's own atomic guard).
+ * The PATCH only applies if the doc's updateTime still matches what was
+ * read a moment ago; losing that race (409/400) means someone else (a web
+ * tab's decideSelected, or another tap) already settled it, and the caller
+ * must NOT call creditWalletBalance — crediting twice for one release is
+ * exactly the bug this closes.
+ */
+async function tryClaimLedgerStatus(env, idToken, ledgerId, expectedUpdateTime, status) {
   const mask = ['status', 'releasedAt', 'releasedBy'].map((p) => `updateMask.fieldPaths=${p}`).join('&');
   const body = {
     fields: {
@@ -287,17 +320,25 @@ async function markLedgerSettled(env, idToken, ledgerId, status) {
     },
   };
 
-  const res = await fetch(`${firestoreDocUrl(env, 'cashbackLedger', ledgerId)}?${mask}`, {
+  const precondition = expectedUpdateTime
+    ? `&currentDocument.updateTime=${encodeURIComponent(expectedUpdateTime)}`
+    : '&currentDocument.exists=true';
+  const res = await fetch(`${firestoreDocUrl(env, 'cashbackLedger', ledgerId)}?${mask}${precondition}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (res.status === 409 || res.status === 400) {
+    console.log('tryClaimLedgerStatus: lost the race for', ledgerId, '(ledger changed since read)');
+    return false;
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error('firestore patch (ledger) failed:', res.status, JSON.stringify(json));
     throw new Error(`firestore patch (ledger) failed: ${json.error?.message || res.status}`);
   }
   console.log('firestore patch (ledger) OK for', ledgerId, '->', status);
+  return true;
 }
 
 function formatVnd(amount) {
@@ -617,20 +658,30 @@ async function handleDecision(env, callbackQuery, requestId, targetStatus) {
   // state in sync so a stray second tap here is a no-op instead of an
   // error.
   if (doc.status !== targetStatus) {
+    // Claim FIRST (atomic, guarded by doc.updateTime — see
+    // tryClaimWithdrawalStatus) — only the caller that wins this race is
+    // allowed to go on and credit the wallet below. Losing the race means a
+    // web decide() or another tap already settled this exact request in
+    // the moment between our read above and this write.
+    let claimed;
     try {
-      await markDocSettled(env, idToken, requestId, targetStatus);
+      claimed = await tryClaimWithdrawalStatus(env, idToken, requestId, doc.updateTime, targetStatus);
     } catch (err) {
-      console.error('patch step failed:', err.message);
+      console.error('withdrawal claim step failed:', err.message);
       await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được trạng thái, thử lại sau.', true);
       return;
     }
-    // Mirrors app/manager/withdrawals/page.tsx's decide(REJECT) branch — a
-    // rejected request must give back the amount it reserved out of
-    // walletBalances/{uid}.available at creation time (see
-    // lib/walletBalance.ts), or the requester's real withdrawable ceiling
-    // stays wrongly lower forever. PAID needs no change (the reservation
-    // was already permanent the moment money actually moved).
-    if (targetStatus === 'REJECTED') {
+
+    if (!claimed) {
+      const fresh = await getWithdrawalDoc(env, idToken, requestId).catch(() => null);
+      if (fresh) doc = fresh;
+    } else if (targetStatus === 'REJECTED') {
+      // Mirrors app/manager/withdrawals/page.tsx's decide(REJECT) branch —
+      // a rejected request must give back the amount it reserved out of
+      // walletBalances/{uid}.available at creation time (see
+      // lib/walletBalance.ts), or the requester's real withdrawable
+      // ceiling stays wrongly lower forever. PAID needs no change (the
+      // reservation was already permanent the moment money actually moved).
       await creditWalletBalance(env, idToken, doc.userId, doc.amount).catch((err) =>
         console.error('creditWalletBalance (withdrawal reject) threw:', err.message),
       );
@@ -719,19 +770,29 @@ async function handleCashbackDecision(env, callbackQuery, ledgerId, targetStatus
   // state in sync so a stray second tap here is a no-op instead of an
   // error.
   if (ledgerDoc.status !== targetStatus) {
+    // Claim FIRST (atomic, guarded by ledgerDoc.updateTime — see
+    // tryClaimLedgerStatus) — only the caller that wins this race is
+    // allowed to go on and credit the wallet below. Losing the race means a
+    // web decideSelected() or another tap already settled this exact entry
+    // in the moment between our read above and this write.
+    let claimed;
     try {
-      await markLedgerSettled(env, idToken, ledgerId, targetStatus);
+      claimed = await tryClaimLedgerStatus(env, idToken, ledgerId, ledgerDoc.updateTime, targetStatus);
     } catch (err) {
-      console.error('patch step failed:', err.message);
+      console.error('ledger claim step failed:', err.message);
       await answerCallback(env, callbackQuery.id, '⚠️ Không cập nhật được trạng thái, thử lại sau.', true);
       return;
     }
-    // Mirrors app/manager/payouts/page.tsx's decideSelected('RELEASED')
-    // branch — money only becomes withdrawable (and therefore checkable
-    // against the withdrawalRequests/create rule) once it's credited into
-    // walletBalances/{uid}.available here. REJECTED needs no credit (the
-    // money was never released).
-    if (targetStatus === 'RELEASED') {
+
+    if (!claimed) {
+      const fresh = await getLedgerDoc(env, idToken, ledgerId).catch(() => null);
+      if (fresh) ledgerDoc = fresh;
+    } else if (targetStatus === 'RELEASED') {
+      // Mirrors app/manager/payouts/page.tsx's decideSelected('RELEASED')
+      // branch — money only becomes withdrawable (and therefore checkable
+      // against the withdrawalRequests/create rule) once it's credited into
+      // walletBalances/{uid}.available here. REJECTED needs no credit (the
+      // money was never released).
       await creditWalletBalance(env, idToken, ledgerDoc.userId, ledgerDoc.amount).catch((err) =>
         console.error('creditWalletBalance (cashback release) threw:', err.message),
       );

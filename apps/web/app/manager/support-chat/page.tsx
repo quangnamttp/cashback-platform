@@ -7,11 +7,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { Modal } from '../../../components/ui/Modal';
@@ -157,6 +159,30 @@ export default function AdminSupportChatPage() {
   // UI before (only the old bulk "clearedAt" thread-level soft-hide was).
   // Nothing else — the order/wallet/ledger the thread might reference
   // lives in entirely separate collections this page never touches.
+  // Removes a whole conversation from the inbox — deletes every message in
+  // its subcollection first (chunked batches, same 450-per-batch cap used
+  // elsewhere in this codebase), then the now-empty thread doc itself.
+  // firestore.rules restricts this delete to isAdmin() only. Does not
+  // touch users/orders/wallet/ledger/transactions — a completely separate
+  // collection tree.
+  const deleteThread = async (threadId: string) => {
+    if (!window.confirm('Xóa toàn bộ cuộc trò chuyện này? Không thể hoàn tác.')) return;
+    try {
+      const db = getFirebaseDb();
+      const messagesSnap = await getDocs(collection(db, 'supportChats', threadId, 'messages'));
+      for (let i = 0; i < messagesSnap.docs.length; i += 450) {
+        const chunk = messagesSnap.docs.slice(i, i + 450);
+        const batch = writeBatch(db);
+        chunk.forEach((m) => batch.delete(m.ref));
+        await batch.commit();
+      }
+      await deleteDoc(doc(db, 'supportChats', threadId));
+      if (activeThreadId === threadId) setActiveThreadId(null);
+    } catch (err) {
+      console.error('delete thread failed', err);
+    }
+  };
+
   const deleteMessage = async (messageId: string) => {
     if (!activeThreadId) return;
     if (!window.confirm('Xóa tin nhắn này? Không thể hoàn tác.')) return;
@@ -200,24 +226,31 @@ export default function AdminSupportChatPage() {
         ) : (
           <div className="support-chat-inbox">
             {filteredThreads.map((thread) => (
-              <button
-                key={thread.id}
-                className={`support-chat-inbox-row${thread.hasUnreadForAdmin ? ' unread' : ''}`}
-                onClick={() => openThread(thread)}
-              >
-                <div className="support-chat-inbox-avatar">👤</div>
-                <div className="support-chat-inbox-body">
-                  <div className="support-chat-inbox-top">
-                    <strong>{thread.userName || 'Người dùng'}</strong>
-                    {thread.hasUnreadForAdmin && <span className="badge badge-danger">Mới</span>}
+              <div key={thread.id} className={`support-chat-inbox-row${thread.hasUnreadForAdmin ? ' unread' : ''}`}>
+                <button type="button" className="support-chat-inbox-open" onClick={() => openThread(thread)}>
+                  <div className="support-chat-inbox-avatar">👤</div>
+                  <div className="support-chat-inbox-body">
+                    <div className="support-chat-inbox-top">
+                      <strong>{thread.userName || 'Người dùng'}</strong>
+                      {thread.hasUnreadForAdmin && <span className="badge badge-danger">Mới</span>}
+                    </div>
+                    <span className="support-chat-inbox-email">{thread.userEmail}</span>
+                    <p className="support-chat-inbox-message">{thread.lastMessagePreview}</p>
+                    <span className="support-chat-inbox-time">
+                      {thread.lastMessageAt ? thread.lastMessageAt.toDate().toLocaleString('vi-VN') : ''}
+                    </span>
                   </div>
-                  <span className="support-chat-inbox-email">{thread.userEmail}</span>
-                  <p className="support-chat-inbox-message">{thread.lastMessagePreview}</p>
-                  <span className="support-chat-inbox-time">
-                    {thread.lastMessageAt ? thread.lastMessageAt.toDate().toLocaleString('vi-VN') : ''}
-                  </span>
-                </div>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  className="support-chat-msg-delete support-chat-inbox-delete"
+                  onClick={() => deleteThread(thread.id)}
+                  aria-label="Xóa cuộc trò chuyện này"
+                  title="Xóa cuộc trò chuyện này"
+                >
+                  🗑️
+                </button>
+              </div>
             ))}
             {filteredThreads.length === 0 && (
               <p className="muted-copy">

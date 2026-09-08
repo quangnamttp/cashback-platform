@@ -170,7 +170,7 @@ export function SupportChatWidget() {
         userName,
         userEmail,
         text: trimmedText,
-        hasImage: !!imagePreview,
+        imageDataUrl: imagePreview,
       });
 
       setMessage('');

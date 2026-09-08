@@ -75,18 +75,59 @@ async function callTelegramApi<T = unknown>(method: string, body: Record<string,
   }
 }
 
+// Chat images are stored as base64 data: URLs directly in Firestore (see
+// lib/imageCompress.ts — never Firebase Storage), so Telegram's servers
+// can't fetch one as a URL the way sendMessage/sendPhoto's `photo: url`
+// form works — it has to go up as actual multipart/form-data bytes. This
+// can't reuse callTelegramApi's JSON path; FormData needs the browser to
+// set its own multipart boundary, never a manual Content-Type header.
+async function sendTelegramPhoto(chatId: string, threadId: number, imageDataUrl: string, caption: string): Promise<boolean> {
+  if (!BOT_TOKEN) return false;
+  try {
+    const blob = await fetch(imageDataUrl).then((r) => r.blob());
+    const form = new FormData();
+    form.append('chat_id', chatId);
+    form.append('message_thread_id', String(threadId));
+    if (caption) form.append('caption', caption.slice(0, 1024)); // Telegram's own caption length cap
+    form.append('photo', blob, 'chat-image.jpg');
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method: 'POST', body: form });
+    const json = await res.json();
+    if (!json.ok) {
+      console.error('telegram sendPhoto failed', json.description);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('telegram sendPhoto error', err);
+    return false;
+  }
+}
+
 export function forwardChatMessageToTelegram(params: {
   userName: string;
   userEmail: string;
   text?: string | null;
-  hasImage?: boolean;
+  imageDataUrl?: string | null;
 }): Promise<void> {
   if (!CHAT_ID) return Promise.resolve();
-  const lines = [
-    `💬 Tin nhắn hỗ trợ mới`,
-    `Từ: ${params.userName || 'Khách'} (${params.userEmail || 'chưa rõ email'})`,
-    params.text ? params.text : params.hasImage ? '[Khách gửi kèm hình ảnh]' : '',
-  ].filter(Boolean);
+  const header = `💬 Tin nhắn hỗ trợ mới\nTừ: ${params.userName || 'Khách'} (${params.userEmail || 'chưa rõ email'})`;
+
+  if (params.imageDataUrl) {
+    const caption = params.text ? `${header}\n${params.text}` : header;
+    return sendTelegramPhoto(CHAT_ID, TELEGRAM_TOPICS.SUPPORT, params.imageDataUrl, caption).then(async (ok) => {
+      if (ok) return;
+      // Photo upload failed (oversized, network hiccup, Telegram-side
+      // error) — fall back to a text notice so admin still knows an image
+      // came in, instead of the notification silently vanishing.
+      await callTelegramApi('sendMessage', {
+        chat_id: CHAT_ID,
+        message_thread_id: TELEGRAM_TOPICS.SUPPORT,
+        text: `${header}\n[Không gửi được ảnh qua Telegram — khách đã gửi kèm hình ảnh, xem trên web]${params.text ? `\n${params.text}` : ''}`,
+      });
+    });
+  }
+
+  const lines = [header, params.text || ''].filter(Boolean);
   return callTelegramApi('sendMessage', {
     chat_id: CHAT_ID,
     message_thread_id: TELEGRAM_TOPICS.SUPPORT,

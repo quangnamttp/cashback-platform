@@ -342,7 +342,14 @@ service cloud.firestore {
       // lastMessageAt, hasUnreadForUser, ...).
       allow update: if (isOwner(uid) || isAdmin())
         && (isAdmin() || !('clearedAt' in request.resource.data.diff(resource.data).affectedKeys()));
-      allow delete: if false;
+      // Admin-only — removes a whole conversation from the inbox list (the
+      // messages subcollection's own delete rule below already lets isAdmin()
+      // remove each message first; this just lets the now-empty thread doc
+      // itself go too). Never the owner — a customer clearing their own
+      // thread doc would just recreate it on their next message anyway,
+      // and per-message delete (see messages/{messageId} below) is already
+      // their tool for managing their own messages.
+      allow delete: if isAdmin();
 
       match /messages/{messageId} {
         allow read: if isOwner(uid) || isAdmin();
