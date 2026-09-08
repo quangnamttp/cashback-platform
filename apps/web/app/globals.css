@@ -6049,6 +6049,26 @@ p {
   line-height: 1.5;
 }
 
+.get-link-affiliate-status {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.get-link-affiliate-status.real {
+  color: #15803d;
+}
+
+.get-link-affiliate-status.not-real {
+  color: #b91c1c;
+}
+
+.get-link-affiliate-status-reason {
+  font-weight: 400;
+}
+
 .forgot-success {
   text-align: center;
   display: flex;

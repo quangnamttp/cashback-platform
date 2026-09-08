@@ -133,30 +133,46 @@ function buildAffiliateUrl(platform: Platform, normalizedUrl: string, trackingCo
   }
 }
 
+/** Machine-readable reason a real ACCESSTRADE link could NOT be created — surfaced to the UI so "not real" is never silent. */
+export type AffiliateLinkFailureReason =
+  | 'worker_not_configured'
+  | 'not_authenticated'
+  | 'worker_unreachable'
+  | 'platform_maintenance'
+  | 'not_configured'
+  | 'not_in_campaign'
+  | 'unsupported_platform'
+  | 'bad_request'
+  | 'unauthenticated';
+
+type AffiliateLinkAttempt = { affLink: string } | { reason: AffiliateLinkFailureReason };
+
 /**
  * Asks workers/accesstrade-sync for a real ACCESSTRADE affiliate link —
  * never calls ACCESSTRADE directly (the API key never reaches the
- * browser). Returns null on ANY failure (worker not configured, platform's
- * campaign not yet approved, network error, the Worker's own DRY_RUN-
- * adjacent "not eligible" answer) so the caller always has a safe
- * fallback to the existing internal-tag link below — never blocks link
- * creation, never fabricates a link ACCESSTRADE didn't actually return.
+ * browser). Returns a `reason` (never fabricated — always one the Worker
+ * or this call site itself actually observed) on ANY failure (worker not
+ * configured, platform's campaign not yet approved, network error, the
+ * Worker's own DRY_RUN-adjacent "not eligible" answer) so the caller can
+ * tell the user exactly why, instead of silently falling back to a link
+ * ACCESSTRADE never actually tracks.
  */
-async function tryCreateRealAffiliateLink(platform: Platform, productUrl: string, subId: string): Promise<string | null> {
-  if (!ACCESSTRADE_WORKER_URL) return null;
+async function tryCreateRealAffiliateLink(platform: Platform, productUrl: string, subId: string): Promise<AffiliateLinkAttempt> {
+  if (!ACCESSTRADE_WORKER_URL) return { reason: 'worker_not_configured' };
   try {
     const idToken = await getFirebaseAuth().currentUser?.getIdToken();
-    if (!idToken) return null;
+    if (!idToken) return { reason: 'not_authenticated' };
     const res = await fetch(`${ACCESSTRADE_WORKER_URL}/create-link`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken, platform, productUrl, subId }),
     });
-    if (!res.ok) return null;
-    const json: { supported: boolean; affLink?: string } = await res.json();
-    return json.supported && json.affLink ? json.affLink : null;
+    if (!res.ok) return { reason: 'worker_unreachable' };
+    const json: { supported: boolean; affLink?: string; reason?: AffiliateLinkFailureReason } = await res.json();
+    if (json.supported && json.affLink) return { affLink: json.affLink };
+    return { reason: json.reason ?? 'worker_unreachable' };
   } catch {
-    return null;
+    return { reason: 'worker_unreachable' };
   }
 }
 
@@ -176,7 +192,16 @@ export function goUrl(code: string) {
 export type CreateRedirectResult =
   | { status: 'unsupported' }
   | { status: 'invalid_link' }
-  | { status: 'supported'; code: string; redirectUrl: string; destinationUrl: string; platform: Platform; cacheHit: boolean };
+  | {
+      status: 'supported';
+      code: string;
+      redirectUrl: string;
+      destinationUrl: string;
+      platform: Platform;
+      cacheHit: boolean;
+      isRealAffiliateLink: boolean;
+      failureReason?: AffiliateLinkFailureReason;
+    };
 
 /**
  * Best-effort — called once fetchProductPreview (lib/productPreview.ts)
@@ -302,6 +327,10 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
         destinationUrl: existing.destinationUrl,
         platform,
         cacheHit: true,
+        // Pre-existing docs from before this field existed have neither —
+        // treated as "not a real link" (safest default: never claim a link
+        // is ACCESSTRADE-tracked without having actually recorded that).
+        isRealAffiliateLink: !!existing.isRealAffiliateLink,
       };
     }
 
@@ -313,8 +342,13 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
   // back to the internal-tag-only link unchanged from before whenever
   // that's unavailable (worker not configured, campaign not yet approved
   // for this platform, or any error) — never a fabricated link either way.
-  const realAffLink = await tryCreateRealAffiliateLink(platform, normalized, code);
-  const destinationUrl = realAffLink ?? buildAffiliateUrl(platform, normalized, code);
+  // The fallback is still written as destinationUrl (so "Mua ngay" always
+  // has *somewhere* valid to send an already-open result card to), but
+  // isRealAffiliateLink stays false — callers must gate on that flag, not
+  // on whether destinationUrl merely exists.
+  const attempt = await tryCreateRealAffiliateLink(platform, normalized, code);
+  const isRealAffiliateLink = 'affLink' in attempt;
+  const destinationUrl = isRealAffiliateLink ? attempt.affLink : buildAffiliateUrl(platform, normalized, code);
 
   await setDoc(doc(db, 'redirectCache', code), {
     userId: uid,
@@ -323,7 +357,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     normalizedProductUrl: normalized,
     originalUrl: productUrl,
     destinationUrl,
-    isRealAffiliateLink: !!realAffLink,
+    isRealAffiliateLink,
     status: 'ACTIVE',
     createdAt: serverTimestamp(),
     lastHitAt: serverTimestamp(),
@@ -331,5 +365,14 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     hitCount: 0,
   });
 
-  return { status: 'supported', code, redirectUrl: goUrl(code), destinationUrl, platform, cacheHit: false };
+  return {
+    status: 'supported',
+    code,
+    redirectUrl: goUrl(code),
+    destinationUrl,
+    platform,
+    cacheHit: false,
+    isRealAffiliateLink,
+    failureReason: 'reason' in attempt ? attempt.reason : undefined,
+  };
 }
