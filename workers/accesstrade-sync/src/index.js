@@ -36,11 +36,10 @@
 //     show that field existing in an EXAMPLE, never states it's guaranteed
 //     to equal what was sent as sub1. This is the single most important
 //     thing to verify with a real conversion before trusting this at all.
-//   - The exact `since`/`until` format /v1/order-list expects (docs say
-//     they're required, never say the format) — this Worker sends Unix
-//     seconds as the most common convention for this shape of param; if
-//     ACCESSTRADE's real response is an error about the date format,
-//     `wrangler tail` will show it and this needs correcting.
+//   - since/until format for /v1/order-list: CONFIRMED wrong as Unix
+//     seconds — production calls returned HTTP 500 for every merchant.
+//     Fixed 2026-09-08 to send ISO 8601 (e.g. 2021-01-01T00:00:00Z) per
+//     ACCESSTRADE's own docs, via `.toISOString()`.
 //   - Which order-list/order-products field is "the" product name — none
 //     of the fields ACCESSTRADE's docs list for either endpoint is an
 //     obviously-named product title, so productName below is a generic
@@ -652,11 +651,11 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
 const ORDER_LIST_PAGE_SIZE = 300;
 const ORDER_LIST_MAX_PAGES = 5;
 
-async function fetchAllOrderListPages(env, platform, merchant, sinceSec, nowSec) {
+async function fetchAllOrderListPages(env, platform, merchant, sinceIso, untilIso) {
   const all = [];
   for (let page = 1; page <= ORDER_LIST_MAX_PAGES; page++) {
     const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-list', {
-      query: { since: String(sinceSec), until: String(nowSec), merchant, limit: String(ORDER_LIST_PAGE_SIZE), page: String(page) },
+      query: { since: sinceIso, until: untilIso, merchant, limit: String(ORDER_LIST_PAGE_SIZE), page: String(page) },
     });
     if (!ok) {
       console.error(`order-list fetch failed for ${platform}/${merchant} (page ${page})`);
@@ -676,15 +675,16 @@ async function fetchAllOrderListPages(env, platform, merchant, sinceSec, nowSec)
 
 async function pollOrders(env) {
   const idToken = await firestoreSignIn(env);
-  const nowSec = Math.floor(Date.now() / 1000);
   // 3-hour rolling window, re-scanned every run — idempotency (the
   // deterministic accesstrade_<order_id> doc id) makes re-scanning
   // overlap safe, and this covers a missed cron tick without needing a
-  // separate "last polled at" cursor doc.
-  const sinceSec = nowSec - 3 * 60 * 60;
+  // separate "last polled at" cursor doc. ISO 8601 (not Unix seconds) per
+  // ACCESSTRADE's docs — see this file's top-of-file note on since/until.
+  const untilIso = new Date().toISOString();
+  const sinceIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
 
   for (const [platform, merchant] of configuredMerchants(env)) {
-    const orders = await fetchAllOrderListPages(env, platform, merchant, sinceSec, nowSec);
+    const orders = await fetchAllOrderListPages(env, platform, merchant, sinceIso, untilIso);
     console.log(`order-list ${platform}/${merchant}: ${orders.length} order(s) in window`);
     for (const order of orders) {
       try {
