@@ -49,6 +49,19 @@
 
 const ACCESSTRADE_BASE = 'https://api.accesstrade.vn';
 
+// /create-link is called from the browser (apps/web/lib/redirectLink.ts),
+// cross-origin from whatever origin the static site is served at — the
+// real security boundary is the Firebase ID token verified inside
+// handleCreateLink, not origin, so '*' costs nothing here. Without this,
+// the browser's own CORS preflight (OPTIONS) silently blocks the actual
+// POST from ever being sent — confirmed live: wrangler tail showed
+// "OPTIONS .../create-link - Ok" with no POST ever following it.
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 // /v1/order-products is documented at 10 requests/minute, same as
 // /v1/order-list — but unlike order-list (called once per platform per
 // cron tick), order-products is called once per NEW order found in a
@@ -699,8 +712,16 @@ async function pollOrders(env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === 'POST' && url.pathname === '/create-link') {
-      return handleCreateLink(request, env);
+    if (url.pathname === '/create-link') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: CORS_HEADERS });
+      }
+      if (request.method === 'POST') {
+        const res = await handleCreateLink(request, env);
+        const headers = new Headers(res.headers);
+        Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+        return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+      }
     }
     return new Response('OK', { status: 200 });
   },

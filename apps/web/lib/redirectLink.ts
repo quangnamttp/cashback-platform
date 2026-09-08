@@ -315,22 +315,48 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
 
     if (stillFresh) {
       const newExpiry = Math.min(now + REDIRECT_CACHE_TTL_MS, createdAtMs + REDIRECT_CACHE_MAX_LIFETIME_MS);
-      await updateDoc(existingDoc.ref, {
+      const updateFields: Record<string, unknown> = {
         lastHitAt: serverTimestamp(),
         expiresAt: Timestamp.fromMillis(newExpiry),
         hitCount: increment(1),
-      });
+      };
+
+      let destinationUrl: string = existing.destinationUrl;
+      // Pre-existing docs from before this field existed have neither —
+      // treated as "not a real link" (safest default: never claim a link
+      // is ACCESSTRADE-tracked without having actually recorded that).
+      let isRealAffiliateLink = !!existing.isRealAffiliateLink;
+      let failureReason: AffiliateLinkFailureReason | undefined;
+
+      // "Not real" reflects the WORKER's state at the moment this doc was
+      // first created (not configured yet, campaign not approved yet) —
+      // not a permanent fact about the product — so it's worth one retry
+      // per cache hit rather than being stuck false for the doc's whole
+      // TTL. Once real, never retried again (no point re-hitting the
+      // Worker for a link that already works) — same code/tracking id
+      // either way, only destinationUrl/isRealAffiliateLink can change.
+      if (!isRealAffiliateLink) {
+        const attempt = await tryCreateRealAffiliateLink(platform, normalized, existingDoc.id);
+        if ('affLink' in attempt) {
+          destinationUrl = attempt.affLink;
+          isRealAffiliateLink = true;
+          updateFields.destinationUrl = destinationUrl;
+          updateFields.isRealAffiliateLink = true;
+        } else {
+          failureReason = attempt.reason;
+        }
+      }
+
+      await updateDoc(existingDoc.ref, updateFields);
       return {
         status: 'supported',
         code: existingDoc.id,
         redirectUrl: goUrl(existingDoc.id),
-        destinationUrl: existing.destinationUrl,
+        destinationUrl,
         platform,
         cacheHit: true,
-        // Pre-existing docs from before this field existed have neither —
-        // treated as "not a real link" (safest default: never claim a link
-        // is ACCESSTRADE-tracked without having actually recorded that).
-        isRealAffiliateLink: !!existing.isRealAffiliateLink,
+        isRealAffiliateLink,
+        failureReason,
       };
     }
 
