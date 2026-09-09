@@ -175,6 +175,28 @@ export type AffiliateLinkFailureReason =
   // reason other than not_in_campaign to the neutral "technical" copy).
   | 'resolve_error';
 
+/**
+ * Real product info from ACCESSTRADE itself — ACCESSTRADE_DATAFEED is
+ * Shopee/Lazada's static per-merchant CSV (see workers/accesstrade-sync's
+ * lookupDatafeedProduct for exactly where this comes from and its
+ * reliability); ACCESSTRADE_TIKTOK_API is TikTok Shop's own create-link
+ * response, which already carries product_name/product_image/
+ * product_price directly, no separate lookup needed. Never a slug guess
+ * either way: only ever present when a real source actually returned it.
+ * `image`/`name` from this source take priority over the page-scraped
+ * preview (lib/productPreview.ts) wherever both exist — see
+ * get-cashback-link/page.tsx's resolvedProductDisplay for the priority
+ * order.
+ */
+export type ResolvedProductInfo = {
+  name?: string;
+  image?: string;
+  price?: number;
+  discount?: number;
+  dataSource: 'ACCESSTRADE_DATAFEED' | 'ACCESSTRADE_TIKTOK_API';
+  updatedAt: string;
+};
+
 type AffiliateLinkAttempt =
   | {
       affLink: string;
@@ -182,12 +204,13 @@ type AffiliateLinkAttempt =
       commissionRate?: number;
       // Only ever 'ACCESSTRADE_DATAFEED' — present exactly when the Worker
       // computed `commission` itself from a real datafeed price (see
-      // workers/accesstrade-sync's lookupDatafeedPrice); absent whenever
+      // workers/accesstrade-sync's lookupDatafeedProduct); absent whenever
       // `commission` is TikTok's own direct per-product field instead, or
       // when only `commissionRate` came back (Shopee/Lazada with no
       // datafeed match — caller falls back to its own scraped price, see
       // lib/cashbackPolicy.ts's PriceSource).
       priceSource?: 'ACCESSTRADE_DATAFEED';
+      product?: ResolvedProductInfo;
     }
   | { reason: AffiliateLinkFailureReason };
 
@@ -224,6 +247,7 @@ async function tryCreateRealAffiliateLink(
       commission?: { amount: number; currency: string } | null;
       commissionRate?: number | null;
       priceSource?: 'ACCESSTRADE_DATAFEED' | null;
+      product?: ResolvedProductInfo | null;
     } = await res.json();
     if (json.supported && json.affLink) {
       return {
@@ -231,6 +255,7 @@ async function tryCreateRealAffiliateLink(
         ...(json.commission ? { commission: json.commission } : {}),
         ...(json.commissionRate ? { commissionRate: json.commissionRate } : {}),
         ...(json.priceSource ? { priceSource: json.priceSource } : {}),
+        ...(json.product ? { product: json.product } : {}),
       };
     }
     return { reason: json.reason ?? 'worker_unreachable' };
@@ -303,6 +328,10 @@ export type CreateRedirectResult =
       // (lib/productPreview.ts) once that resolves — never a guessed
       // placeholder price.
       estimatedCommissionRate?: number;
+      // Real name/image/price/discount from ACCESSTRADE's own datafeed
+      // (Shopee/Lazada — see ResolvedProductInfo's own comment). Takes
+      // priority over the page-scraped preview wherever both exist.
+      product?: ResolvedProductInfo;
     };
 
 /**
@@ -438,6 +467,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(existing.estimatedCommission ? { estimatedCommission: existing.estimatedCommission } : {}),
           ...(existing.estimatedCommissionPriceSource ? { estimatedCommissionPriceSource: existing.estimatedCommissionPriceSource } : {}),
           ...(existing.estimatedCommissionRate ? { estimatedCommissionRate: existing.estimatedCommissionRate } : {}),
+          ...(existing.product ? { product: existing.product } : {}),
         };
       }
 
@@ -458,6 +488,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
           ...(retry.priceSource ? { estimatedCommissionPriceSource: retry.priceSource } : {}),
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
+          ...(retry.product ? { product: retry.product } : {}),
         });
         return {
           status: 'supported',
@@ -469,6 +500,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
           ...(retry.priceSource ? { estimatedCommissionPriceSource: retry.priceSource } : {}),
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
+          ...(retry.product ? { product: retry.product } : {}),
         };
       }
       await updateDoc(existingDoc.ref, { status: 'SUPERSEDED' });
@@ -506,6 +538,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
     ...(attempt.priceSource ? { estimatedCommissionPriceSource: attempt.priceSource } : {}),
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
+    ...(attempt.product ? { product: attempt.product } : {}),
   });
 
   return {
@@ -518,5 +551,6 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
     ...(attempt.priceSource ? { estimatedCommissionPriceSource: attempt.priceSource } : {}),
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
+    ...(attempt.product ? { product: attempt.product } : {}),
   };
 }

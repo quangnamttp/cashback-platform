@@ -4,10 +4,10 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { mockPlatforms } from '../../lib/mock-data';
-import { createOrReuseRedirect, detectPlatform, ensureUrlScheme, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform } from '../../lib/redirectLink';
+import { createOrReuseRedirect, detectPlatform, ensureUrlScheme, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform, type ResolvedProductInfo } from '../../lib/redirectLink';
 import { COMMISSION_SPLIT } from '../../lib/orderEntry';
 import { computeEstimatedCashback } from '../../lib/cashbackPolicy';
-import { fetchProductPreview, extractProductNameFromUrl, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
+import { fetchProductPreview, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
 import { AppShell } from '../../components/layout/AppShell';
@@ -27,6 +27,11 @@ const PLATFORM_LABEL: Record<Platform, string> = {
 };
 
 type CheckResult =
+  // Shown the INSTANT a valid platform is detected client-side, before
+  // any network call resolves — see handleCheck. Lets the card/loading
+  // shell render immediately instead of the customer staring at nothing
+  // while the link is created and ProductResolver runs.
+  | { status: 'resolving'; platformCode: Platform; platform: string }
   | { status: 'unsupported' }
   | { status: 'invalid_link' }
   | { status: 'error' }
@@ -60,6 +65,11 @@ type CheckResult =
       // product's own independently-scraped real price (productPreview
       // state below) once available — see the estimatedCashback useMemo.
       estimatedCommissionRate?: number;
+      // Real name/image/price from ACCESSTRADE's own datafeed (Shopee/
+      // Lazada) — see ResolvedProductInfo's own comment in
+      // lib/redirectLink.ts. Takes priority over the page-scraped preview
+      // (productPreview state) wherever both exist.
+      product?: ResolvedProductInfo;
     };
 
 // Exactly the 3 customer-facing states this page can show — neutral
@@ -133,6 +143,12 @@ export default function GetCashbackLinkPage() {
   const [countdown, setCountdown] = useState<{ nextSlot: string; hours: number; minutes: number } | null>(null);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<ProductPreview | null>(null);
+  // Whichever image URL is currently shown (from either source — see
+  // resolvedProductDisplay) failed to load — forces the platform-icon
+  // fallback regardless of source, since clearing productPreview alone
+  // wouldn't help when the broken image actually came from result.product
+  // (ACCESSTRADE's datafeed, not the scraped preview).
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const previewRequestRef = useRef(0);
 
   useEffect(() => {
@@ -149,7 +165,7 @@ export default function GetCashbackLinkPage() {
     return unsubscribe;
   }, []);
 
-  const detectedPlatform = result?.status === 'supported' ? result.platformCode : null;
+  const detectedPlatform = result?.status === 'supported' || result?.status === 'resolving' ? result.platformCode : null;
 
   // Real customer-facing cashback estimate, run through CashbackPolicy
   // (lib/cashbackPolicy.ts — deliberately separate from Financial Core's
@@ -184,6 +200,26 @@ export default function GetCashbackLinkPage() {
     }
     return undefined;
   }, [result, productPreview]);
+
+  // Real product name/image, highest-confidence source first:
+  //   1. ACCESSTRADE's own datafeed (result.product — Shopee/Lazada,
+  //      HIGH confidence, see ResolvedProductInfo's own comment).
+  //   2. The page's own scraped preview (productPreview) — but ONLY the
+  //      title+image PAIR together (a title with no image is a generic
+  //      site-wide fallback shell, never the real product — see
+  //      productPreview's own comment in lib/productPreview.ts).
+  // Deliberately no third tier that turns a URL slug into a name — if
+  // neither real source has resolved yet, the card shows a neutral
+  // loading state instead (see the JSX below), never a slug dressed up
+  // as an official product name.
+  const resolvedProductDisplay = useMemo(() => {
+    if (result?.status !== 'supported' && result?.status !== 'resolving') return null;
+    const product = result.status === 'supported' ? result.product : undefined;
+    return {
+      name: product?.name || productPreview?.title,
+      image: imageLoadFailed ? undefined : product?.image || productPreview?.image,
+    };
+  }, [result, productPreview, imageLoadFailed]);
 
   const filteredVouchers = useMemo(() => {
     const group = platformGroups.find((g) => g.key === activeGroup) ?? platformGroups[0];
@@ -222,6 +258,16 @@ export default function GetCashbackLinkPage() {
     setChecking(true);
     setSelectedVoucherId(null);
     setProductPreview(null);
+    setImageLoadFailed(false);
+
+    const inputLink = ensureUrlScheme(link);
+    // Instant feedback (client-side, no network) — platform detection is
+    // a pure regex test, so the card/loading shell can render before the
+    // link is even created, instead of the customer staring at a blank
+    // panel until every network call below finishes.
+    const earlyPlatform = detectPlatform(inputLink);
+    setResult(earlyPlatform ? { status: 'resolving', platformCode: earlyPlatform, platform: PLATFORM_LABEL[earlyPlatform] ?? earlyPlatform } : null);
+
     try {
       // A share/shortlink (s.shopee.vn, vt.tiktok.com, ...) isn't itself a
       // product URL — normalizeProductUrl only strips/sorts query params,
@@ -240,7 +286,6 @@ export default function GetCashbackLinkPage() {
       // honest (see AffiliateLinkFailureReason's comment in
       // lib/redirectLink.ts) — the customer still gets the same neutral
       // "try again" wording and can still buy via the original shortlink.
-      const inputLink = ensureUrlScheme(link);
       let targetLink = inputLink;
       if (isShortlink(inputLink)) {
         const resolved = await resolveShortlink(inputLink);
@@ -291,23 +336,21 @@ export default function GetCashbackLinkPage() {
         estimatedCommission: data.estimatedCommission,
         estimatedCommissionPriceSource: data.estimatedCommissionPriceSource,
         estimatedCommissionRate: data.estimatedCommissionRate,
+        product: data.product,
       });
 
-      // Immediate, network-free title from the URL's own slug — shows the
-      // instant the check completes instead of a generic "Sản phẩm liên kết
-      // qua X" placeholder. fetchProductPreview below may still replace it
-      // with a real og:title + thumbnail (+ price, when the page's own
-      // structured data has one) if that resolves; if it doesn't
-      // (rate-limited, no preview available, etc.), this stays as the title
-      // instead of silently reverting to the generic fallback.
-      const localTitle = extractProductNameFromUrl(targetLink);
-      if (localTitle) setProductPreview({ title: localTitle });
-
-      // Best-effort real product title/thumbnail/price — never blocks the
-      // flow above; if it resolves after the user already changed the
-      // link, the request id guard drops the stale response on the floor.
-      // Reuses targetLink (already resolved above if it was a shortlink)
-      // instead of re-resolving the same redirect a second time here.
+      // Best-effort real product title/thumbnail/price, scraped from the
+      // page itself — a SECONDARY source, only used to fill in whatever
+      // ACCESSTRADE's own datafeed (data.product above) didn't have (see
+      // resolvedProductDisplay's priority order below). Deliberately no
+      // local URL-slug guess shown in the meantime — a slug is never a
+      // real product name, and showing one as if it were would be exactly
+      // the "fake it until real data arrives" this project avoids; the
+      // card shows a neutral loading state instead (see the 'resolving'
+      // and no-name-yet render branches) until real data — from either
+      // source — actually lands. Never blocks the flow above; if this
+      // resolves after the user already changed the link, the request id
+      // guard drops the stale response on the floor.
       const requestId = ++previewRequestRef.current;
       fetchProductPreview(targetLink).then((preview) => {
         if (previewRequestRef.current === requestId && preview) {
@@ -315,15 +358,12 @@ export default function GetCashbackLinkPage() {
           // a scraped title with NO image is the generic site-wide
           // fallback (e.g. Shopee serving "Shopee Việt Nam | Mua và Bán…"
           // for a non-existent/invalid product id, confirmed live), which
-          // is strictly worse than the local slug guess above and must
-          // never overwrite it — it would also silently break the tier
-          // guess below (a "ghế massage" slug losing to a generic title
-          // means guessOrderValueRange never sees the keyword).
-          setProductPreview((prev) => ({
-            title: preview.title && preview.image ? preview.title : prev?.title,
-            image: preview.image || prev?.image,
+          // must never be shown as if it were the real product name.
+          setProductPreview({
+            title: preview.title && preview.image ? preview.title : undefined,
+            image: preview.image,
             price: preview.price,
-          }));
+          });
           // Persisted onto the redirectCache doc so /link-history can show
           // a real thumbnail/title/price for this link later, not just at
           // the moment it was first pasted.
@@ -442,6 +482,13 @@ export default function GetCashbackLinkPage() {
               ✨ {checking ? t('get_link_checking') : t('get_link_btn')}
             </button>
 
+            {result?.status === 'resolving' && (
+              <div className="get-link-result-card">
+                <span className="get-link-platform-detected">✅ Đã nhận diện: {result.platform}</span>
+                <p className="quick-product-note" style={{ marginTop: 8 }}>🔍 Đang lấy thông tin sản phẩm...</p>
+              </div>
+            )}
+
             {result?.status === 'unsupported' && (
               <div className="get-link-result-card">
                 <div className="get-link-result-error">
@@ -506,18 +553,18 @@ export default function GetCashbackLinkPage() {
                   <div className="quick-product-card">
                   <div className="quick-product-info-row">
                     <div className="quick-product-thumb">
-                      {productPreview?.image ? (
+                      {resolvedProductDisplay?.image ? (
                         <img
-                          src={productPreview.image}
+                          src={resolvedProductDisplay.image}
                           alt=""
-                          onError={() => setProductPreview((prev) => (prev ? { ...prev, image: undefined } : prev))}
+                          onError={() => setImageLoadFailed(true)}
                         />
                       ) : (
                         <PlatformBadge name={result.platform} size={30} />
                       )}
                     </div>
                     <div className="quick-product-info-text">
-                      <h3 className="quick-product-title">{productPreview?.title || `Sản phẩm liên kết qua ${result.platform}`}</h3>
+                      <h3 className="quick-product-title">{resolvedProductDisplay?.name || 'Đang lấy thông tin sản phẩm'}</h3>
                       {/* estimatedCommission is ONLY ever the real figure
                           ACCESSTRADE's own API returned (see
                           lib/redirectLink.ts's own comment for exactly

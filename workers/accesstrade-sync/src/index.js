@@ -420,7 +420,22 @@ async function fetchCampaignCommissionRate(env, platform, campaignId) {
 // (lazada.vn.csv) exists but is CURRENTLY EMPTY (header row only, 65
 // bytes) — consistent with its campaign having been approved only
 // 2026-09-07, likely not yet synced on ACCESSTRADE's side; re-check
-// later as the campaign matures.
+// later as the campaign matures. Same lookupDatafeedProduct function
+// handles both — Lazada will start working automatically the day
+// ACCESSTRADE populates it, no code change needed.
+//
+// ALSO INVESTIGATED for Lazada specifically (2026-09-09), since the CSV
+// being empty isn't proof nothing else works: the ACCESSTRADE Datafeed
+// API (GET /v1/datafeeds?domain=lazada.vn, distinct from the static CSV)
+// DOES have real, current data (confirmed live — real name/price/image
+// per row) — but `total` is 1,055,719 products, the endpoint has no
+// URL/keyword/product_id search (only price/discount RANGE filters, and
+// the `campaign` param was tested and does NOT narrow the result set at
+// all — same total, same first row, for every value tried), so finding
+// one specific customer-pasted product would need brute-force pagination
+// through up to ~21,000 pages at 50/row — genuinely infeasible (would
+// take many hours to days even ignoring this endpoint's own rate limit).
+// Ruled out for per-URL lookup; not used anywhere in this file.
 //
 // The Shopee file is ~18.5MB — too large to safely response.text() +
 // parse on Workers Free's 10ms-CPU-time-per-invocation budget (the
@@ -453,7 +468,18 @@ function canonicalShopeeDatafeedUrl(productUrl) {
   return ids ? `https://shopee.vn/product/${ids.shopId}/${ids.itemId}` : null;
 }
 
-async function lookupDatafeedPrice(platform, productUrl) {
+// Row shape (confirmed live): "sku","name","url","price","discount",
+// "image","desc","category" — url is column 3, so `name` is the field
+// immediately BEFORE the url match (must look backward) while price/
+// discount/image are the three fields immediately AFTER it (look
+// forward) — both stop well short of `desc`, the one field that can
+// contain embedded newlines/commas inside its quotes, so neither
+// direction ever needs full quote-aware CSV parsing.
+const DATAFEED_ROW_BACKWARD_WINDOW = 4000; // generous bound for "sku","name" — real product names are rarely anywhere close to this long
+const DATAFEED_FORWARD_FIELD_RE = /^\s*,\s*"([\d.]*)"\s*,\s*"([\d.]*)"\s*,\s*"([^"]*)"/; // price, discount, image
+const DATAFEED_NAME_BACKWARD_RE = /"([^"]{0,300})"\s*,\s*$/; // captures the field right before the match point
+
+async function lookupDatafeedProduct(platform, productUrl) {
   const feedUrl = DATAFEED_CSV_URL[platform];
   if (!feedUrl) return undefined;
   const searchUrl = platform === 'SHOPEE' ? canonicalShopeeDatafeedUrl(productUrl) : productUrl;
@@ -473,13 +499,23 @@ async function lookupDatafeedPrice(platform, productUrl) {
       if (foundIdx === -1) foundIdx = carry.indexOf(needle);
       if (foundIdx !== -1) {
         const after = carry.slice(foundIdx + needle.length);
-        const m = /^\s*,\s*"([\d.]+)"/.exec(after);
-        if (m) return Number(m[1]);
+        const fwd = DATAFEED_FORWARD_FIELD_RE.exec(after);
+        if (fwd) {
+          const before = carry.slice(Math.max(0, foundIdx - DATAFEED_ROW_BACKWARD_WINDOW), foundIdx);
+          const nameMatch = DATAFEED_NAME_BACKWARD_RE.exec(before);
+          const price = fwd[1] ? Number(fwd[1]) : undefined;
+          return {
+            name: nameMatch ? nameMatch[1] : undefined,
+            price: price && price > 0 ? price : undefined,
+            discount: fwd[2] ? Number(fwd[2]) : undefined,
+            image: fwd[3] || undefined,
+          };
+        }
         if (done) return undefined;
-        continue; // price field not fully buffered yet — read more
+        continue; // forward fields not fully buffered yet — read more
       }
       if (done) return undefined;
-      if (carry.length > DATAFEED_SEARCH_BUFFER_CAP) carry = carry.slice(-2000);
+      if (carry.length > DATAFEED_SEARCH_BUFFER_CAP) carry = carry.slice(-DATAFEED_ROW_BACKWARD_WINDOW);
     }
   } finally {
     try { reader.cancel(); } catch { /* best-effort */ }
@@ -580,10 +616,31 @@ async function handleCreateLink(request, env, ctx) {
         commission = { amount: rate * price, currency: pc.currency || data.product_price?.currency || 'VND' };
       }
     }
+    // Same ProductResolver output shape Shopee/Lazada use below — TikTok
+    // Shop's v2 response already carries these directly (real data,
+    // confirmed live 2026-09-09: product_name/product_image/product_price
+    // present alongside product_commission), no separate resolver call
+    // needed. dataSource is its own tag (not ACCESSTRADE_DATAFEED, which
+    // means the static CSV specifically) since this is TikTok's own
+    // per-product API field, not a datafeed lookup.
+    const product = (data.product_name || data.product_image || data.product_price)
+      ? {
+          name: data.product_name || undefined,
+          image: data.product_image || undefined,
+          price: Number(data.product_price?.minimum_amount ?? data.product_price?.maximum_amount) || undefined,
+          dataSource: 'ACCESSTRADE_TIKTOK_API',
+          updatedAt: new Date().toISOString(),
+        }
+      : undefined;
+    console.log(
+      `[ProductResolver] platform=TIKTOK_SHOP source=${product ? 'ACCESSTRADE_TIKTOK_API' : 'NONE'} ` +
+      `match=product_id name=${!!product?.name} image=${!!product?.image} price=${!!product?.price}`,
+    );
     return Response.json({
       supported: true,
       affLink: data.aff_short_url || data.aff_url,
       ...(commission ? { commission } : {}),
+      ...(product ? { product } : {}),
     });
   }
 
@@ -626,32 +683,42 @@ async function handleCreateLink(request, env, ctx) {
     } catch (err) {
       console.error(`campaign commission rate lookup threw (${platform}):`, err.message);
     }
-    // Real product price, when this platform's ACCESSTRADE datafeed CSV
-    // actually has this product (see lookupDatafeedPrice's own comment —
-    // Shopee's feed is real/current, Lazada's is currently empty). When
-    // both a rate and a real price are found, compute the full amount
-    // HERE (server-side) rather than making the frontend rely on its own
-    // scraped-preview price (lib/productPreview.ts), which is far less
-    // reliable for these two platforms (client-rendered SPA pages, no
-    // server-rendered price) — see CASHBACK_POLICY/computeEstimatedCashback
-    // in apps/web/lib/cashbackPolicy.ts for how priceSource downgrades to
-    // 'SCRAPED_PREVIEW'/confidence 'MEDIUM' when this lookup comes back
-    // empty and the frontend has to fall back to its own scrape.
-    let datafeedPrice;
-    if (commissionRate) {
-      try {
-        datafeedPrice = await lookupDatafeedPrice(platform, productUrl);
-      } catch (err) {
-        console.error(`datafeed price lookup threw (${platform}):`, err.message);
-      }
+    // ProductResolver — real name/price/discount/image, when this
+    // platform's ACCESSTRADE datafeed CSV actually has this product (see
+    // lookupDatafeedProduct's own comment: Shopee's feed is real/current;
+    // Lazada's is currently empty — its 1M+-product Datafeed API was
+    // investigated and ruled out for per-URL lookup, see that comment).
+    // Always attempted (not gated on commissionRate) since name/image are
+    // useful even when no rate is available. A failure here must never
+    // fail the link itself.
+    let product;
+    try {
+      product = await lookupDatafeedProduct(platform, productUrl);
+    } catch (err) {
+      console.error(`datafeed product lookup threw (${platform}):`, err.message);
     }
-    const commission = commissionRate && datafeedPrice
-      ? { amount: commissionRate * datafeedPrice, currency: 'VND' }
+    console.log(
+      `[ProductResolver] platform=${platform} source=${product ? 'ACCESSTRADE_DATAFEED' : 'NONE'} ` +
+      `match=${product ? 'url' : 'n/a'} name=${!!product?.name} image=${!!product?.image} price=${!!product?.price}` +
+      (product ? '' : ' reason=product_not_found'),
+    );
+    // Full amount computed HERE (server-side) when both a real rate and a
+    // real datafeed price are found, rather than making the frontend rely
+    // on its own scraped-preview price (lib/productPreview.ts), which is
+    // far less reliable for these two platforms (client-rendered SPA
+    // pages, no server-rendered price) — see CASHBACK_POLICY/
+    // computeEstimatedCashback in apps/web/lib/cashbackPolicy.ts for how
+    // priceSource downgrades to 'SCRAPED_PREVIEW'/confidence 'MEDIUM' when
+    // this lookup comes back empty and the frontend has to fall back to
+    // its own scrape.
+    const commission = commissionRate && product?.price
+      ? { amount: commissionRate * product.price, currency: 'VND' }
       : undefined;
     return Response.json({
       supported: true,
       affLink: successLink.short_link || successLink.aff_link,
       ...(commission ? { commission, priceSource: 'ACCESSTRADE_DATAFEED' } : commissionRate ? { commissionRate } : {}),
+      ...(product ? { product: { name: product.name, image: product.image, price: product.price, discount: product.discount, dataSource: 'ACCESSTRADE_DATAFEED', updatedAt: new Date().toISOString() } } : {}),
     });
   }
 
@@ -1099,17 +1166,18 @@ export default {
           : undefined;
       return Response.json({ campaignId, platform, ok, status, parsedRate, name: json?.data?.[0]?.name });
     }
-    // TEMPORARY — verifies lookupDatafeedPrice against a real URL (must be
-    // a URL that actually exists in that platform's datafeed CSV, e.g. one
-    // taken straight from a real row, to prove the search mechanism itself
-    // works before wiring it into the real customer flow). Remove once
-    // this investigation concludes either way.
+    // Read-only diagnostic: verifies lookupDatafeedProduct against a real
+    // URL — no customer auth needed, no Firestore access. Kept
+    // permanently (not "temporary") as an operational tool: lets a real
+    // product be re-checked directly if ACCESSTRADE ever reformats the
+    // CSV in a way that breaks parsing, without needing a customer to
+    // reproduce it through the full UI flow.
     if (url.pathname === '/debug/datafeed-lookup') {
       const platform = url.searchParams.get('platform');
       const productUrl = url.searchParams.get('url');
       const startedAt = Date.now();
-      const price = await lookupDatafeedPrice(platform, productUrl);
-      return Response.json({ platform, productUrl, price: price ?? null, ms: Date.now() - startedAt });
+      const product = await lookupDatafeedProduct(platform, productUrl);
+      return Response.json({ platform, productUrl, product: product ?? null, ms: Date.now() - startedAt });
     }
     return new Response('OK', { status: 200 });
   },
