@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   arrayRemove,
   arrayUnion,
@@ -131,12 +131,19 @@ export default function CashbackWalletPage() {
   }, [uid]);
 
   // Remembers the last-picked bank account per user so a reload/reopen
-  // doesn't reset the dropdown back to "Chọn tài khoản nhận" — only
-  // restored once (when the account list first arrives for this uid);
-  // after that, every change to selectedAccountId (the customer explicitly
-  // picking a different one, or clearing it) is what drives what's saved.
+  // doesn't reset the dropdown back to "Chọn tài khoản nhận". bankAccounts
+  // arrives asynchronously (a Firestore listener, never populated on the
+  // very first render), so the persist effect below must NOT start writing
+  // until a restore attempt has actually had a chance to run against the
+  // real list — otherwise it fires first (selectedAccountId still '' on
+  // mount) and wipes the saved value before restoration ever reads it,
+  // which is exactly why this looked like "never remembers anything".
+  const bankRestoreAttemptedRef = useRef(false);
+
   useEffect(() => {
-    if (!uid || bankAccounts.length === 0 || selectedAccountId) return;
+    if (!uid || bankRestoreAttemptedRef.current || bankAccounts.length === 0) return;
+    bankRestoreAttemptedRef.current = true;
+    if (selectedAccountId) return; // something already selected (e.g. just added one) — don't override it
     try {
       const saved = window.localStorage.getItem(`cb_withdraw_bank_${uid}`);
       if (saved && bankAccounts.some((a) => a.id === saved)) setSelectedAccountId(saved);
@@ -146,7 +153,7 @@ export default function CashbackWalletPage() {
   }, [uid, bankAccounts, selectedAccountId]);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !bankRestoreAttemptedRef.current) return;
     try {
       if (selectedAccountId) window.localStorage.setItem(`cb_withdraw_bank_${uid}`, selectedAccountId);
       else window.localStorage.removeItem(`cb_withdraw_bank_${uid}`);

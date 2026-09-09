@@ -12,8 +12,22 @@ import { formatCurrency } from '../../lib/currency';
 import { BrandMark } from '../ui/BrandMark';
 import { Modal } from '../ui/Modal';
 
-type LedgerRow = { id: string; orderId?: string; amount: number; status: string; releasedAt?: { toDate: () => Date } };
-type WithdrawalRow = { id: string; amount: number; status: string; decidedAt?: { toDate: () => Date } };
+type LedgerRow = {
+  id: string;
+  orderId?: string;
+  amount: number;
+  status: string;
+  releasedAt?: { toDate: () => Date };
+  rejectionReason?: string;
+};
+type WithdrawalRow = {
+  id: string;
+  amount: number;
+  status: string;
+  decidedAt?: { toDate: () => Date };
+  rejectionReason?: string;
+};
+type OrderRow = { id: string; status: string; productName?: string; confirmedAt?: { toDate: () => Date } };
 type BroadcastNotif = { id: string; title: string; body: string; createdAt?: Timestamp };
 
 function timeAgo(date: Date): string {
@@ -58,12 +72,14 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
   // the exact same fake order/withdrawal regardless of their real activity.
   const [recentLedger, setRecentLedger] = useState<LedgerRow[]>([]);
   const [recentWithdrawals, setRecentWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [recentOrders, setRecentOrders] = useState<OrderRow[]>([]);
   const [broadcastNotifs, setBroadcastNotifs] = useState<BroadcastNotif[]>([]);
 
   useEffect(() => {
     if (!uid) {
       setRecentLedger([]);
       setRecentWithdrawals([]);
+      setRecentOrders([]);
       return undefined;
     }
     const db = getFirebaseDb();
@@ -75,9 +91,20 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
       query(collection(db, 'withdrawalRequests'), where('userId', '==', uid), orderBy('requestedAt', 'desc')),
       (snap) => setRecentWithdrawals(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WithdrawalRow))),
     );
+    // customerVisible==true required — same reason as every other
+    // customer-facing orders query in this codebase: a CANCELLED AFFILIATE
+    // order Admin rejects before ever approving stays invisible forever
+    // (by design, see firestore.rules), so it never belongs in this feed;
+    // only an order the customer already knew about (MANUAL, or already-
+    // approved AFFILIATE) can meaningfully notify "đã bị từ chối".
+    const unsubOrders = onSnapshot(
+      query(collection(db, 'orders'), where('userId', '==', uid), where('customerVisible', '==', true)),
+      (snap) => setRecentOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderRow))),
+    );
     return () => {
       unsubLedger();
       unsubWithdrawals();
+      unsubOrders();
     };
   }, [uid]);
 
@@ -110,6 +137,19 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
           time: e.releasedAt!.toDate(),
         });
       });
+    // Admin/Telegram reject — see manager/payouts/page.tsx (web, admin can
+    // type a real reason) and workers/telegram-bot's tryClaimLedgerStatus
+    // (Telegram tap, fixed generic reason since a button can't collect
+    // free text).
+    recentLedger
+      .filter((e) => e.status === 'REJECTED' && e.releasedAt)
+      .forEach((e) => {
+        rows.push({
+          id: `ledger-rej-${e.id}`,
+          text: `Yêu cầu hoàn tiền đơn hàng${e.orderId ? ` ${e.orderId}` : ''} (${formatCurrency(e.amount, lang)}) đã bị từ chối${e.rejectionReason ? ` — Lý do: ${e.rejectionReason}` : ''}`,
+          time: e.releasedAt!.toDate(),
+        });
+      });
     recentWithdrawals
       .filter((w) => w.status === 'PAID' && w.decidedAt)
       .forEach((w) => {
@@ -117,6 +157,27 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
           id: `wd-${w.id}`,
           text: `Yêu cầu rút tiền ${formatCurrency(w.amount, lang)} đã hoàn tất`,
           time: w.decidedAt!.toDate(),
+        });
+      });
+    recentWithdrawals
+      .filter((w) => w.status === 'REJECTED' && w.decidedAt)
+      .forEach((w) => {
+        rows.push({
+          id: `wd-rej-${w.id}`,
+          text: `Yêu cầu rút tiền ${formatCurrency(w.amount, lang)} đã bị từ chối${w.rejectionReason ? ` — Lý do: ${w.rejectionReason}` : ''}`,
+          time: w.decidedAt!.toDate(),
+        });
+      });
+    // No custom reason field exists for order rejection yet (unlike
+    // cashback/withdrawal above) — a generic notice either way beats the
+    // customer never finding out at all.
+    recentOrders
+      .filter((o) => o.status === 'CANCELLED' && o.confirmedAt)
+      .forEach((o) => {
+        rows.push({
+          id: `order-rej-${o.id}`,
+          text: `Đơn hàng${o.productName ? ` "${o.productName}"` : ` ${o.id}`} đã bị từ chối`,
+          time: o.confirmedAt!.toDate(),
         });
       });
     broadcastNotifs
@@ -128,7 +189,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
       .sort((a, b) => b.time.getTime() - a.time.getTime())
       .slice(0, 5)
       .map((row) => ({ id: row.id, text: row.text, time: timeAgo(row.time) }));
-  }, [recentLedger, recentWithdrawals, broadcastNotifs, lang]);
+  }, [recentLedger, recentWithdrawals, recentOrders, broadcastNotifs, lang]);
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 8);

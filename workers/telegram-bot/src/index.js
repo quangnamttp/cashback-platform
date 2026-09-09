@@ -311,7 +311,9 @@ async function getLedgerDoc(env, idToken, ledgerId) {
  * exactly the bug this closes.
  */
 async function tryClaimLedgerStatus(env, idToken, ledgerId, expectedUpdateTime, status) {
-  const mask = ['status', 'releasedAt', 'releasedBy'].map((p) => `updateMask.fieldPaths=${p}`).join('&');
+  const fields = ['status', 'releasedAt', 'releasedBy'];
+  if (status === 'REJECTED') fields.push('rejectionReason');
+  const mask = fields.map((p) => `updateMask.fieldPaths=${p}`).join('&');
   const body = {
     fields: {
       status: { stringValue: status },
@@ -319,6 +321,12 @@ async function tryClaimLedgerStatus(env, idToken, ledgerId, expectedUpdateTime, 
       releasedBy: { stringValue: 'telegram-bot' },
     },
   };
+  // Mirrors tryClaimWithdrawalStatus's own rejectionReason — no way to
+  // collect free-text from a Telegram button tap, so this fixed string is
+  // what shows up in the customer's notification bell for a Telegram-
+  // originated reject (see SiteHeader.tsx); a web reject from
+  // manager/payouts can carry a real, admin-typed reason instead.
+  if (status === 'REJECTED') body.fields.rejectionReason = { stringValue: 'Từ chối qua Telegram' };
 
   const precondition = expectedUpdateTime
     ? `&currentDocument.updateTime=${encodeURIComponent(expectedUpdateTime)}`

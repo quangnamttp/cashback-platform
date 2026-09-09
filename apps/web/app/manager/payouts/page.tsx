@@ -10,6 +10,7 @@ import { syncCashbackStatusToTelegram } from '../../../lib/telegram';
 import { creditWalletBalance } from '../../../lib/walletBalance';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
+import { Modal } from '../../../components/ui/Modal';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
@@ -89,6 +90,8 @@ export default function AdminPayoutsPage() {
   const fetchedOrderIdsRef = useRef<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState<'approve' | 'reject' | null>(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReasonInput, setRejectReasonInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -179,7 +182,7 @@ export default function AdminPayoutsPage() {
   // in the first place, since its row has no checkbox) — mirrors this
   // codebase's existing pattern of never trusting client-side selection
   // state alone for a money-releasing action.
-  const decideSelected = async (decision: 'RELEASED' | 'REJECTED') => {
+  const decideSelected = async (decision: 'RELEASED' | 'REJECTED', reason?: string) => {
     const targets = entries.filter((e) => selectedIds.has(e.id) && isEligibleForPayout(e, orderMeta));
     if (!uid || targets.length === 0) return;
     setBulkBusy(decision === 'RELEASED' ? 'approve' : 'reject');
@@ -193,6 +196,7 @@ export default function AdminPayoutsPage() {
             status: decision,
             releasedBy: uid,
             releasedAt: serverTimestamp(),
+            ...(decision === 'REJECTED' ? { rejectionReason: reason || '' } : {}),
           });
         });
         await batch.commit();
@@ -288,7 +292,7 @@ export default function AdminPayoutsPage() {
             <button
               className="btn-reject"
               disabled={selectedIds.size === 0 || bulkBusy !== null}
-              onClick={() => decideSelected('REJECTED')}
+              onClick={() => { setRejectReasonInput(''); setShowRejectModal(true); }}
             >
               {bulkBusy === 'reject' ? 'Đang từ chối...' : `✕ Từ chối (${selectedIds.size})`}
             </button>
@@ -388,6 +392,33 @@ export default function AdminPayoutsPage() {
         tiếp từ tổng các khoản <code>cashbackLedger</code> đã <code>RELEASED</code>, không lưu bộ đếm riêng nên không
         thể bị lệch/giả mạo.
       </p>
+
+      <Modal open={showRejectModal} onClose={() => setShowRejectModal(false)}>
+        <h3 style={{ marginTop: 0 }}>Từ chối {selectedIds.size} khoản hoàn tiền</h3>
+        <p className="muted-copy">
+          Lý do này sẽ hiện trong thông báo (chuông 🔔) của từng khách hàng liên quan — không bắt buộc, nhưng nên ghi
+          rõ để khách hiểu vì sao.
+        </p>
+        <textarea
+          className="support-chat-textarea"
+          placeholder="VD: Đơn hàng không hợp lệ / Vi phạm điều khoản / Sàn từ chối ghi nhận hoa hồng..."
+          value={rejectReasonInput}
+          onChange={(e) => setRejectReasonInput(e.target.value)}
+          rows={3}
+          style={{ marginTop: 6 }}
+        />
+        <button
+          className="button button-primary modal-cta"
+          style={{ background: '#dc2626' }}
+          disabled={bulkBusy !== null}
+          onClick={async () => {
+            await decideSelected('REJECTED', rejectReasonInput.trim());
+            setShowRejectModal(false);
+          }}
+        >
+          ✕ Xác nhận từ chối
+        </button>
+      </Modal>
     </AdminShell>
   );
 }
