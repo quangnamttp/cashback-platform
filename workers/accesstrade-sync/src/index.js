@@ -453,7 +453,25 @@ async function fetchCampaignCommissionRate(env, platform, campaignId) {
 const DATAFEED_CSV_URL = { SHOPEE: 'http://datafeed.accesstrade.me/shopee.vn.csv', LAZADA: 'http://datafeed.accesstrade.me/lazada.vn.csv' };
 const DATAFEED_SEARCH_BUFFER_CAP = 200000; // characters kept in memory while scanning — bounded regardless of file size
 
+// Two real Shopee URL shapes carry the same shopId/itemId pair:
+//   1. The canonical form ITSELF: shopee.vn/product/<shopid>/<itemid>
+//      (confirmed live 2026-09-09 — a real customer paste, sometimes with
+//      extra query params like ?credential_token=... riding along, which
+//      parsing via URL().pathname naturally ignores).
+//   2. The marketing pretty-slug form: .../ten-san-pham-i.<shopid>.<itemid>
+// BUG FIXED 2026-09-09: this previously only matched form 2 — any
+// customer already on form 1 (confirmed happening — see the two card
+// screenshots that started this fix) silently got no datafeed match at
+// all, even though form 1 IS the exact shape the datafeed's own `url`
+// column uses, because canonicalShopeeDatafeedUrl returned null and
+// lookupDatafeedProduct bailed out before ever calling fetch().
 function extractShopeeIds(productUrl) {
+  try {
+    const pathMatch = /^\/product\/(\d+)\/(\d+)/.exec(new URL(productUrl).pathname);
+    if (pathMatch) return { shopId: pathMatch[1], itemId: pathMatch[2] };
+  } catch {
+    // fall through to the slug-form regex below
+  }
   const m = /-i\.(\d+)\.(\d+)/.exec(productUrl);
   return m ? { shopId: m[1], itemId: m[2] } : null;
 }
@@ -625,6 +643,7 @@ async function handleCreateLink(request, env, ctx) {
     // per-product API field, not a datafeed lookup.
     const product = (data.product_name || data.product_image || data.product_price)
       ? {
+          productId: data.product_id ? String(data.product_id) : undefined,
           name: data.product_name || undefined,
           image: data.product_image || undefined,
           price: Number(data.product_price?.minimum_amount ?? data.product_price?.maximum_amount) || undefined,
@@ -714,11 +733,25 @@ async function handleCreateLink(request, env, ctx) {
     const commission = commissionRate && product?.price
       ? { amount: commissionRate * product.price, currency: 'VND' }
       : undefined;
+    // Shopee's shopId_itemId pair IS its unique product identity (same
+    // pair extractShopeeIds/canonicalShopeeDatafeedUrl already use to
+    // match the datafeed) — sent even when the datafeed itself had no
+    // matching row, so the frontend can tell "we know which product this
+    // is, just no price for it" apart from "identity never determined at
+    // all" (e.g. an unresolved short link) — see get-cashback-link/
+    // page.tsx's productIdentityKnown. No equivalent extractor exists for
+    // Lazada yet (out of scope this round — see extractShopeeIds's own
+    // comment for why a URL-based Lazada product id can't be resolved via
+    // its Datafeed API).
+    const shopeeProductId = platform === 'SHOPEE'
+      ? (() => { const ids = extractShopeeIds(productUrl); return ids ? `${ids.shopId}_${ids.itemId}` : undefined; })()
+      : undefined;
     return Response.json({
       supported: true,
       affLink: successLink.short_link || successLink.aff_link,
       ...(commission ? { commission, priceSource: 'ACCESSTRADE_DATAFEED' } : commissionRate ? { commissionRate } : {}),
-      ...(product ? { product: { name: product.name, image: product.image, price: product.price, discount: product.discount, dataSource: 'ACCESSTRADE_DATAFEED', updatedAt: new Date().toISOString() } } : {}),
+      ...(product ? { product: { productId: shopeeProductId, name: product.name, image: product.image, price: product.price, discount: product.discount, dataSource: 'ACCESSTRADE_DATAFEED', updatedAt: new Date().toISOString() } } : {}),
+      ...(shopeeProductId ? { productId: shopeeProductId } : {}),
     });
   }
 

@@ -189,6 +189,7 @@ export type AffiliateLinkFailureReason =
  * order.
  */
 export type ResolvedProductInfo = {
+  productId?: string;
   name?: string;
   image?: string;
   price?: number;

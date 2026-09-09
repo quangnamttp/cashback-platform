@@ -63,7 +63,7 @@ type CheckResult =
       // Shopee/Lazada's counterpart — a rate, not an amount (see that
       // field's own comment in lib/redirectLink.ts). Combined with the
       // product's own independently-scraped real price (productPreview
-      // state below) once available — see the estimatedCashback useMemo.
+      // state below) once available — see the productInfo useMemo.
       estimatedCommissionRate?: number;
       // Real name/image/price from ACCESSTRADE's own datafeed (Shopee/
       // Lazada) — see ResolvedProductInfo's own comment in
@@ -144,7 +144,7 @@ export default function GetCashbackLinkPage() {
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<ProductPreview | null>(null);
   // Whichever image URL is currently shown (from either source — see
-  // resolvedProductDisplay) failed to load — forces the platform-icon
+  // productInfo) failed to load — forces the platform-icon
   // fallback regardless of source, since clearing productPreview alone
   // wouldn't help when the broken image actually came from result.product
   // (ACCESSTRADE's datafeed, not the scraped preview).
@@ -167,57 +167,65 @@ export default function GetCashbackLinkPage() {
 
   const detectedPlatform = result?.status === 'supported' || result?.status === 'resolving' ? result.platformCode : null;
 
-  // Real customer-facing cashback estimate, run through CashbackPolicy
-  // (lib/cashbackPolicy.ts — deliberately separate from Financial Core's
-  // computeCommissionSplit, so a future per-platform % change here can
-  // never touch a real payout). Three tiers, highest confidence first:
-  //   1. TikTok's own direct per-product commission field (HIGH — real
-  //      price + real per-product rate, both from ACCESSTRADE itself).
-  //   2. Shopee/Lazada with a real ACCESSTRADE datafeed price match (HIGH
-  //      — real price, though the rate is campaign-wide not per-product).
-  //   3. Shopee/Lazada with only a campaign rate — combined with the
-  //      product's own independently-scraped real price (MEDIUM — price
-  //      isn't from ACCESSTRADE, and the datafeed didn't have this exact
-  //      product). productPreview resolves asynchronously, so this
-  //      recomputes and "Đang xác định..." upgrades to a real number the
-  //      moment a price becomes available — never a guessed/placeholder
-  //      price substituted when one doesn't.
-  const estimatedCashback = useMemo(() => {
-    if (result?.status !== 'supported') return undefined;
-    if (result.estimatedCommission) {
-      return computeEstimatedCashback(result.platformCode, result.estimatedCommission.amount, {
-        priceSource: result.estimatedCommissionPriceSource ?? 'ACCESSTRADE_DIRECT',
-        commissionSource: result.estimatedCommissionPriceSource ? 'ACCESSTRADE_CAMPAIGN_POLICY' : 'ACCESSTRADE_PRODUCT_COMMISSION',
-        confidence: 'HIGH',
-      });
-    }
-    if (result.estimatedCommissionRate && productPreview?.price) {
-      return computeEstimatedCashback(result.platformCode, result.estimatedCommissionRate * productPreview.price, {
-        priceSource: 'SCRAPED_PREVIEW',
-        commissionSource: 'ACCESSTRADE_CAMPAIGN_POLICY',
-        confidence: 'MEDIUM',
-      });
-    }
-    return undefined;
-  }, [result, productPreview]);
-
-  // Real product name/image, highest-confidence source first:
-  //   1. ACCESSTRADE's own datafeed (result.product — Shopee/Lazada,
-  //      HIGH confidence, see ResolvedProductInfo's own comment).
-  //   2. The page's own scraped preview (productPreview) — but ONLY the
-  //      title+image PAIR together (a title with no image is a generic
-  //      site-wide fallback shell, never the real product — see
-  //      productPreview's own comment in lib/productPreview.ts).
-  // Deliberately no third tier that turns a URL slug into a name — if
-  // neither real source has resolved yet, the card shows a neutral
-  // loading state instead (see the JSX below), never a slug dressed up
-  // as an official product name.
-  const resolvedProductDisplay = useMemo(() => {
+  // ProductResolver's unified output — the SAME shape for all 3 platforms
+  // (per-platform branching lives only inside this one useMemo; the JSX
+  // below never checks result.platformCode to decide what to render).
+  //   name/image priority: ACCESSTRADE's own data (result.product — HIGH
+  //     confidence, see ResolvedProductInfo's own comment) first, then the
+  //     page's own scraped preview (productPreview) — but ONLY the
+  //     title+image PAIR together (a title with no image, OR Shopee's own
+  //     generic site-wide shell text, is never the real product — see
+  //     productPreview's own comment and workers/product-preview's known-
+  //     generic-title rejection). No third tier that turns a URL slug
+  //     into a name — with neither real source resolved yet, productName
+  //     stays undefined and the card shows a neutral loading label (see
+  //     the JSX below) instead of a slug dressed up as an official name.
+  //   estimatedCashback priority (via CashbackPolicy, lib/cashbackPolicy.ts
+  //     — deliberately separate from Financial Core's computeCommissionSplit,
+  //     so a future per-platform % change here can never touch a real
+  //     payout):
+  //     1. TikTok's own direct per-product commission field, or Shopee/
+  //        Lazada with a real ACCESSTRADE datafeed price match (HIGH).
+  //     2. Shopee/Lazada with only a campaign rate, combined with the
+  //        page's own scraped price (MEDIUM) — productPreview resolves
+  //        asynchronously, so this recomputes and "Đang xác định..."
+  //        upgrades to a real number the moment a price becomes
+  //        available — never a guessed/placeholder price substituted.
+  const productInfo = useMemo(() => {
     if (result?.status !== 'supported' && result?.status !== 'resolving') return null;
     const product = result.status === 'supported' ? result.product : undefined;
+
+    const cashback = (() => {
+      if (result.status !== 'supported') return undefined;
+      if (result.estimatedCommission) {
+        return computeEstimatedCashback(result.platformCode, result.estimatedCommission.amount, {
+          priceSource: result.estimatedCommissionPriceSource ?? 'ACCESSTRADE_DIRECT',
+          commissionSource: result.estimatedCommissionPriceSource ? 'ACCESSTRADE_CAMPAIGN_POLICY' : 'ACCESSTRADE_PRODUCT_COMMISSION',
+          confidence: 'HIGH',
+        });
+      }
+      if (result.estimatedCommissionRate && productPreview?.price) {
+        return computeEstimatedCashback(result.platformCode, result.estimatedCommissionRate * productPreview.price, {
+          priceSource: 'SCRAPED_PREVIEW',
+          commissionSource: 'ACCESSTRADE_CAMPAIGN_POLICY',
+          confidence: 'MEDIUM',
+        });
+      }
+      return undefined;
+    })();
+
     return {
-      name: product?.name || productPreview?.title,
-      image: imageLoadFailed ? undefined : product?.image || productPreview?.image,
+      platform: result.platformCode,
+      productId: product?.productId,
+      productName: product?.name || productPreview?.title,
+      productImage: imageLoadFailed ? undefined : product?.image || productPreview?.image,
+      price: product?.price ?? (productPreview?.price || undefined),
+      discount: product?.discount,
+      commission: result.status === 'supported' ? result.estimatedCommission?.amount : undefined,
+      commissionRate: result.status === 'supported' ? result.estimatedCommissionRate : undefined,
+      estimatedCashback: cashback?.amount,
+      dataSource: product?.dataSource,
+      updatedAt: product?.updatedAt,
     };
   }, [result, productPreview, imageLoadFailed]);
 
@@ -342,7 +350,7 @@ export default function GetCashbackLinkPage() {
       // Best-effort real product title/thumbnail/price, scraped from the
       // page itself — a SECONDARY source, only used to fill in whatever
       // ACCESSTRADE's own datafeed (data.product above) didn't have (see
-      // resolvedProductDisplay's priority order below). Deliberately no
+      // productInfo's priority order below). Deliberately no
       // local URL-slug guess shown in the meantime — a slug is never a
       // real product name, and showing one as if it were would be exactly
       // the "fake it until real data arrives" this project avoids; the
@@ -553,9 +561,9 @@ export default function GetCashbackLinkPage() {
                   <div className="quick-product-card">
                   <div className="quick-product-info-row">
                     <div className="quick-product-thumb">
-                      {resolvedProductDisplay?.image ? (
+                      {productInfo?.productImage ? (
                         <img
-                          src={resolvedProductDisplay.image}
+                          src={productInfo.productImage}
                           alt=""
                           onError={() => setImageLoadFailed(true)}
                         />
@@ -564,7 +572,7 @@ export default function GetCashbackLinkPage() {
                       )}
                     </div>
                     <div className="quick-product-info-text">
-                      <h3 className="quick-product-title">{resolvedProductDisplay?.name || 'Đang lấy thông tin sản phẩm'}</h3>
+                      <h3 className="quick-product-title">{productInfo?.productName || 'Đang lấy thông tin sản phẩm'}</h3>
                       {/* estimatedCommission is ONLY ever the real figure
                           ACCESSTRADE's own API returned (see
                           lib/redirectLink.ts's own comment for exactly
@@ -589,7 +597,7 @@ export default function GetCashbackLinkPage() {
                       <div className="quick-product-estimate-block">
                         <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
                         <span className="quick-product-estimate-amount">
-                          {estimatedCashback ? formatCurrency(estimatedCashback.amount, lang) : 'Đang xác định...'}
+                          {productInfo?.estimatedCashback != null ? formatCurrency(productInfo.estimatedCashback, lang) : 'Đang xác định...'}
                         </span>
                       </div>
                       <p className="quick-product-note">

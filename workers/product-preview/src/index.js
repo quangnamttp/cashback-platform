@@ -181,6 +181,24 @@ export default {
         result.image = null;
       }
 
+      // Shopee's own generic site-wide shell (homepage/search chrome) has
+      // a REAL og:title AND a real og:image (its homepage banner) — unlike
+      // the other generic-shell cases already handled, both fields are
+      // genuinely non-null, so the usual "title with no image = fake"
+      // signal doesn't catch it. Confirmed live 2026-09-09: a real
+      // s.shopee.vn short link that failed to actually redirect anywhere
+      // (upstream.url === the input, no 301/302 followed — this specific
+      // code may be expired/app-only) served this exact title + its
+      // homepage banner image, which then got shown to a customer as if
+      // it were their product's own name/photo. Matched by exact text
+      // (this is Shopee's fixed site title, not a per-page value) rather
+      // than a fuzzy check, to never risk rejecting a real product whose
+      // name happens to share a word with it.
+      if (result.title === 'Shopee Việt Nam | Mua và Bán Trên Ứng Dụng Di Động Hoặc Website') {
+        result.title = null;
+        result.image = null;
+      }
+
       return jsonResponse(result, 200);
     } catch {
       return jsonResponse({ error: 'fetch failed' }, 502);
