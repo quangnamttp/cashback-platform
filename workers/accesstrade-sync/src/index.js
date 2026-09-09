@@ -304,10 +304,12 @@ async function handleCreateLink(request, env) {
     // product_commission is the ONE documented field across all 3
     // platforms' create-link responses that carries a real (not derived,
     // not guessed) commission figure at link-creation time — see
-    // ACCESSTRADE's TikTok Shop v2 docs. Forwarded through as-is so the
-    // frontend can show it (see apps/web/lib/redirectLink.ts's
-    // estimatedCommission) instead of the generic "chưa xác định" note;
-    // never sent when absent — no fallback/guessed value substituted here.
+    // ACCESSTRADE's TikTok Shop v2 docs. Forwarded through as internal/
+    // admin-only data (see apps/web/lib/redirectLink.ts's
+    // estimatedCommission — never rendered on the customer-facing page,
+    // this project's marketing copy always frames the number as "80% hoa
+    // hồng" instead of the real rate). Never sent when absent — no
+    // fallback/guessed value substituted here.
     const commission = json.product_commission?.amount
       ? { amount: Number(json.product_commission.amount), currency: json.product_commission.currency || 'VND' }
       : undefined;
