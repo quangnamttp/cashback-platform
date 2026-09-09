@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { mockPlatforms } from '../../lib/mock-data';
 import { createOrReuseRedirect, detectPlatform, ensureUrlScheme, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform } from '../../lib/redirectLink';
-import { COMMISSION_SPLIT, computeCommissionSplit } from '../../lib/orderEntry';
+import { COMMISSION_SPLIT } from '../../lib/orderEntry';
+import { computeEstimatedCashback } from '../../lib/cashbackPolicy';
 import { fetchProductPreview, extractProductNameFromUrl, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
@@ -40,9 +41,10 @@ type CheckResult =
   // see lib/redirectLink.ts's createOrReuseRedirect, which never returns
   // this status any other way. estimatedCommission is the marketplace's
   // RAW commission (see that field's own comment in lib/redirectLink.ts)
-  // — this page runs it through computeCommissionSplit before ever
-  // showing a number (see the "Dự kiến hoàn" render below), so the
-  // customer only ever sees their own split amount, never the raw figure.
+  // — this page runs it through computeEstimatedCashback (lib/
+  // cashbackPolicy.ts) before ever showing a number (see the "Dự kiến
+  // hoàn" render below), so the customer only ever sees their own split
+  // amount, never the raw figure.
   | {
       status: 'supported';
       platformCode: Platform;
@@ -52,6 +54,7 @@ type CheckResult =
       destinationUrl: string;
       cacheHit: boolean;
       estimatedCommission?: { amount: number; currency: string };
+      estimatedCommissionPriceSource?: 'ACCESSTRADE_DATAFEED';
       // Shopee/Lazada's counterpart — a rate, not an amount (see that
       // field's own comment in lib/redirectLink.ts). Combined with the
       // product's own independently-scraped real price (productPreview
@@ -148,22 +151,36 @@ export default function GetCashbackLinkPage() {
 
   const detectedPlatform = result?.status === 'supported' ? result.platformCode : null;
 
-  // Real customer-facing cashback estimate — either the TikTok path
-  // (ACCESSTRADE's own commission amount, split via computeCommissionSplit)
-  // or the Shopee/Lazada path (a real campaign commission RATE, see
-  // lib/redirectLink.ts's estimatedCommissionRate comment, combined with
-  // the product's own independently-scraped real price). productPreview
-  // resolves asynchronously (after the link itself), so this recomputes
-  // and the "Đang xác định..." placeholder upgrades to a real number the
-  // moment a price becomes available — never a guessed/placeholder price
-  // substituted when one doesn't.
-  const estimatedCashbackAmount = useMemo(() => {
+  // Real customer-facing cashback estimate, run through CashbackPolicy
+  // (lib/cashbackPolicy.ts — deliberately separate from Financial Core's
+  // computeCommissionSplit, so a future per-platform % change here can
+  // never touch a real payout). Three tiers, highest confidence first:
+  //   1. TikTok's own direct per-product commission field (HIGH — real
+  //      price + real per-product rate, both from ACCESSTRADE itself).
+  //   2. Shopee/Lazada with a real ACCESSTRADE datafeed price match (HIGH
+  //      — real price, though the rate is campaign-wide not per-product).
+  //   3. Shopee/Lazada with only a campaign rate — combined with the
+  //      product's own independently-scraped real price (MEDIUM — price
+  //      isn't from ACCESSTRADE, and the datafeed didn't have this exact
+  //      product). productPreview resolves asynchronously, so this
+  //      recomputes and "Đang xác định..." upgrades to a real number the
+  //      moment a price becomes available — never a guessed/placeholder
+  //      price substituted when one doesn't.
+  const estimatedCashback = useMemo(() => {
     if (result?.status !== 'supported') return undefined;
     if (result.estimatedCommission) {
-      return computeCommissionSplit(result.estimatedCommission.amount, false).customerAmount;
+      return computeEstimatedCashback(result.platformCode, result.estimatedCommission.amount, {
+        priceSource: result.estimatedCommissionPriceSource ?? 'ACCESSTRADE_DIRECT',
+        commissionSource: result.estimatedCommissionPriceSource ? 'ACCESSTRADE_CAMPAIGN_POLICY' : 'ACCESSTRADE_PRODUCT_COMMISSION',
+        confidence: 'HIGH',
+      });
     }
     if (result.estimatedCommissionRate && productPreview?.price) {
-      return computeCommissionSplit(result.estimatedCommissionRate * productPreview.price, false).customerAmount;
+      return computeEstimatedCashback(result.platformCode, result.estimatedCommissionRate * productPreview.price, {
+        priceSource: 'SCRAPED_PREVIEW',
+        commissionSource: 'ACCESSTRADE_CAMPAIGN_POLICY',
+        confidence: 'MEDIUM',
+      });
     }
     return undefined;
   }, [result, productPreview]);
@@ -272,6 +289,7 @@ export default function GetCashbackLinkPage() {
         destinationUrl: data.destinationUrl,
         cacheHit: data.cacheHit,
         estimatedCommission: data.estimatedCommission,
+        estimatedCommissionPriceSource: data.estimatedCommissionPriceSource,
         estimatedCommissionRate: data.estimatedCommissionRate,
       });
 
@@ -524,7 +542,7 @@ export default function GetCashbackLinkPage() {
                       <div className="quick-product-estimate-block">
                         <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
                         <span className="quick-product-estimate-amount">
-                          {estimatedCashbackAmount != null ? formatCurrency(estimatedCashbackAmount, lang) : 'Đang xác định...'}
+                          {estimatedCashback ? formatCurrency(estimatedCashback.amount, lang) : 'Đang xác định...'}
                         </span>
                       </div>
                       <p className="quick-product-note">

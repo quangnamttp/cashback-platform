@@ -176,7 +176,19 @@ export type AffiliateLinkFailureReason =
   | 'resolve_error';
 
 type AffiliateLinkAttempt =
-  | { affLink: string; commission?: { amount: number; currency: string }; commissionRate?: number }
+  | {
+      affLink: string;
+      commission?: { amount: number; currency: string };
+      commissionRate?: number;
+      // Only ever 'ACCESSTRADE_DATAFEED' — present exactly when the Worker
+      // computed `commission` itself from a real datafeed price (see
+      // workers/accesstrade-sync's lookupDatafeedPrice); absent whenever
+      // `commission` is TikTok's own direct per-product field instead, or
+      // when only `commissionRate` came back (Shopee/Lazada with no
+      // datafeed match — caller falls back to its own scraped price, see
+      // lib/cashbackPolicy.ts's PriceSource).
+      priceSource?: 'ACCESSTRADE_DATAFEED';
+    }
   | { reason: AffiliateLinkFailureReason };
 
 /**
@@ -211,12 +223,14 @@ async function tryCreateRealAffiliateLink(
       reason?: AffiliateLinkFailureReason;
       commission?: { amount: number; currency: string } | null;
       commissionRate?: number | null;
+      priceSource?: 'ACCESSTRADE_DATAFEED' | null;
     } = await res.json();
     if (json.supported && json.affLink) {
       return {
         affLink: json.affLink,
         ...(json.commission ? { commission: json.commission } : {}),
         ...(json.commissionRate ? { commissionRate: json.commissionRate } : {}),
+        ...(json.priceSource ? { priceSource: json.priceSource } : {}),
       };
     }
     return { reason: json.reason ?? 'worker_unreachable' };
@@ -259,8 +273,9 @@ export type CreateRedirectResult =
   // received one from ACCESSTRADE to begin with (v1 endpoint doesn't
   // document it). This is the platform's RAW, undivided commission — never
   // rendered bare anywhere; get-cashback-link/page.tsx runs it through
-  // computeCommissionSplit (lib/orderEntry.ts, the exact same function the
-  // real ledger write uses) before showing a customer-facing "Dự kiến
+  // computeEstimatedCashback (lib/cashbackPolicy.ts — the estimate's own
+  // policy layer, deliberately separate from Financial Core's
+  // computeCommissionSplit) before showing a customer-facing "Dự kiến
   // hoàn" estimate, so what the customer sees is always their split
   // amount, never the marketplace's own cut. Purely a display value either
   // way — the real ledger amount always comes from the order's own
@@ -273,17 +288,20 @@ export type CreateRedirectResult =
       platform: Platform;
       cacheHit: boolean;
       estimatedCommission?: { amount: number; currency: string };
+      // Present exactly when estimatedCommission was computed by the
+      // Worker itself from a real ACCESSTRADE datafeed price (Shopee/
+      // Lazada only — see lib/cashbackPolicy.ts's PriceSource) rather than
+      // being TikTok's own direct per-product commission field.
+      estimatedCommissionPriceSource?: 'ACCESSTRADE_DATAFEED';
       // Shopee/Lazada's counterpart to estimatedCommission — a RATE
-      // (fraction, e.g. 0.018) instead of an amount, since neither
-      // platform's create-link response ever includes a product price to
-      // turn a rate into one (see workers/accesstrade-sync's
-      // fetchCampaignCommissionRate for exactly where this real rate is
-      // parsed from and its reliability tier — a campaign-wide default,
-      // not a per-product exact rate). get-cashback-link/page.tsx combines
-      // it with the product's own independently-scraped real price
-      // (lib/productPreview.ts) once that resolves, the same way it
-      // already combines TikTok's estimatedCommission with
-      // computeCommissionSplit — never a guessed placeholder price.
+      // (fraction, e.g. 0.018) instead of an amount, present only when the
+      // Worker found a real campaign rate but NOT a real datafeed price
+      // for this specific product (see workers/accesstrade-sync's
+      // fetchCampaignCommissionRate/lookupDatafeedPrice for exactly where
+      // each comes from). get-cashback-link/page.tsx combines it with the
+      // product's own independently-scraped real price
+      // (lib/productPreview.ts) once that resolves — never a guessed
+      // placeholder price.
       estimatedCommissionRate?: number;
     };
 
@@ -418,6 +436,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           platform,
           cacheHit: true,
           ...(existing.estimatedCommission ? { estimatedCommission: existing.estimatedCommission } : {}),
+          ...(existing.estimatedCommissionPriceSource ? { estimatedCommissionPriceSource: existing.estimatedCommissionPriceSource } : {}),
           ...(existing.estimatedCommissionRate ? { estimatedCommissionRate: existing.estimatedCommissionRate } : {}),
         };
       }
@@ -437,6 +456,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           expiresAt: Timestamp.fromMillis(newExpiry),
           hitCount: increment(1),
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
+          ...(retry.priceSource ? { estimatedCommissionPriceSource: retry.priceSource } : {}),
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
         });
         return {
@@ -447,6 +467,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           platform,
           cacheHit: true,
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
+          ...(retry.priceSource ? { estimatedCommissionPriceSource: retry.priceSource } : {}),
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
         };
       }
@@ -483,6 +504,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     expiresAt: Timestamp.fromMillis(now + REDIRECT_CACHE_TTL_MS),
     hitCount: 0,
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
+    ...(attempt.priceSource ? { estimatedCommissionPriceSource: attempt.priceSource } : {}),
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
   });
 
@@ -494,6 +516,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     platform,
     cacheHit: false,
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
+    ...(attempt.priceSource ? { estimatedCommissionPriceSource: attempt.priceSource } : {}),
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
   };
 }

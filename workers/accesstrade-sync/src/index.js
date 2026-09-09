@@ -390,6 +390,102 @@ async function fetchCampaignCommissionRate(env, platform, campaignId) {
   return rate;
 }
 
+// Real product PRICE for Shopee/Lazada, needed to turn commissionRate into
+// an actual ₫ amount — neither platform's create-link response, nor any
+// working ACCESSTRADE API, nor a plain fetch() of the product page itself
+// (client-rendered SPA, confirmed live) can supply one. Investigated and
+// ruled out (2026-09-09) before finding this:
+//   - Shopee's own public item API (shopee.vn/api/v4/item/get, the same
+//     one their SPA calls client-side) — real, live-tested from BOTH a
+//     plain curl AND from this Worker's own Cloudflare edge network,
+//     both blocked identically ({"error":90309999}, HTTP 403). Confirmed
+//     via external sources (Apify's own Shopee-scraper issue tracker,
+//     scraping.club's analysis) this is Shopee's fingerprint-based
+//     anti-bot gate — NOT bypassable via headers/cookies/proxies, only by
+//     full browser automation (which no free Cloudflare Workers-based
+//     approach can do) — every real open-source Shopee scraper found
+//     that actually extracts price uses Selenium/Playwright, none work
+//     via plain HTTP fetch.
+//   - Lazada's own equivalent — no plain/unsigned public endpoint found;
+//     its real page HTML (fetched live) references no api.lazada.vn/
+//     h5api-style call, consistent with the Alibaba-family "mtop" signed-
+//     request pattern (HMAC signing with an app secret this account
+//     doesn't have) used elsewhere in that ecosystem.
+// WORKING SOURCE FOUND: ACCESSTRADE documents a public, unauthenticated
+// static datafeed CSV per merchant — http://datafeed.accesstrade.me/
+// <domain>.csv (e.g. shopee.vn.csv) — confirmed live: real, current data
+// (Last-Modified same day), columns "sku","name","url","price",
+// "discount","image","desc","category", url in the canonical
+// shopee.vn/product/<shopid>/<itemid> form. Lazada's equivalent
+// (lazada.vn.csv) exists but is CURRENTLY EMPTY (header row only, 65
+// bytes) — consistent with its campaign having been approved only
+// 2026-09-07, likely not yet synced on ACCESSTRADE's side; re-check
+// later as the campaign matures.
+//
+// The Shopee file is ~18.5MB — too large to safely response.text() +
+// parse on Workers Free's 10ms-CPU-time-per-invocation budget (the
+// network transfer itself doesn't count against that budget, but
+// decoding/parsing tens of thousands of rows into memory does). Instead
+// this streams the response body in chunks and does a plain substring
+// search for the exact canonical URL (quoted, as it appears in the CSV)
+// — V8's native string search is fast enough per chunk to stay well
+// under budget, and the read stops the moment a match is found (or the
+// stream ends). Because `url` is column 3 and `price` is column 4 (BEFORE
+// the free-text `desc` column, which is the one field that can contain
+// embedded newlines inside its quotes), reading the few characters right
+// after a url match is always a clean, unambiguous price field — this
+// never needs full quote-aware CSV row parsing.
+const DATAFEED_CSV_URL = { SHOPEE: 'http://datafeed.accesstrade.me/shopee.vn.csv', LAZADA: 'http://datafeed.accesstrade.me/lazada.vn.csv' };
+const DATAFEED_SEARCH_BUFFER_CAP = 200000; // characters kept in memory while scanning — bounded regardless of file size
+
+function extractShopeeIds(productUrl) {
+  const m = /-i\.(\d+)\.(\d+)/.exec(productUrl);
+  return m ? { shopId: m[1], itemId: m[2] } : null;
+}
+
+// Datafeed URLs are the canonical shopee.vn/product/<shopid>/<itemid> form
+// (confirmed live in real rows) — a customer's pasted pretty-slug URL
+// (.../ten-san-pham-i.<shopid>.<itemid>) must be rebuilt into that exact
+// shape before it can match. Returns null (never guesses a URL) when the
+// ids can't be extracted.
+function canonicalShopeeDatafeedUrl(productUrl) {
+  const ids = extractShopeeIds(productUrl);
+  return ids ? `https://shopee.vn/product/${ids.shopId}/${ids.itemId}` : null;
+}
+
+async function lookupDatafeedPrice(platform, productUrl) {
+  const feedUrl = DATAFEED_CSV_URL[platform];
+  if (!feedUrl) return undefined;
+  const searchUrl = platform === 'SHOPEE' ? canonicalShopeeDatafeedUrl(productUrl) : productUrl;
+  if (!searchUrl) return undefined;
+  const needle = `"${searchUrl}"`;
+
+  const res = await fetch(feedUrl);
+  if (!res.ok || !res.body) return undefined;
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let carry = '';
+  let foundIdx = -1;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (!done) carry += decoder.decode(value, { stream: true });
+      if (foundIdx === -1) foundIdx = carry.indexOf(needle);
+      if (foundIdx !== -1) {
+        const after = carry.slice(foundIdx + needle.length);
+        const m = /^\s*,\s*"([\d.]+)"/.exec(after);
+        if (m) return Number(m[1]);
+        if (done) return undefined;
+        continue; // price field not fully buffered yet — read more
+      }
+      if (done) return undefined;
+      if (carry.length > DATAFEED_SEARCH_BUFFER_CAP) carry = carry.slice(-2000);
+    }
+  } finally {
+    try { reader.cancel(); } catch { /* best-effort */ }
+  }
+}
+
 async function handleCreateLink(request, env, ctx) {
   let body;
   try {
@@ -530,10 +626,32 @@ async function handleCreateLink(request, env, ctx) {
     } catch (err) {
       console.error(`campaign commission rate lookup threw (${platform}):`, err.message);
     }
+    // Real product price, when this platform's ACCESSTRADE datafeed CSV
+    // actually has this product (see lookupDatafeedPrice's own comment —
+    // Shopee's feed is real/current, Lazada's is currently empty). When
+    // both a rate and a real price are found, compute the full amount
+    // HERE (server-side) rather than making the frontend rely on its own
+    // scraped-preview price (lib/productPreview.ts), which is far less
+    // reliable for these two platforms (client-rendered SPA pages, no
+    // server-rendered price) — see CASHBACK_POLICY/computeEstimatedCashback
+    // in apps/web/lib/cashbackPolicy.ts for how priceSource downgrades to
+    // 'SCRAPED_PREVIEW'/confidence 'MEDIUM' when this lookup comes back
+    // empty and the frontend has to fall back to its own scrape.
+    let datafeedPrice;
+    if (commissionRate) {
+      try {
+        datafeedPrice = await lookupDatafeedPrice(platform, productUrl);
+      } catch (err) {
+        console.error(`datafeed price lookup threw (${platform}):`, err.message);
+      }
+    }
+    const commission = commissionRate && datafeedPrice
+      ? { amount: commissionRate * datafeedPrice, currency: 'VND' }
+      : undefined;
     return Response.json({
       supported: true,
       affLink: successLink.short_link || successLink.aff_link,
-      ...(commissionRate ? { commissionRate } : {}),
+      ...(commission ? { commission, priceSource: 'ACCESSTRADE_DATAFEED' } : commissionRate ? { commissionRate } : {}),
     });
   }
 
@@ -980,6 +1098,18 @@ export default {
           ? parseLazadaModalDirectRate(commissionPolicyHtml)
           : undefined;
       return Response.json({ campaignId, platform, ok, status, parsedRate, name: json?.data?.[0]?.name });
+    }
+    // TEMPORARY — verifies lookupDatafeedPrice against a real URL (must be
+    // a URL that actually exists in that platform's datafeed CSV, e.g. one
+    // taken straight from a real row, to prove the search mechanism itself
+    // works before wiring it into the real customer flow). Remove once
+    // this investigation concludes either way.
+    if (url.pathname === '/debug/datafeed-lookup') {
+      const platform = url.searchParams.get('platform');
+      const productUrl = url.searchParams.get('url');
+      const startedAt = Date.now();
+      const price = await lookupDatafeedPrice(platform, productUrl);
+      return Response.json({ platform, productUrl, price: price ?? null, ms: Date.now() - startedAt });
     }
     return new Response('OK', { status: 200 });
   },
