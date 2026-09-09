@@ -474,45 +474,36 @@ export default function GetCashbackLinkPage() {
                     </div>
                     <div className="quick-product-info-text">
                       <h3 className="quick-product-title">{productPreview?.title || `Sản phẩm liên kết qua ${result.platform}`}</h3>
-                      {/* Only ever a POSITIVE signal, never a negative one —
-                          a real product photo resolving from the scraper is
-                          good evidence the link points at a real, live
-                          listing, but the reverse isn't true: Shopee's
-                          common "tên-shop/id" share-link format (as opposed
-                          to the canonical /product/{shopId}/{itemId} form)
-                          serves a bare SPA shell with zero scrapable meta
-                          tags for real products too (verified live against
-                          a link a real customer pasted), so no image here
-                          must never be read as "not a real product". */}
-                      {productPreview?.image && (
-                        <div className="quick-product-verified-badge">✅ Đã xác minh sản phẩm thật</div>
-                      )}
                       {/* estimatedCommission is ONLY ever the real figure
-                          ACCESSTRADE's own create-link response returned
-                          (see lib/redirectLink.ts's own comment — TikTok
-                          Shop's v2 API is the one endpoint that documents
-                          this field, confirmed live 2026-09-09; Shopee/
-                          Lazada's v1 endpoint never returns it, confirmed
-                          against ACCESSTRADE's own docs, so those two
-                          platforms fall to the "Đang xác định..." branch
-                          below until/unless that changes). Never guessed or
-                          hardcoded. computeCommissionSplit is the exact
-                          same pure function the real ledger write uses
-                          (lib/orderEntry.ts) — this preview applies the
-                          same customer/platform split a real order would,
-                          rather than showing the platform's raw, undivided
-                          commission. Defaults to the no-referrer split
-                          (same 80% already shown in the fixed line below)
-                          since this runs before any order/referrer exists
-                          — purely a display estimate, never written to
-                          any order/ledger/wallet document. */}
-                      <p className="quick-product-note quick-product-estimate">
-                        {result.estimatedCommission ? (
-                          <strong>🤑 Dự kiến hoàn: {formatCurrency(computeCommissionSplit(result.estimatedCommission.amount, false).customerAmount, lang)}</strong>
-                        ) : (
-                          <strong>🤑 Dự kiến hoàn: Đang xác định...</strong>
-                        )}
-                        <br />
+                          ACCESSTRADE's own API returned (see
+                          lib/redirectLink.ts's own comment for exactly
+                          which endpoint/field, per platform) — never
+                          guessed or hardcoded. computeCommissionSplit is
+                          the exact same pure function the real ledger
+                          write uses (lib/orderEntry.ts) — this preview
+                          applies the same customer/platform split a real
+                          order would, so what's shown here is the
+                          customer's own split amount, never the
+                          marketplace's raw, undivided commission. Replaces
+                          the old photo-verification badge entirely — this
+                          is now the single, most prominent line in the
+                          card (see globals.css's .quick-product-estimate-*
+                          rules) since "product is supported" is already
+                          shown by the 🟢 status line above. Defaults to the
+                          no-referrer split (same 80% already shown in the
+                          fixed line below) since this runs before any
+                          order/referrer exists — purely a display
+                          estimate, never written to any order/ledger/
+                          wallet document. */}
+                      <div className="quick-product-estimate-block">
+                        <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
+                        <span className="quick-product-estimate-amount">
+                          {result.estimatedCommission
+                            ? formatCurrency(computeCommissionSplit(result.estimatedCommission.amount, false).customerAmount, lang)
+                            : 'Đang xác định...'}
+                        </span>
+                      </div>
+                      <p className="quick-product-note">
                         Số tiền chính xác được xác nhận khi đơn hàng được đối soát.
                       </p>
                       <div

@@ -5924,16 +5924,30 @@ p {
   font-weight: 800;
 }
 
-/* Positive-only signal — see the comment above where this renders in
-   app/get-cashback-link/page.tsx for why its absence is never shown as a
-   "not a real product" warning. */
-.quick-product-verified-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.7rem;
+/* The single most prominent line in the product card (see the comment
+   above where this renders in app/get-cashback-link/page.tsx) — a real,
+   computed cashback estimate when ACCESSTRADE provides the data to
+   compute one, otherwise "Đang xác định...". Deliberately larger/bolder
+   than every other line in the card, including the platform-detected/
+   supported badges above it. */
+.quick-product-estimate-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 4px;
+}
+
+.quick-product-estimate-label {
+  font-size: 0.82rem;
   font-weight: 700;
-  color: var(--success);
-  margin-bottom: 3px;
+  color: #15803d;
+}
+
+.quick-product-estimate-amount {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #15803d;
+  line-height: 1.15;
 }
 
 .quick-voucher-panel {

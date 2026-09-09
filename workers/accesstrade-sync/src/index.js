@@ -241,6 +241,65 @@ function buildTrackingFields(body) {
   return fields;
 }
 
+// Shopee/Lazada's /v1/product_link/create response never includes a
+// commission field (confirmed against ACCESSTRADE's own docs — unlike
+// TikTok Shop's v2 create_link). /v1/commission_policies is the one other
+// documented endpoint that can supply one WITHOUT requiring a per-product
+// lookup this app has no way to do: /v1/product_detail needs a
+// transaction_id that only exists after a real click (not before a
+// customer even buys), and /v1/datafeeds can't be searched by URL and only
+// returns a text category slug, never ACCESSTRADE's numeric category_id —
+// so a category/product-specific override in this response can never be
+// resolved from a bare pasted URL. Only the campaign-wide `default` entry
+// is usable without guessing. Response is campaign-level (not per-request),
+// documented to change at most monthly (see its own `taget_month` field),
+// so it's cached at Cloudflare's edge (free on every plan, no KV/Durable
+// Object needed) to keep this off the hot path for repeat requests.
+const COMMISSION_POLICY_CACHE_TTL_S = 3600;
+
+async function fetchCommissionPolicyDefault(env, campaignId) {
+  if (!campaignId) return null;
+  const cacheKey = new Request(`https://commission-policy-cache.internal/?camp_id=${encodeURIComponent(campaignId)}`);
+  const cache = caches.default;
+  try {
+    const cached = await cache.match(cacheKey);
+    if (cached) return await cached.json();
+  } catch (err) {
+    console.error('commission_policies cache read failed:', err.message);
+  }
+  const { ok, json } = await accesstradeApi(env, 'GET', '/v1/commission_policies', { query: { camp_id: campaignId } });
+  if (!ok || !json) {
+    console.error('commission_policies fetch failed:', JSON.stringify(json));
+    return null;
+  }
+  console.log(`commission_policies (camp_id=${campaignId}) raw response:`, JSON.stringify(json));
+  try {
+    await cache.put(cacheKey, new Response(JSON.stringify(json), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${COMMISSION_POLICY_CACHE_TTL_S}` },
+    }));
+  } catch (err) {
+    console.error('commission_policies cache write failed:', err.message);
+  }
+  return json;
+}
+
+// Only the fixed-fee shape (reward_type 1: sales_price is a flat amount
+// per order, independent of order value) can be turned into a real
+// customer-facing estimate without a product price — which Shopee/
+// Lazada's create-link response never has. reward_type 2 (order-value
+// ratio) is left unresolved rather than guessed: computing amount = price
+// × ratio would need a real price this endpoint doesn't provide, and using
+// min/max or any placeholder price would be exactly the fabricated number
+// this project's rules forbid.
+function deriveDefaultPolicyCommission(policy) {
+  const def = policy?.default?.[0];
+  if (!def) return undefined;
+  if (Number(def.reward_type) === 1 && Number(def.sales_price) > 0) {
+    return { amount: Number(def.sales_price), currency: 'VND' };
+  }
+  return undefined;
+}
+
 async function handleCreateLink(request, env) {
   let body;
   try {
@@ -369,7 +428,22 @@ async function handleCreateLink(request, env) {
       console.log(`create_link (${platform}) not eligible (url not in success_link):`, JSON.stringify(json));
       return Response.json({ supported: false, reason: 'not_in_campaign' });
     }
-    return Response.json({ supported: true, affLink: successLink.short_link || successLink.aff_link });
+    // Best-effort only — see deriveDefaultPolicyCommission's own comment.
+    // A failure here must never fail the link itself (the aff_link above
+    // is already real and usable regardless of whether an estimate can be
+    // shown alongside it).
+    let commission;
+    try {
+      const policy = await fetchCommissionPolicyDefault(env, campaignId);
+      commission = deriveDefaultPolicyCommission(policy);
+    } catch (err) {
+      console.error(`commission_policies (${platform}) lookup threw:`, err.message);
+    }
+    return Response.json({
+      supported: true,
+      affLink: successLink.short_link || successLink.aff_link,
+      ...(commission ? { commission } : {}),
+    });
   }
 
   return Response.json({ supported: false, reason: 'unsupported_platform' });
