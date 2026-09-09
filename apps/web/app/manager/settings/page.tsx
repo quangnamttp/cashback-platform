@@ -32,6 +32,13 @@ export default function AdminSettingsPage() {
   const [backfillingWallet, setBackfillingWallet] = useState(false);
   const [backfillWalletResult, setBackfillWalletResult] = useState<{ usersScanned: number; usersUpdated: number } | 'error' | null>(null);
 
+  // Collapsed by default — these are one-off maintenance actions (backup,
+  // one-time backfills), not something opened regularly, and this list
+  // only ever grows over time. Keeping them tucked away by default is
+  // what keeps this page from getting longer every time a new one-time
+  // tool is added here.
+  const [showMaintenanceTools, setShowMaintenanceTools] = useState(false);
+
   const [rates, setRates] = useState<SystemRates>(DEFAULT_RATES);
   const [ratesForm, setRatesForm] = useState<SystemRates>(DEFAULT_RATES);
   const [showRatesForm, setShowRatesForm] = useState(false);
@@ -236,92 +243,114 @@ export default function AdminSettingsPage() {
       </section>
 
       <section className="panel">
-        <h3>💾 Backup log cũ lên Google Drive</h3>
-        <p className="muted-copy">
-          Không còn Cloud Scheduler nên việc dọn dữ liệu cũ chỉ chạy khi bạn bấm nút này. Xuất các bản ghi{' '}
-          <code>adminAuditLogs</code> cũ hơn số ngày bên dưới thành file CSV, tải thẳng vào Google Drive cá nhân của
-          bạn (yêu cầu đăng nhập Google lần đầu), rồi xoá khỏi Firestore để cơ sở dữ liệu luôn nhẹ.
-        </p>
-
-        {!isGoogleDriveConfigured() && (
-          <p className="admin-gate-error" style={{ marginTop: 10 }}>
-            Chưa cấu hình Google OAuth Client ID (<code>NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID</code>) — xem hướng dẫn kết nối Drive.
-          </p>
-        )}
-
-        <div className="admin-action-row" style={{ marginTop: 10, alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            Cũ hơn
-            <input
-              type="number"
-              min={1}
-              value={backupDays}
-              onChange={(e) => setBackupDays(Number(e.target.value) || 30)}
-              style={{ width: 70 }}
-            />
-            ngày
-          </label>
-          <button className="button button-primary" onClick={handleBackup} disabled={backingUp || !isGoogleDriveConfigured()}>
-            {backingUp ? 'Đang backup...' : '☁️ Backup & dọn dẹp'}
-          </button>
-        </div>
-
-        {backupResult === 'error' && <p className="admin-gate-error" style={{ marginTop: 8 }}>Backup thất bại, vui lòng thử lại.</p>}
-        {backupResult && backupResult !== 'error' && (
-          <p className="muted-copy" style={{ marginTop: 8 }}>
-            {backupResult.count === 0
-              ? 'Không có bản ghi nào đủ cũ để backup.'
-              : `✓ Đã backup và xoá ${backupResult.count} bản ghi. `}
-            {backupResult.webViewLink && (
-              <a href={backupResult.webViewLink} target="_blank" rel="noreferrer">Xem file trên Drive</a>
-            )}
-          </p>
-        )}
-      </section>
-
-      <section className="panel">
-        <h3>🔄 Cập nhật hiển thị đơn hàng cho khách (chạy 1 lần)</h3>
-        <p className="muted-copy">
-          Đơn hàng tạo từ ACCESSTRADE (khi kích hoạt thật) sẽ ẩn khỏi khách hàng cho tới khi Admin duyệt — đơn thủ công
-          không đổi gì, vẫn hiển thị như trước. Để lịch sử đơn hàng của khách không bị trống, các đơn cũ tạo trước khi
-          có cơ chế này cần được đánh dấu &quot;hiển thị&quot; một lần. Bấm nút này ngay sau khi bản cập nhật này lên
-          production — an toàn khi bấm nhiều lần (lần sau không làm gì nếu đã chạy rồi).
-        </p>
-        <button className="button button-primary" style={{ marginTop: 10 }} onClick={handleBackfill} disabled={backfilling}>
-          {backfilling ? 'Đang cập nhật...' : '🔄 Chạy cập nhật'}
-        </button>
-        {backfillResult === 'error' && <p className="admin-gate-error" style={{ marginTop: 8 }}>Cập nhật thất bại, vui lòng thử lại.</p>}
-        {backfillResult && backfillResult !== 'error' && (
-          <p className="muted-copy" style={{ marginTop: 8 }}>
-            ✓ Đã quét {backfillResult.scanned} đơn hàng, cập nhật {backfillResult.updated} đơn chưa có cờ hiển thị.
-          </p>
-        )}
-      </section>
-
-      <section className="panel">
-        <h3>🔄 Đồng bộ số dư khả dụng ví (chạy 1 lần)</h3>
-        <p className="muted-copy">
-          Số &quot;Khả dụng&quot; khách thấy trên ví luôn tính trực tiếp từ lịch sử cashback đã giải phóng — đúng, không
-          đổi. Nhưng lệnh rút tiền lại kiểm tra một bộ đếm riêng (<code>walletBalances</code>) chỉ được cập nhật kể từ
-          khi cơ chế này ra đời — cashback đã giải phóng từ trước đó chưa từng được cộng vào bộ đếm này, nên khách vẫn
-          thấy đủ tiền nhưng bấm rút lại báo lỗi &quot;số dư đã thay đổi&quot;. Bấm nút này để đồng bộ lại đúng bằng số
-          thật — an toàn khi bấm nhiều lần.
-        </p>
         <button
-          className="button button-primary"
-          style={{ marginTop: 10 }}
-          onClick={handleBackfillWallet}
-          disabled={backfillingWallet}
+          type="button"
+          className="settings-collapsible-header"
+          onClick={() => setShowMaintenanceTools((v) => !v)}
+          aria-expanded={showMaintenanceTools}
         >
-          {backfillingWallet ? 'Đang đồng bộ...' : '🔄 Chạy đồng bộ'}
+          <h3 style={{ margin: 0 }}>🛠️ Công cụ bảo trì (backup, cập nhật dữ liệu 1 lần)</h3>
+          <span className="settings-collapsible-chevron">{showMaintenanceTools ? '▲' : '▼'}</span>
         </button>
-        {backfillWalletResult === 'error' && (
-          <p className="admin-gate-error" style={{ marginTop: 8 }}>Đồng bộ thất bại, vui lòng thử lại.</p>
-        )}
-        {backfillWalletResult && backfillWalletResult !== 'error' && (
-          <p className="muted-copy" style={{ marginTop: 8 }}>
-            ✓ Đã quét {backfillWalletResult.usersScanned} người dùng có cashback, đồng bộ lại {backfillWalletResult.usersUpdated} người bị lệch số dư.
+
+        {!showMaintenanceTools && (
+          <p className="muted-copy" style={{ marginTop: 6 }}>
+            Backup log cũ, các nút cập nhật/đồng bộ dữ liệu chạy 1 lần — nhấn để mở.
           </p>
+        )}
+
+        {showMaintenanceTools && (
+          <div className="settings-collapsible-body">
+            <div className="settings-maintenance-item">
+              <h4>💾 Backup log cũ lên Google Drive</h4>
+              <p className="muted-copy">
+                Không còn Cloud Scheduler nên việc dọn dữ liệu cũ chỉ chạy khi bạn bấm nút này. Xuất các bản ghi{' '}
+                <code>adminAuditLogs</code> cũ hơn số ngày bên dưới thành file CSV, tải thẳng vào Google Drive cá nhân
+                của bạn (yêu cầu đăng nhập Google lần đầu), rồi xoá khỏi Firestore để cơ sở dữ liệu luôn nhẹ.
+              </p>
+
+              {!isGoogleDriveConfigured() && (
+                <p className="admin-gate-error" style={{ marginTop: 10 }}>
+                  Chưa cấu hình Google OAuth Client ID (<code>NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID</code>) — xem hướng dẫn kết nối Drive.
+                </p>
+              )}
+
+              <div className="admin-action-row" style={{ marginTop: 10, alignItems: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Cũ hơn
+                  <input
+                    type="number"
+                    min={1}
+                    value={backupDays}
+                    onChange={(e) => setBackupDays(Number(e.target.value) || 30)}
+                    style={{ width: 70 }}
+                  />
+                  ngày
+                </label>
+                <button className="button button-primary" onClick={handleBackup} disabled={backingUp || !isGoogleDriveConfigured()}>
+                  {backingUp ? 'Đang backup...' : '☁️ Backup & dọn dẹp'}
+                </button>
+              </div>
+
+              {backupResult === 'error' && <p className="admin-gate-error" style={{ marginTop: 8 }}>Backup thất bại, vui lòng thử lại.</p>}
+              {backupResult && backupResult !== 'error' && (
+                <p className="muted-copy" style={{ marginTop: 8 }}>
+                  {backupResult.count === 0
+                    ? 'Không có bản ghi nào đủ cũ để backup.'
+                    : `✓ Đã backup và xoá ${backupResult.count} bản ghi. `}
+                  {backupResult.webViewLink && (
+                    <a href={backupResult.webViewLink} target="_blank" rel="noreferrer">Xem file trên Drive</a>
+                  )}
+                </p>
+              )}
+            </div>
+
+            <div className="settings-maintenance-item">
+              <h4>🔄 Cập nhật hiển thị đơn hàng cho khách (chạy 1 lần)</h4>
+              <p className="muted-copy">
+                Đơn hàng tạo từ ACCESSTRADE (khi kích hoạt thật) sẽ ẩn khỏi khách hàng cho tới khi Admin duyệt — đơn thủ
+                công không đổi gì, vẫn hiển thị như trước. Để lịch sử đơn hàng của khách không bị trống, các đơn cũ tạo
+                trước khi có cơ chế này cần được đánh dấu &quot;hiển thị&quot; một lần. An toàn khi bấm nhiều lần (lần
+                sau không làm gì nếu đã chạy rồi).
+              </p>
+              <button className="button button-primary" style={{ marginTop: 10 }} onClick={handleBackfill} disabled={backfilling}>
+                {backfilling ? 'Đang cập nhật...' : '🔄 Chạy cập nhật'}
+              </button>
+              {backfillResult === 'error' && <p className="admin-gate-error" style={{ marginTop: 8 }}>Cập nhật thất bại, vui lòng thử lại.</p>}
+              {backfillResult && backfillResult !== 'error' && (
+                <p className="muted-copy" style={{ marginTop: 8 }}>
+                  ✓ Đã quét {backfillResult.scanned} đơn hàng, cập nhật {backfillResult.updated} đơn chưa có cờ hiển thị.
+                </p>
+              )}
+            </div>
+
+            <div className="settings-maintenance-item">
+              <h4>🔄 Đồng bộ số dư khả dụng ví (chạy 1 lần)</h4>
+              <p className="muted-copy">
+                Số &quot;Khả dụng&quot; khách thấy trên ví luôn tính trực tiếp từ lịch sử cashback đã giải phóng —
+                đúng, không đổi. Nhưng lệnh rút tiền lại kiểm tra một bộ đếm riêng (<code>walletBalances</code>) chỉ
+                được cập nhật kể từ khi cơ chế này ra đời — cashback đã giải phóng từ trước đó chưa từng được cộng vào
+                bộ đếm này, nên khách vẫn thấy đủ tiền nhưng bấm rút lại báo lỗi &quot;số dư đã thay đổi&quot;. An toàn
+                khi bấm nhiều lần.
+              </p>
+              <button
+                className="button button-primary"
+                style={{ marginTop: 10 }}
+                onClick={handleBackfillWallet}
+                disabled={backfillingWallet}
+              >
+                {backfillingWallet ? 'Đang đồng bộ...' : '🔄 Chạy đồng bộ'}
+              </button>
+              {backfillWalletResult === 'error' && (
+                <p className="admin-gate-error" style={{ marginTop: 8 }}>Đồng bộ thất bại, vui lòng thử lại.</p>
+              )}
+              {backfillWalletResult && backfillWalletResult !== 'error' && (
+                <p className="muted-copy" style={{ marginTop: 8 }}>
+                  ✓ Đã quét {backfillWalletResult.usersScanned} người dùng có cashback, đồng bộ lại {backfillWalletResult.usersUpdated} người bị lệch số dư.
+                </p>
+              )}
+            </div>
+          </div>
         )}
       </section>
 

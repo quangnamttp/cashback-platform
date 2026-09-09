@@ -1872,6 +1872,49 @@ p {
   gap: 8px;
 }
 
+.settings-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.settings-collapsible-chevron {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.settings-collapsible-body {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-maintenance-item {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.settings-maintenance-item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.settings-maintenance-item h4 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
 .btn-approve {
   display: inline-flex;
   align-items: center;
