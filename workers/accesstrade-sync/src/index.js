@@ -312,15 +312,29 @@ async function handleCreateLink(request, env) {
     // product_commission is the ONE documented field across all 3
     // platforms' create-link responses that carries a real (not derived,
     // not guessed) commission figure at link-creation time — see
-    // ACCESSTRADE's TikTok Shop v2 docs. Forwarded through as internal/
-    // admin-only data (see apps/web/lib/redirectLink.ts's
-    // estimatedCommission — never rendered on the customer-facing page,
-    // this project's marketing copy always frames the number as "80% hoa
-    // hồng" instead of the real rate). Never sent when absent — no
+    // ACCESSTRADE's TikTok Shop v2 docs. Forwarded to the frontend so
+    // get-cashback-link can preview a "Dự kiến hoàn" estimate (see
+    // apps/web/lib/redirectLink.ts's estimatedCommission for how it's
+    // split before ever being shown). Never sent when absent — no
     // fallback/guessed value substituted here.
-    const commission = data.product_commission?.amount
-      ? { amount: Number(data.product_commission.amount), currency: data.product_commission.currency || 'VND' }
-      : undefined;
+    //
+    // Prefer a direct commission.amount; only fall back to rate × price
+    // when amount is absent but both rate and a price are present.
+    // Verified live 2026-09-09 against a real response: amount=15438.4566,
+    // rate=0.03888, price=397000 (397000*0.03888=15437.76 ≈ amount,
+    // confirming rate is a plain fraction of price, not a percentage, and
+    // this formula matches what ACCESSTRADE itself computed).
+    const pc = data.product_commission;
+    let commission;
+    if (pc?.amount != null && Number(pc.amount) > 0) {
+      commission = { amount: Number(pc.amount), currency: pc.currency || 'VND' };
+    } else if (pc?.rate != null) {
+      const rate = Number(pc.rate);
+      const price = Number(data.product_price?.minimum_amount ?? data.product_price?.maximum_amount);
+      if (rate > 0 && price > 0) {
+        commission = { amount: rate * price, currency: pc.currency || data.product_price?.currency || 'VND' };
+      }
+    }
     return Response.json({
       supported: true,
       affLink: data.aff_short_url || data.aff_url,

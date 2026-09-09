@@ -249,16 +249,17 @@ export type CreateRedirectResult =
   // affLink), so callers no longer need to separately check an
   // isRealAffiliateLink flag. estimatedCommission is ONLY ever the real
   // figure ACCESSTRADE's own create-link response returned (TikTok Shop's
-  // v2 API alone documents this field) — undefined for every other case,
-  // including Shopee/Lazada, which never received one from ACCESSTRADE to
-  // begin with. INTERNAL/ADMIN USE ONLY — this is the marketplace's real,
-  // much-lower take-home commission, which this project's customer-facing
-  // copy deliberately never shows bare (marketing always frames it as "80%
-  // hoa hồng" instead — see get-cashback-link/page.tsx's fixed
-  // COMMISSION_SPLIT line). No customer-facing screen may render this
-  // field; it exists so a future /manager page can show admins the real
-  // expected commission before an order lands. The real ledger amount
-  // always comes from the order's own confirmed commission regardless.
+  // v2 API alone documents this field, confirmed live 2026-09-09) —
+  // undefined for every other case, including Shopee/Lazada, which never
+  // received one from ACCESSTRADE to begin with (v1 endpoint doesn't
+  // document it). This is the platform's RAW, undivided commission — never
+  // rendered bare anywhere; get-cashback-link/page.tsx runs it through
+  // computeCommissionSplit (lib/orderEntry.ts, the exact same function the
+  // real ledger write uses) before showing a customer-facing "Dự kiến
+  // hoàn" estimate, so what the customer sees is always their split
+  // amount, never the marketplace's own cut. Purely a display value either
+  // way — the real ledger amount always comes from the order's own
+  // confirmed commission at settlement time, never from this estimate.
   | {
       status: 'supported';
       code: string;

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { mockPlatforms } from '../../lib/mock-data';
 import { createOrReuseRedirect, detectPlatform, ensureUrlScheme, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform } from '../../lib/redirectLink';
-import { COMMISSION_SPLIT } from '../../lib/orderEntry';
+import { COMMISSION_SPLIT, computeCommissionSplit } from '../../lib/orderEntry';
 import { fetchProductPreview, extractProductNameFromUrl, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
@@ -38,11 +38,11 @@ type CheckResult =
   | { status: 'no_tracking'; platformCode: Platform; platform: string; reason: AffiliateLinkFailureReason; fallbackUrl: string }
   // Reaching 'supported' now itself means a real tracking link exists —
   // see lib/redirectLink.ts's createOrReuseRedirect, which never returns
-  // this status any other way. estimatedCommission is carried through only
-  // for a future admin view — see that field's own comment in
-  // lib/redirectLink.ts for why THIS customer-facing page must never
-  // render it (real rate stays internal; marketing copy always says "80%
-  // hoa hồng" instead).
+  // this status any other way. estimatedCommission is the marketplace's
+  // RAW commission (see that field's own comment in lib/redirectLink.ts)
+  // — this page runs it through computeCommissionSplit before ever
+  // showing a number (see the "Dự kiến hoàn" render below), so the
+  // customer only ever sees their own split amount, never the raw figure.
   | {
       status: 'supported';
       platformCode: Platform;
@@ -487,19 +487,31 @@ export default function GetCashbackLinkPage() {
                       {productPreview?.image && (
                         <div className="quick-product-verified-badge">✅ Đã xác minh sản phẩm thật</div>
                       )}
-                      {/* The affiliate network's own link-creation API
-                          (confirmed against its official docs, both
-                          endpoints this site calls) never returns a
-                          commission or rate field at this step — commission
-                          is only known once a real order is confirmed. So
-                          this can never show a computed number here —
-                          showing one would be a guess dressed up as fact.
-                          (If a specific platform's product-search API ever
-                          documents a real, per-product rate, this is the
-                          one place to swap in a real "Hoa hồng dự kiến"
-                          figure — never before that's actually true.) */}
-                      <p className="quick-product-note">
-                        Chưa xác định được mức hoàn tiền cho sản phẩm này.
+                      {/* estimatedCommission is ONLY ever the real figure
+                          ACCESSTRADE's own create-link response returned
+                          (see lib/redirectLink.ts's own comment — TikTok
+                          Shop's v2 API is the one endpoint that documents
+                          this field, confirmed live 2026-09-09; Shopee/
+                          Lazada's v1 endpoint never returns it, confirmed
+                          against ACCESSTRADE's own docs, so those two
+                          platforms fall to the "Đang xác định..." branch
+                          below until/unless that changes). Never guessed or
+                          hardcoded. computeCommissionSplit is the exact
+                          same pure function the real ledger write uses
+                          (lib/orderEntry.ts) — this preview applies the
+                          same customer/platform split a real order would,
+                          rather than showing the platform's raw, undivided
+                          commission. Defaults to the no-referrer split
+                          (same 80% already shown in the fixed line below)
+                          since this runs before any order/referrer exists
+                          — purely a display estimate, never written to
+                          any order/ledger/wallet document. */}
+                      <p className="quick-product-note quick-product-estimate">
+                        {result.estimatedCommission ? (
+                          <strong>🤑 Dự kiến hoàn: {formatCurrency(computeCommissionSplit(result.estimatedCommission.amount, false).customerAmount, lang)}</strong>
+                        ) : (
+                          <strong>🤑 Dự kiến hoàn: Đang xác định...</strong>
+                        )}
                         <br />
                         Số tiền chính xác được xác nhận khi đơn hàng được đối soát.
                       </p>
