@@ -301,7 +301,21 @@ async function handleCreateLink(request, env) {
       console.error('create_link (tiktok) unexpected response shape:', JSON.stringify(json));
       return Response.json({ supported: false, reason: 'technical_error' });
     }
-    return Response.json({ supported: true, affLink: json.aff_short_url || json.aff_url });
+    // product_commission is the ONE documented field across all 3
+    // platforms' create-link responses that carries a real (not derived,
+    // not guessed) commission figure at link-creation time — see
+    // ACCESSTRADE's TikTok Shop v2 docs. Forwarded through as-is so the
+    // frontend can show it (see apps/web/lib/redirectLink.ts's
+    // estimatedCommission) instead of the generic "chưa xác định" note;
+    // never sent when absent — no fallback/guessed value substituted here.
+    const commission = json.product_commission?.amount
+      ? { amount: Number(json.product_commission.amount), currency: json.product_commission.currency || 'VND' }
+      : undefined;
+    return Response.json({
+      supported: true,
+      affLink: json.aff_short_url || json.aff_url,
+      ...(commission ? { commission } : {}),
+    });
   }
 
   if (platform === 'SHOPEE' || platform === 'LAZADA') {

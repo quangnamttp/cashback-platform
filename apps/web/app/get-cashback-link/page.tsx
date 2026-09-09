@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { mockPlatforms } from '../../lib/mock-data';
-import { createOrReuseRedirect, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform } from '../../lib/redirectLink';
+import { createOrReuseRedirect, detectPlatform, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform } from '../../lib/redirectLink';
 import { COMMISSION_SPLIT } from '../../lib/orderEntry';
 import { fetchProductPreview, extractProductNameFromUrl, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
@@ -38,8 +38,21 @@ type CheckResult =
   | { status: 'no_tracking'; platformCode: Platform; platform: string; reason: AffiliateLinkFailureReason; fallbackUrl: string }
   // Reaching 'supported' now itself means a real tracking link exists —
   // see lib/redirectLink.ts's createOrReuseRedirect, which never returns
-  // this status any other way.
-  | { status: 'supported'; platformCode: Platform; platform: string; code: string; redirectUrl: string; destinationUrl: string; cacheHit: boolean };
+  // this status any other way. estimatedCommission is carried through only
+  // for a future admin view — see that field's own comment in
+  // lib/redirectLink.ts for why THIS customer-facing page must never
+  // render it (real rate stays internal; marketing copy always says "80%
+  // hoa hồng" instead).
+  | {
+      status: 'supported';
+      platformCode: Platform;
+      platform: string;
+      code: string;
+      redirectUrl: string;
+      destinationUrl: string;
+      cacheHit: boolean;
+      estimatedCommission?: { amount: number; currency: string };
+    };
 
 // Exactly the 3 customer-facing states this page can show — neutral
 // wording only, no ACCESSTRADE/campaign/Sub-ID/API terms. `not_in_campaign`
@@ -173,11 +186,38 @@ export default function GetCashbackLinkPage() {
       // it doesn't follow redirects, so tagging the bare shortlink with our
       // own tracking param instead of the real resolved product URL would
       // generate a "Mua ngay" link the marketplace can't attribute a
-      // purchase against. Resolve it first when the Worker is configured;
-      // on failure fall back to the original link rather than block link
-      // creation entirely — a link generated from the unresolved shortlink
-      // still works for the customer, it just won't track properly.
-      const targetLink = isShortlink(link) ? (await resolveShortlink(link)) || link : link;
+      // purchase against. Resolve it first when the Worker is configured.
+      //
+      // On a FAILED resolve, we deliberately do NOT fall through to
+      // ACCESSTRADE with the raw, unresolved shortlink: their create-link
+      // API can't follow a vt.tiktok.com/s.shopee.vn redirect itself, so it
+      // would very likely answer with the documented "not eligible" shape
+      // — which this app would then have to (wrongly) report as "no
+      // commission" even though we genuinely never found out. Surfacing
+      // this as its own resolve_error reason keeps that distinction
+      // honest (see AffiliateLinkFailureReason's comment in
+      // lib/redirectLink.ts) — the customer still gets the same neutral
+      // "try again" wording and can still buy via the original shortlink.
+      let targetLink = link;
+      if (isShortlink(link)) {
+        const resolved = await resolveShortlink(link);
+        if (!resolved) {
+          const platformCode = detectPlatform(link);
+          if (!platformCode) {
+            setResult({ status: 'unsupported' });
+            return;
+          }
+          setResult({
+            status: 'no_tracking',
+            platformCode,
+            platform: PLATFORM_LABEL[platformCode] ?? platformCode,
+            reason: 'resolve_error',
+            fallbackUrl: link,
+          });
+          return;
+        }
+        targetLink = resolved;
+      }
       const data = await createOrReuseRedirect(uid, targetLink);
       if (data.status === 'unsupported') {
         setResult({ status: 'unsupported' });
@@ -205,6 +245,7 @@ export default function GetCashbackLinkPage() {
         redirectUrl: data.redirectUrl,
         destinationUrl: data.destinationUrl,
         cacheHit: data.cacheHit,
+        estimatedCommission: data.estimatedCommission,
       });
 
       // Immediate, network-free title from the URL's own slug — shows the
