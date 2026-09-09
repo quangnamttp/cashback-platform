@@ -264,8 +264,133 @@ function buildTrackingFields(body) {
 // Given no real data source exists right now, Shopee/Lazada correctly
 // show "Đang xác định..." (see get-cashback-link/page.tsx) rather than a
 // guessed number — this is the honest, current state, not a shortcut.
+//
+// FOLLOW-UP investigation 2026-09-09, part 1: GET /v1/cashback/campaigns
+// (the "API Get campaign NEW" doc — a different, newer endpoint than the
+// dead commission_policies above) looked promising (structured JSON with
+// min/max_commission and a per-category all_commissions[] array) but
+// returns a REAL {"code":"PX00401","message":"Invalid token"} on this
+// account's key — same documented Authorization: Token {{access_key}}
+// format as every working endpoint, confirmed against the docs a second
+// time to rule out a transcription error. This account is not enrolled
+// for whatever tier gates this endpoint; not something fixable in code.
+//
+// FOLLOW-UP part 2 — WORKING: the CONFIRMED-working /v1/campaigns (same
+// endpoint used to look up category/description elsewhere) returns each
+// campaign's real, live commission policy as free-text HTML in
+// description.commission_policy — verified live against Shopee's and
+// Lazada's actual campaign objects (campaign_id from wrangler.toml):
+//   Lazada: a clean "Ngành hàng | Mức hoa hồng gốc trực tiếp | ... gián
+//     tiếp" table — 36/38 real categories at a flat 7.00% direct rate (2
+//     listed exceptions: "Tạp hóa" 2.20%, "Điện thoại & Máy tính bảng" 0%
+//     from 10/7/2025). Parsed below as the MODE of the direct-rate column
+//     — computed from the real table, not a hardcoded constant, and
+//     correct for ~95% of real categories today.
+//   Shopee: an explicit "Hoa hồng khách hàng cũ: 1.8%" (existing
+//     customer) vs "...khách hàng mới: 24%" (new customer, a time-limited
+//     acquisition bonus) label, further broken down by category — every
+//     real product category shows the SAME 1.8%/24% split (only a
+//     handful of non-physical-product categories — vouchers, food
+//     delivery, cinema, pet care, "khác" — are 0%). The EXISTING-customer
+//     rate is used as the conservative default: most site visitors
+//     already have a Shopee account, and defaulting to the much higher
+//     new-customer promo would systematically overstate the typical
+//     shopper's real cashback.
+// Neither text gives a product PRICE (needed to turn a % rate into a real
+// ₫ amount) — Shopee/Lazada's create-link response never has one either.
+// So this returns a RATE (not amount) — apps/web combines it with the
+// product's own real scraped price (lib/productPreview.ts, independent of
+// ACCESSTRADE) once that resolves, same as how the preview thumbnail/
+// title already arrive asynchronously. No category/customer-type
+// resolution for a SPECIFIC pasted product is possible (same URL→
+// category gap documented above), so this is explicitly the campaign-wide
+// modal/conservative-default tier, not an exact per-product rate — see
+// this file's own README-level notes and get-cashback-link/page.tsx's
+// rendering for how that's kept honest to the customer (never shown as
+// more precise than it is).
+function stripHtml(raw) {
+  return String(raw || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-async function handleCreateLink(request, env) {
+// "Hoa hồng khách hàng cũ: 1.8%" — a single labeled value, not a table;
+// simplest and most stable pattern to anchor on. Returns undefined (never
+// a guessed fallback) if ACCESSTRADE ever rewords this — the caller
+// degrades to "Đang xác định..." exactly like a missing field would.
+function parseShopeeExistingCustomerRate(commissionPolicyHtml) {
+  const text = stripHtml(commissionPolicyHtml);
+  const m = /Hoa hồng khách hàng cũ:\s*([\d.,]+)\s*%/i.exec(text);
+  if (!m) return undefined;
+  const pct = parseFloat(m[1].replace(',', '.'));
+  return Number.isFinite(pct) && pct > 0 ? pct / 100 : undefined;
+}
+
+// Table rows look like "<Ngành hàng name> 7.00% 3.50%" once HTML-stripped
+// (category name, direct %, indirect %) — extracts every row, then takes
+// the MODE of the direct-rate column as the representative default (not
+// picking a bound, not hardcoding — literally the rate that applies to
+// the most real categories in today's real table). Returns undefined if
+// fewer than a handful of rows parse (format changed enough that a mode
+// wouldn't be trustworthy) rather than trusting a thin/garbled result.
+function parseLazadaModalDirectRate(commissionPolicyHtml) {
+  const text = stripHtml(commissionPolicyHtml);
+  const rowRe = /([\p{L}][\p{L}0-9À-ỹ ,&()/-]*?)\s+([\d.,]+)%(?:\s*\([^)]*\))?\s+([\d.,]+)%(?:\s*\([^)]*\))?/gu;
+  const rates = [];
+  let m;
+  while ((m = rowRe.exec(text)) !== null) {
+    const direct = parseFloat(m[2].replace(',', '.'));
+    if (Number.isFinite(direct)) rates.push(direct);
+  }
+  if (rates.length < 10) return undefined;
+  const freq = new Map();
+  for (const r of rates) freq.set(r, (freq.get(r) || 0) + 1);
+  const [modeRate] = [...freq.entries()].sort((a, b) => b[1] - a[1])[0];
+  return modeRate > 0 ? modeRate / 100 : undefined;
+}
+
+const CAMPAIGN_COMMISSION_RATE_CACHE_TTL_S = 86400; // policy text changes at most monthly per its own "áp dụng từ" wording
+
+async function fetchCampaignCommissionRate(env, platform, campaignId) {
+  if (!campaignId) return undefined;
+  const cacheKey = new Request(`https://campaign-commission-rate-cache.internal/?campaign_id=${encodeURIComponent(campaignId)}`);
+  const cache = caches.default;
+  try {
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const { rate } = await cached.json();
+      return rate;
+    }
+  } catch (err) {
+    console.error(`campaign commission rate cache read failed (${platform}):`, err.message);
+  }
+
+  const { ok, json } = await accesstradeApi(env, 'GET', '/v1/campaigns', { query: { campaign_id: campaignId } });
+  if (!ok || !json?.data?.[0]) {
+    console.error(`campaign commission rate fetch failed (${platform}, campaign_id=${campaignId}):`, JSON.stringify(json));
+    return undefined;
+  }
+  const commissionPolicyHtml = json.data[0].description?.commission_policy;
+  const rate = platform === 'SHOPEE'
+    ? parseShopeeExistingCustomerRate(commissionPolicyHtml)
+    : parseLazadaModalDirectRate(commissionPolicyHtml);
+
+  console.log(`campaign commission rate (${platform}, campaign_id=${campaignId}): parsed rate=${rate}`);
+
+  try {
+    await cache.put(cacheKey, new Response(JSON.stringify({ rate: rate ?? null }), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${CAMPAIGN_COMMISSION_RATE_CACHE_TTL_S}` },
+    }));
+  } catch (err) {
+    console.error(`campaign commission rate cache write failed (${platform}):`, err.message);
+  }
+  return rate;
+}
+
+async function handleCreateLink(request, env, ctx) {
   let body;
   try {
     body = await request.json();
@@ -393,9 +518,23 @@ async function handleCreateLink(request, env) {
       console.log(`create_link (${platform}) not eligible (url not in success_link):`, JSON.stringify(json));
       return Response.json({ supported: false, reason: 'not_in_campaign' });
     }
-    // No commission field available for Shopee/Lazada right now — see the
-    // investigation note above this branch's top for what was checked.
-    return Response.json({ supported: true, affLink: successLink.short_link || successLink.aff_link });
+    // See fetchCampaignCommissionRate's own comment for exactly where this
+    // rate comes from (real campaign policy text, parsed) and its
+    // reliability tier. Best-effort only — cached at the edge so this is a
+    // cache hit for all but the first request per campaign per day; a
+    // failure here must never fail the link itself (the aff_link above is
+    // already real and usable regardless of whether a rate is found).
+    let commissionRate;
+    try {
+      commissionRate = await fetchCampaignCommissionRate(env, platform, campaignId);
+    } catch (err) {
+      console.error(`campaign commission rate lookup threw (${platform}):`, err.message);
+    }
+    return Response.json({
+      supported: true,
+      affLink: successLink.short_link || successLink.aff_link,
+      ...(commissionRate ? { commissionRate } : {}),
+    });
   }
 
   return Response.json({ supported: false, reason: 'unsupported_platform' });
@@ -809,18 +948,38 @@ async function pollOrders(env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/create-link') {
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: CORS_HEADERS });
       }
       if (request.method === 'POST') {
-        const res = await handleCreateLink(request, env);
+        const res = await handleCreateLink(request, env, ctx);
         const headers = new Headers(res.headers);
         Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
         return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
       }
+    }
+    // Read-only diagnostic: shows exactly what fetchCampaignCommissionRate
+    // parses for a given campaign, straight from the confirmed-working
+    // /v1/campaigns endpoint — no customer auth needed (nothing account/
+    // order-specific), no Firestore access, only ever reads. Useful to
+    // verify a rate stays sane after ACCESSTRADE reformats their policy
+    // text (see fetchCampaignCommissionRate's own comment).
+    if (url.pathname === '/debug/campaign') {
+      const campaignId = url.searchParams.get('campaign_id');
+      const platform = url.searchParams.get('platform');
+      const { ok, status, json } = await accesstradeApi(env, 'GET', '/v1/campaigns', {
+        query: { campaign_id: campaignId },
+      });
+      const commissionPolicyHtml = json?.data?.[0]?.description?.commission_policy;
+      const parsedRate = platform === 'SHOPEE'
+        ? parseShopeeExistingCustomerRate(commissionPolicyHtml)
+        : platform === 'LAZADA'
+          ? parseLazadaModalDirectRate(commissionPolicyHtml)
+          : undefined;
+      return Response.json({ campaignId, platform, ok, status, parsedRate, name: json?.data?.[0]?.name });
     }
     return new Response('OK', { status: 200 });
   },

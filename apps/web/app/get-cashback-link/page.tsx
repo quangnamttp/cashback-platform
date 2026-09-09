@@ -52,6 +52,11 @@ type CheckResult =
       destinationUrl: string;
       cacheHit: boolean;
       estimatedCommission?: { amount: number; currency: string };
+      // Shopee/Lazada's counterpart — a rate, not an amount (see that
+      // field's own comment in lib/redirectLink.ts). Combined with the
+      // product's own independently-scraped real price (productPreview
+      // state below) once available — see the estimatedCashback useMemo.
+      estimatedCommissionRate?: number;
     };
 
 // Exactly the 3 customer-facing states this page can show — neutral
@@ -142,6 +147,26 @@ export default function GetCashbackLinkPage() {
   }, []);
 
   const detectedPlatform = result?.status === 'supported' ? result.platformCode : null;
+
+  // Real customer-facing cashback estimate — either the TikTok path
+  // (ACCESSTRADE's own commission amount, split via computeCommissionSplit)
+  // or the Shopee/Lazada path (a real campaign commission RATE, see
+  // lib/redirectLink.ts's estimatedCommissionRate comment, combined with
+  // the product's own independently-scraped real price). productPreview
+  // resolves asynchronously (after the link itself), so this recomputes
+  // and the "Đang xác định..." placeholder upgrades to a real number the
+  // moment a price becomes available — never a guessed/placeholder price
+  // substituted when one doesn't.
+  const estimatedCashbackAmount = useMemo(() => {
+    if (result?.status !== 'supported') return undefined;
+    if (result.estimatedCommission) {
+      return computeCommissionSplit(result.estimatedCommission.amount, false).customerAmount;
+    }
+    if (result.estimatedCommissionRate && productPreview?.price) {
+      return computeCommissionSplit(result.estimatedCommissionRate * productPreview.price, false).customerAmount;
+    }
+    return undefined;
+  }, [result, productPreview]);
 
   const filteredVouchers = useMemo(() => {
     const group = platformGroups.find((g) => g.key === activeGroup) ?? platformGroups[0];
@@ -247,6 +272,7 @@ export default function GetCashbackLinkPage() {
         destinationUrl: data.destinationUrl,
         cacheHit: data.cacheHit,
         estimatedCommission: data.estimatedCommission,
+        estimatedCommissionRate: data.estimatedCommissionRate,
       });
 
       // Immediate, network-free title from the URL's own slug — shows the
@@ -498,9 +524,7 @@ export default function GetCashbackLinkPage() {
                       <div className="quick-product-estimate-block">
                         <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
                         <span className="quick-product-estimate-amount">
-                          {result.estimatedCommission
-                            ? formatCurrency(computeCommissionSplit(result.estimatedCommission.amount, false).customerAmount, lang)
-                            : 'Đang xác định...'}
+                          {estimatedCashbackAmount != null ? formatCurrency(estimatedCashbackAmount, lang) : 'Đang xác định...'}
                         </span>
                       </div>
                       <p className="quick-product-note">

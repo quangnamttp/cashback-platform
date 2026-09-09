@@ -176,7 +176,7 @@ export type AffiliateLinkFailureReason =
   | 'resolve_error';
 
 type AffiliateLinkAttempt =
-  | { affLink: string; commission?: { amount: number; currency: string } }
+  | { affLink: string; commission?: { amount: number; currency: string }; commissionRate?: number }
   | { reason: AffiliateLinkFailureReason };
 
 /**
@@ -210,9 +210,14 @@ async function tryCreateRealAffiliateLink(
       affLink?: string;
       reason?: AffiliateLinkFailureReason;
       commission?: { amount: number; currency: string } | null;
+      commissionRate?: number | null;
     } = await res.json();
     if (json.supported && json.affLink) {
-      return json.commission ? { affLink: json.affLink, commission: json.commission } : { affLink: json.affLink };
+      return {
+        affLink: json.affLink,
+        ...(json.commission ? { commission: json.commission } : {}),
+        ...(json.commissionRate ? { commissionRate: json.commissionRate } : {}),
+      };
     }
     return { reason: json.reason ?? 'worker_unreachable' };
   } catch {
@@ -268,6 +273,18 @@ export type CreateRedirectResult =
       platform: Platform;
       cacheHit: boolean;
       estimatedCommission?: { amount: number; currency: string };
+      // Shopee/Lazada's counterpart to estimatedCommission — a RATE
+      // (fraction, e.g. 0.018) instead of an amount, since neither
+      // platform's create-link response ever includes a product price to
+      // turn a rate into one (see workers/accesstrade-sync's
+      // fetchCampaignCommissionRate for exactly where this real rate is
+      // parsed from and its reliability tier — a campaign-wide default,
+      // not a per-product exact rate). get-cashback-link/page.tsx combines
+      // it with the product's own independently-scraped real price
+      // (lib/productPreview.ts) once that resolves, the same way it
+      // already combines TikTok's estimatedCommission with
+      // computeCommissionSplit — never a guessed placeholder price.
+      estimatedCommissionRate?: number;
     };
 
 /**
@@ -401,6 +418,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           platform,
           cacheHit: true,
           ...(existing.estimatedCommission ? { estimatedCommission: existing.estimatedCommission } : {}),
+          ...(existing.estimatedCommissionRate ? { estimatedCommissionRate: existing.estimatedCommissionRate } : {}),
         };
       }
 
@@ -419,6 +437,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           expiresAt: Timestamp.fromMillis(newExpiry),
           hitCount: increment(1),
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
+          ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
         });
         return {
           status: 'supported',
@@ -428,6 +447,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           platform,
           cacheHit: true,
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
+          ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
         };
       }
       await updateDoc(existingDoc.ref, { status: 'SUPERSEDED' });
@@ -463,6 +483,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     expiresAt: Timestamp.fromMillis(now + REDIRECT_CACHE_TTL_MS),
     hitCount: 0,
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
+    ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
   });
 
   return {
@@ -473,5 +494,6 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     platform,
     cacheHit: false,
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
+    ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
   };
 }
