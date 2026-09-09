@@ -130,6 +130,31 @@ export default function CashbackWalletPage() {
     };
   }, [uid]);
 
+  // Remembers the last-picked bank account per user so a reload/reopen
+  // doesn't reset the dropdown back to "Chọn tài khoản nhận" — only
+  // restored once (when the account list first arrives for this uid);
+  // after that, every change to selectedAccountId (the customer explicitly
+  // picking a different one, or clearing it) is what drives what's saved.
+  useEffect(() => {
+    if (!uid || bankAccounts.length === 0 || selectedAccountId) return;
+    try {
+      const saved = window.localStorage.getItem(`cb_withdraw_bank_${uid}`);
+      if (saved && bankAccounts.some((a) => a.id === saved)) setSelectedAccountId(saved);
+    } catch {
+      // localStorage unavailable — just skip restoring, no functional loss
+    }
+  }, [uid, bankAccounts, selectedAccountId]);
+
+  useEffect(() => {
+    if (!uid) return;
+    try {
+      if (selectedAccountId) window.localStorage.setItem(`cb_withdraw_bank_${uid}`, selectedAccountId);
+      else window.localStorage.removeItem(`cb_withdraw_bank_${uid}`);
+    } catch {
+      // best-effort only
+    }
+  }, [uid, selectedAccountId]);
+
   // No stored balance counter anywhere — always summed live from the
   // ledger + withdrawals, same rule the admin side already follows.
   //

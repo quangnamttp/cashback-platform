@@ -265,16 +265,24 @@ service cloud.firestore {
       // or the admin withdrawing the platform's 20% share out of the
       // virtual ADMIN_WALLET (never the admin's own personal uid, so it can
       // never be confused with — or accidentally merged into — a personal
-      // withdrawal request). The customer branch additionally caps `amount`
-      // against walletBalances/{uid}.available (see that match block) —
-      // the only real server-side stop on a withdrawal request exceeding
-      // the requester's actual balance; the ADMIN_WALLET branch is left as
-      // it already was (a separate, admin-only, 20%-of-ledger calculation
-      // on /manager/wallet, out of scope here).
+      // withdrawal request).
+      //
+      // The real server-side stop on over-withdrawing is reserveWithdrawal's
+      // OWN Firestore transaction (lib/walletBalance.ts) — it atomically
+      // checks amount <= available and decrements available BEFORE this
+      // create ever runs, gated by walletBalances' own update rule (owner-
+      // only, strictly decreasing, never negative). This rule used to
+      // ALSO check `amount <= walletBalances.available` — but by create
+      // time that field has already been decremented by this same amount,
+      // so the check was really enforcing `2*amount <= original balance`:
+      // every withdrawal over half the balance was rejected outright (a
+      // real bug, confirmed live — 150k out of 160k available failed every
+      // time). Removed; the transaction above is already the correct,
+      // race-safe enforcement point and doesn't need a second check here
+      // that was actually re-validating against the wrong number.
       allow create: if isSignedIn()
         && request.resource.data.status == 'PENDING_ADMIN'
-        && ((request.resource.data.userId == request.auth.uid
-             && request.resource.data.amount <= get(/databases/$(database)/documents/walletBalances/$(request.auth.uid)).data.available)
+        && (request.resource.data.userId == request.auth.uid
             || (isAdmin() && request.resource.data.userId == 'ADMIN_WALLET'));
       allow update: if isAdmin()
         || (isPaymentBot()
