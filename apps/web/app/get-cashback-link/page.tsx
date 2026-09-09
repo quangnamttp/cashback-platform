@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { mockPlatforms } from '../../lib/mock-data';
-import { createOrReuseRedirect, detectPlatform, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform } from '../../lib/redirectLink';
+import { createOrReuseRedirect, detectPlatform, ensureUrlScheme, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform } from '../../lib/redirectLink';
 import { COMMISSION_SPLIT } from '../../lib/orderEntry';
 import { fetchProductPreview, extractProductNameFromUrl, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
@@ -198,11 +198,12 @@ export default function GetCashbackLinkPage() {
       // honest (see AffiliateLinkFailureReason's comment in
       // lib/redirectLink.ts) — the customer still gets the same neutral
       // "try again" wording and can still buy via the original shortlink.
-      let targetLink = link;
-      if (isShortlink(link)) {
-        const resolved = await resolveShortlink(link);
+      const inputLink = ensureUrlScheme(link);
+      let targetLink = inputLink;
+      if (isShortlink(inputLink)) {
+        const resolved = await resolveShortlink(inputLink);
         if (!resolved) {
-          const platformCode = detectPlatform(link);
+          const platformCode = detectPlatform(inputLink);
           if (!platformCode) {
             setResult({ status: 'unsupported' });
             return;
@@ -212,7 +213,7 @@ export default function GetCashbackLinkPage() {
             platformCode,
             platform: PLATFORM_LABEL[platformCode] ?? platformCode,
             reason: 'resolve_error',
-            fallbackUrl: link,
+            fallbackUrl: inputLink,
           });
           return;
         }
@@ -332,7 +333,7 @@ export default function GetCashbackLinkPage() {
   const handleApplyVoucherStandalone = async () => {
     if (!uid || !link.trim()) return;
     try {
-      const trimmed = link.trim();
+      const trimmed = ensureUrlScheme(link);
       const targetLink = isShortlink(trimmed) ? (await resolveShortlink(trimmed)) || trimmed : trimmed;
       const r = await createOrReuseRedirect(uid, targetLink);
       if (r.status === 'supported') {
@@ -406,7 +407,7 @@ export default function GetCashbackLinkPage() {
                   Sàn này chưa được hệ thống hỗ trợ theo dõi hoàn tiền tự động, nên link bên dưới sẽ không được cộng
                   tiền hoàn — bạn vẫn có thể mua bình thường qua link gốc.
                 </p>
-                <a href={link} target="_blank" rel="noreferrer" className="button button-secondary get-link-unsupported-buy" style={{ display: 'inline-flex', marginTop: 4 }}>
+                <a href={ensureUrlScheme(link)} target="_blank" rel="noreferrer" className="button button-secondary get-link-unsupported-buy" style={{ display: 'inline-flex', marginTop: 4 }}>
                   🛒 Mua ngay (không hoàn tiền)
                 </a>
               </div>

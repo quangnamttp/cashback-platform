@@ -39,6 +39,24 @@ export function detectPlatform(rawUrl: string): Platform | null {
 }
 
 /**
+ * Real customers regularly paste/type a link with no http(s):// scheme
+ * (confirmed live 2026-09-09: a real customer's TikTok short-link paste was
+ * literally "vt.tiktok.com/..." with no scheme). Every scheme-anchored
+ * check downstream silently mishandles that: isShortlink's `^https?:\/\/`
+ * patterns simply don't match (so a real shortlink stops being recognized
+ * as one, skipping the resolve step entirely), and `new URL()` inside
+ * hasProductIdSignature/normalizeProductUrl/extractTikTokProductId throws
+ * on a schemeless string — the combination silently produced 'invalid_link'
+ * for a perfectly valid product URL. Called once, right where the raw
+ * textbox value is first read, so every downstream check always sees an
+ * absolute URL.
+ */
+export function ensureUrlScheme(rawInput: string): string {
+  const trimmed = rawInput.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+/**
  * Cheap structural check for "does this URL's path even look like it names
  * a real product" — every real product/shop/SKU id on Shopee, TikTok Shop
  * and Lazada is a long run of digits (confirmed live: a real Shopee item
