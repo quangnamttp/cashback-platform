@@ -1873,6 +1873,10 @@ p {
 }
 
 .btn-approve {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   height: 30px;
   padding: 0 12px;
   border-radius: 10px;
@@ -1881,9 +1885,14 @@ p {
   font-size: 0.8rem;
   font-weight: 700;
   border: 1px solid #86efac;
+  white-space: nowrap;
 }
 
 .btn-reject {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   height: 30px;
   padding: 0 12px;
   border-radius: 10px;
@@ -1892,6 +1901,7 @@ p {
   font-size: 0.8rem;
   font-weight: 700;
   border: 1px solid #fca5a5;
+  white-space: nowrap;
 }
 
 .admin-toolbar {
@@ -1908,7 +1918,7 @@ p {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
-  font-size: 0.85rem;
+  font-size: 1rem;
   min-width: 220px;
 }
 
@@ -1966,7 +1976,7 @@ p {
   border: none;
   background: transparent;
   outline: none;
-  font-size: 0.88rem;
+  font-size: 1rem;
   color: var(--text);
 }
 
@@ -1977,7 +1987,7 @@ p {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 600;
   min-width: 160px;
   cursor: pointer;
@@ -3076,7 +3086,7 @@ p {
   height: 46px;
   border: none;
   background: transparent;
-  font-size: 0.9rem;
+  font-size: 1rem;
   outline: none;
 }
 
@@ -3272,7 +3282,7 @@ p {
   border: none;
   background: transparent;
   outline: none;
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .order-filter-select {
@@ -3281,7 +3291,7 @@ p {
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--text-secondary);
 }
 
@@ -4785,7 +4795,7 @@ p {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .field-group-row {
@@ -5336,7 +5346,7 @@ p {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  font-size: 0.9rem;
+  font-size: 1rem;
   margin-top: 6px;
 }
 
@@ -5492,7 +5502,7 @@ p {
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  font-size: 0.88rem;
+  font-size: 1rem;
   margin-top: 6px;
   color: var(--text);
 }

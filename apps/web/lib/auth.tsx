@@ -27,24 +27,48 @@ import { generateShortCode } from './ids';
 const NOT_CONFIGURED_ERROR = 'firebase-not-configured';
 const SESSION_TOKEN_KEY = 'cb_session_token';
 
-// Facebook/Messenger, Instagram, Zalo and Line's in-app webviews are the
-// single most common cause of the Google login "Đang xử lý..." freeze in
-// practice — Google's OAuth actively refuses or silently breaks inside
-// them, so signInWithPopup's postMessage-based completion signal never
-// reaches the opener and the promise just never settles. signInWithRedirect
-// (a real page navigation, not a popup) works inside these webviews.
-function isInAppBrowser(): boolean {
+// Facebook/Messenger, Instagram, Zalo and Line's in-app webviews, AND a
+// PWA running in standalone display mode (installed via "Add to Home
+// Screen") are the causes of the Google login "Đang xử lý..." freeze seen
+// in practice — both break signInWithPopup the same way: Google's OAuth
+// either refuses to run inside them, or the popup's postMessage-based
+// completion signal never makes it back to the opener, so the promise
+// never settles even with the timeout below. Confirmed live: the "web"
+// (regular browser tab) case recovers fine with the timeout below, but
+// the "web app" (installed/standalone) case still hit that exact timeout
+// message and needed a full app restart to log in — standalone mode is a
+// normal browser UA (this check wouldn't have caught it) just running
+// with the SAME popup-communication restrictions as an in-app webview.
+// signInWithRedirect (a real page navigation, not a popup) works in both.
+function shouldUseRedirectForGoogle(): boolean {
   if (typeof navigator === 'undefined') return false;
-  return /FBAN|FBAV|FB_IAB|Instagram|Zalo|Line\//i.test(navigator.userAgent || '');
+  const isInAppWebview = /FBAN|FBAV|FB_IAB|Instagram|Zalo|Line\//i.test(navigator.userAgent || '');
+  const isStandalonePwa =
+    typeof window !== 'undefined' &&
+    (window.matchMedia?.('(display-mode: standalone)').matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true);
+  return isInAppWebview || isStandalonePwa;
 }
 
-// signInWithPopup has no built-in timeout of its own — a blocked popup,
-// strict third-party-storage settings, or a browser that silently drops
-// the popup's completion signal can leave this promise pending forever,
-// which is exactly the "Đang xử lý..." freeze reported on real devices.
-// This race guarantees the UI always recovers; a genuine success/failure
-// from Firebase settles almost immediately in the normal case anyway.
+// Neither signInWithPopup nor the plain REST-backed signInWithEmailAndPassword/
+// createUserWithEmailAndPassword have a built-in timeout — a blocked popup,
+// strict third-party-storage settings, a slow/dropped network request, or a
+// browser that silently drops the popup's completion signal can all leave
+// these promises pending forever, which is exactly the "Đang xử lý..."
+// freeze reported on real devices (for BOTH the Google button and the plain
+// email/password form). This race guarantees the UI always recovers; a
+// genuine success/failure settles almost immediately in the normal case.
 const GOOGLE_POPUP_TIMEOUT_MS = 25000;
+const EMAIL_AUTH_TIMEOUT_MS = 20000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error('auth-timeout')), ms);
+    }),
+  ]);
+}
 
 // The ONLY two accounts that can ever hold admin rights — must match
 // firestore.rules' isBootstrapAdminEmail() AND the email allowlist inside
@@ -317,7 +341,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isFirebaseConfigured()) throw new Error(NOT_CONFIGURED_ERROR);
     const auth = getFirebaseAuth();
     await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
-    await signInWithEmailAndPassword(auth, email, password);
+    await withTimeout(signInWithEmailAndPassword(auth, email, password), EMAIL_AUTH_TIMEOUT_MS);
   }, []);
 
   const registerWithEmail = useCallback(async (
@@ -330,7 +354,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const auth = getFirebaseAuth();
     await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
     pendingProfileRef.current = profile;
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const cred = await withTimeout(createUserWithEmailAndPassword(auth, email, password), EMAIL_AUTH_TIMEOUT_MS);
     if (profile.fullName) {
       // Best-effort — ensureOwnProfile (via pendingProfileRef, race-free
       // against onAuthStateChanged) is what actually guarantees the name
@@ -352,7 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // the same machine/browser without first signing out of Google itself.
     provider.setCustomParameters({ prompt: 'select_account' });
 
-    if (isInAppBrowser()) {
+    if (shouldUseRedirectForGoogle()) {
       // Navigates away — intentionally doesn't resolve normally here.
       // onAuthStateChanged (plus the getRedirectResult effect below, for
       // surfacing any error) picks up the result once the browser returns.

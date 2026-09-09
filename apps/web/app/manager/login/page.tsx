@@ -16,6 +16,9 @@ function mapFirebaseError(err: unknown): string {
   if (err instanceof Error && err.message === 'popup-timeout') {
     return 'Đăng nhập Google quá thời gian chờ — vui lòng thử lại.';
   }
+  if (err instanceof Error && err.message === 'auth-timeout') {
+    return 'Kết nối quá lâu, vui lòng kiểm tra mạng và thử lại.';
+  }
   if (err instanceof FirebaseError) {
     if (err.code === 'auth/popup-closed-by-user') return '';
     if (err.code === 'auth/too-many-requests') return 'Bạn thử sai quá nhiều lần, vui lòng thử lại sau ít phút.';

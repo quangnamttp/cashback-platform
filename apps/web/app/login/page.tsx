@@ -52,6 +52,9 @@ function LoginPageInner() {
     if (err instanceof Error && err.message === 'popup-timeout') {
       return t('login_error_popup_timeout');
     }
+    if (err instanceof Error && err.message === 'auth-timeout') {
+      return t('login_error_timeout');
+    }
     if (err instanceof FirebaseError) {
       switch (err.code) {
         case 'auth/invalid-email':

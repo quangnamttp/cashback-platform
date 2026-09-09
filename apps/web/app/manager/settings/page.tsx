@@ -8,6 +8,7 @@ import { useAuth, BOOTSTRAP_ADMIN_EMAILS } from '../../../lib/auth';
 import { isGoogleDriveConfigured } from '../../../lib/googleDrive';
 import { backupOldAuditLogs } from '../../../lib/backupLogs';
 import { backfillOrdersCustomerVisible } from '../../../lib/backfillOrders';
+import { backfillWalletBalances } from '../../../lib/backfillWalletBalances';
 import { subscribeSystemRates, saveSystemRates, DEFAULT_RATES, type SystemRates } from '../../../lib/systemConfig';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
@@ -27,6 +28,9 @@ export default function AdminSettingsPage() {
 
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{ scanned: number; updated: number } | 'error' | null>(null);
+
+  const [backfillingWallet, setBackfillingWallet] = useState(false);
+  const [backfillWalletResult, setBackfillWalletResult] = useState<{ usersScanned: number; usersUpdated: number } | 'error' | null>(null);
 
   const [rates, setRates] = useState<SystemRates>(DEFAULT_RATES);
   const [ratesForm, setRatesForm] = useState<SystemRates>(DEFAULT_RATES);
@@ -73,6 +77,20 @@ export default function AdminSettingsPage() {
       setBackupResult('error');
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const handleBackfillWallet = async () => {
+    setBackfillingWallet(true);
+    setBackfillWalletResult(null);
+    try {
+      const result = await backfillWalletBalances();
+      setBackfillWalletResult(result);
+    } catch (err) {
+      console.error('wallet backfill failed', err);
+      setBackfillWalletResult('error');
+    } finally {
+      setBackfillingWallet(false);
     }
   };
 
@@ -276,6 +294,33 @@ export default function AdminSettingsPage() {
         {backfillResult && backfillResult !== 'error' && (
           <p className="muted-copy" style={{ marginTop: 8 }}>
             ✓ Đã quét {backfillResult.scanned} đơn hàng, cập nhật {backfillResult.updated} đơn chưa có cờ hiển thị.
+          </p>
+        )}
+      </section>
+
+      <section className="panel">
+        <h3>🔄 Đồng bộ số dư khả dụng ví (chạy 1 lần)</h3>
+        <p className="muted-copy">
+          Số &quot;Khả dụng&quot; khách thấy trên ví luôn tính trực tiếp từ lịch sử cashback đã giải phóng — đúng, không
+          đổi. Nhưng lệnh rút tiền lại kiểm tra một bộ đếm riêng (<code>walletBalances</code>) chỉ được cập nhật kể từ
+          khi cơ chế này ra đời — cashback đã giải phóng từ trước đó chưa từng được cộng vào bộ đếm này, nên khách vẫn
+          thấy đủ tiền nhưng bấm rút lại báo lỗi &quot;số dư đã thay đổi&quot;. Bấm nút này để đồng bộ lại đúng bằng số
+          thật — an toàn khi bấm nhiều lần.
+        </p>
+        <button
+          className="button button-primary"
+          style={{ marginTop: 10 }}
+          onClick={handleBackfillWallet}
+          disabled={backfillingWallet}
+        >
+          {backfillingWallet ? 'Đang đồng bộ...' : '🔄 Chạy đồng bộ'}
+        </button>
+        {backfillWalletResult === 'error' && (
+          <p className="admin-gate-error" style={{ marginTop: 8 }}>Đồng bộ thất bại, vui lòng thử lại.</p>
+        )}
+        {backfillWalletResult && backfillWalletResult !== 'error' && (
+          <p className="muted-copy" style={{ marginTop: 8 }}>
+            ✓ Đã quét {backfillWalletResult.usersScanned} người dùng có cashback, đồng bộ lại {backfillWalletResult.usersUpdated} người bị lệch số dư.
           </p>
         )}
       </section>
