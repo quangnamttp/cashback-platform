@@ -164,6 +164,23 @@ export default {
         .transform(upstream)
         .text(); // drain the stream so the handlers above actually run
 
+      // TikTok serves an anti-bot interstitial (title "Security Check") to
+      // a plain fetch() hitting a direct shop.tiktok.com/.../pdp/<id> URL
+      // that lacks the signed share-session params only present when the
+      // request arrives via TikTok's own vt.tiktok.com redirect chain —
+      // confirmed live 2026-09-09 (a customer can paste either form: a
+      // fresh share link, or a URL copied straight from their own address
+      // bar/app, which has no such params). That interstitial has its own
+      // real og:title/og:image, so MetaCollector above picks them up as if
+      // they were the product's — caught here and treated as a failed
+      // scrape (both nulled) so the caller falls back to its own local
+      // slug-derived title instead of showing "Security Check" + a random
+      // stock photo as if it were the real product.
+      if (result.title === 'Security Check') {
+        result.title = null;
+        result.image = null;
+      }
+
       return jsonResponse(result, 200);
     } catch {
       return jsonResponse({ error: 'fetch failed' }, 502);
