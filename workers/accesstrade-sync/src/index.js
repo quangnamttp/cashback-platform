@@ -297,7 +297,15 @@ async function handleCreateLink(request, env) {
       console.log('create_link (tiktok) not eligible (documented failure shape):', JSON.stringify(json));
       return Response.json({ supported: false, reason: 'not_in_campaign' });
     }
-    if (!json?.aff_url) {
+    // aff_url/aff_short_url/product_commission all live under `data`, NOT
+    // top-level — confirmed against a REAL production response 2026-09-09
+    // ({"data":{"aff_url":...,"aff_short_url":...,"product_commission":
+    // {...}},"message":"create link affiliate success","status":true}).
+    // Reading json.aff_url directly (the bug that shipped until now) is
+    // always undefined, so every real success was being misread as an
+    // unexpected shape and reported as technical_error.
+    const data = json?.data;
+    if (!data?.aff_url) {
       console.error('create_link (tiktok) unexpected response shape:', JSON.stringify(json));
       return Response.json({ supported: false, reason: 'technical_error' });
     }
@@ -310,12 +318,12 @@ async function handleCreateLink(request, env) {
     // this project's marketing copy always frames the number as "80% hoa
     // hồng" instead of the real rate). Never sent when absent — no
     // fallback/guessed value substituted here.
-    const commission = json.product_commission?.amount
-      ? { amount: Number(json.product_commission.amount), currency: json.product_commission.currency || 'VND' }
+    const commission = data.product_commission?.amount
+      ? { amount: Number(data.product_commission.amount), currency: data.product_commission.currency || 'VND' }
       : undefined;
     return Response.json({
       supported: true,
-      affLink: json.aff_short_url || json.aff_url,
+      affLink: data.aff_short_url || data.aff_url,
       ...(commission ? { commission } : {}),
     });
   }
