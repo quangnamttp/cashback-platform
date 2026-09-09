@@ -100,11 +100,11 @@ export function isShortlink(productUrl: string): boolean {
  * redirects through the Worker (same request the Worker already makes for
  * scraping — this just reads its `resolvedUrl` field). MUST be called
  * (and its result used, not the original shortlink) before generating a
- * tracking link for one of these — normalizeProductUrl/buildAffiliateUrl
- * in lib/redirectLink.ts only strip/append query params, they don't
- * follow redirects, so tagging a bare shortlink with our own tracking
- * param instead of the real product URL produces a link the marketplace
- * can't attribute a purchase against. Returns null if the Worker isn't
+ * tracking link for one of these — normalizeProductUrl in lib/redirectLink.ts
+ * only strips/appends query params, it doesn't follow redirects, so
+ * sending a bare shortlink to ACCESSTRADE's create-link instead of the
+ * real product URL produces a link the marketplace can't attribute a
+ * purchase against. Returns null if the Worker isn't
  * configured or the resolve failed — caller should fall back to the
  * original (unresolved) URL rather than block link creation entirely.
  */

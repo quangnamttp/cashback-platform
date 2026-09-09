@@ -80,60 +80,18 @@ export function normalizeProductUrl(rawUrl: string): string {
   }
 }
 
-const AFFILIATE_TAG_PARAM: Record<Platform, string> = {
-  SHOPEE: 'af_sub_id',
-  TIKTOK_SHOP: 'sub_id',
-  LAZADA: 'aff_sub',
-};
-
 /**
- * Deliberately NOT a real Shopee/TikTok Shop/Lazada affiliate link — that
- * was investigated and ruled out (2026-09, confirmed against a real Shopee
- * affiliate short link the site owner generated from their own approved
- * account): resolving `s.shopee.vn/<code>` shows every real Shopee
- * affiliate link carries a `credential_token` and `gads_t_sig` — opaque,
- * per-link tokens cryptographically signed by Shopee's own backend via a
- * mobile-measurement-partner integration at link-creation time. There is
- * no formula to reproduce those for an arbitrary pasted product URL; doing
- * it for real requires calling Shopee's authenticated affiliate API with a
- * secret key, which cannot be done safely from a static site with no
- * server (the key would ship in the public JS bundle). The same applies to
- * TikTok Shop's and Lazada's own affiliate/creator link systems.
- *
- * So this only tags the ORIGINAL product URL with our own tracking code as
- * a sub-id-shaped param (`af_sub_id`/`sub_id`/`aff_sub` — the real param
- * *names* each platform's affiliate links use, chosen so the destination
- * URL still looks like a normal deep link) purely for OUR OWN internal
- * click/order reconciliation (matching a /go?code= hit to a redirectCache
- * row) — it does not make the marketplace attribute commission to this
- * site. That's why every order and its real commission amount is entered
- * by hand in /manager/orders: there is no automated affiliate payout
- * signal to trust on a Spark-plan, backend-free deployment. Confirmed with
- * the site owner as the intended, permanent design — not a stopgap.
- *
- * THE SWAP POINT for a real integration: this function's signature
- * (platform + product URL + our own tracking code -> destination URL) is
- * already exactly what AffiliateProvider.buildTrackingLink expects (see
- * lib/affiliateProvider.ts) — trackingCode here IS the subId that
- * interface documents. Once a provider is approved, replacing this body
- * with a real provider's deep-link call (still only from server/build-time
- * config — never a secret key shipped in this client bundle) is a
- * self-contained change; nothing that calls buildAffiliateUrl needs to
- * change.
+ * Machine-readable reason a real ACCESSTRADE link could NOT be created —
+ * surfaced to the UI (in neutral, non-technical wording — see
+ * get-cashback-link/page.tsx's own label map) so "not real" is never
+ * silent. `not_in_campaign` is the ONLY value that means "this product
+ * genuinely has no commission" (the Worker only returns it when
+ * ACCESSTRADE's own documented response says so — see that Worker's
+ * handleCreateLink); every other value is a technical failure and must
+ * never be read as "no commission" — see createOrReuseRedirect below,
+ * which still lets the customer buy via the plain original link either
+ * way, just with different wording.
  */
-function buildAffiliateUrl(platform: Platform, normalizedUrl: string, trackingCode: string): string {
-  try {
-    const url = new URL(normalizedUrl);
-    url.searchParams.set(AFFILIATE_TAG_PARAM[platform], trackingCode);
-    url.searchParams.set('utm_source', 'hoantiendv');
-    url.searchParams.set('utm_medium', 'cashback');
-    return url.toString();
-  } catch {
-    return normalizedUrl;
-  }
-}
-
-/** Machine-readable reason a real ACCESSTRADE link could NOT be created — surfaced to the UI so "not real" is never silent. */
 export type AffiliateLinkFailureReason =
   | 'worker_not_configured'
   | 'not_authenticated'
@@ -141,6 +99,7 @@ export type AffiliateLinkFailureReason =
   | 'platform_maintenance'
   | 'not_configured'
   | 'not_in_campaign'
+  | 'technical_error'
   | 'unsupported_platform'
   | 'bad_request'
   | 'unauthenticated';
@@ -192,16 +151,19 @@ export function goUrl(code: string) {
 export type CreateRedirectResult =
   | { status: 'unsupported' }
   | { status: 'invalid_link' }
-  | {
-      status: 'supported';
-      code: string;
-      redirectUrl: string;
-      destinationUrl: string;
-      platform: Platform;
-      cacheHit: boolean;
-      isRealAffiliateLink: boolean;
-      failureReason?: AffiliateLinkFailureReason;
-    };
+  // No real ACCESSTRADE link was created — for EITHER reason (genuinely no
+  // commission, or a technical failure; `reason` tells them apart, see
+  // AffiliateLinkFailureReason's own comment). Never persisted to
+  // redirectCache (sections 2/8: no cache for either case) — fallbackUrl
+  // is simply the customer's own original, untouched link, safe to open
+  // directly with no tracking/attribution claim attached to it at all.
+  | { status: 'no_tracking'; platform: Platform; reason: AffiliateLinkFailureReason; fallbackUrl: string }
+  // Reaching this status is now itself the proof of a real ACCESSTRADE
+  // link (see createOrReuseRedirect below — this variant is only ever
+  // returned once tryCreateRealAffiliateLink has actually returned an
+  // affLink), so callers no longer need to separately check an
+  // isRealAffiliateLink flag.
+  | { status: 'supported'; code: string; redirectUrl: string; destinationUrl: string; platform: Platform; cacheHit: boolean };
 
 /**
  * Best-effort — called once fetchProductPreview (lib/productPreview.ts)
@@ -314,67 +276,69 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     const stillFresh = now < expiresAtMs && now - createdAtMs < REDIRECT_CACHE_MAX_LIFETIME_MS;
 
     if (stillFresh) {
-      const newExpiry = Math.min(now + REDIRECT_CACHE_TTL_MS, createdAtMs + REDIRECT_CACHE_MAX_LIFETIME_MS);
-      const updateFields: Record<string, unknown> = {
-        lastHitAt: serverTimestamp(),
-        expiresAt: Timestamp.fromMillis(newExpiry),
-        hitCount: increment(1),
-      };
-
-      let destinationUrl: string = existing.destinationUrl;
-      // Pre-existing docs from before this field existed have neither —
-      // treated as "not a real link" (safest default: never claim a link
-      // is ACCESSTRADE-tracked without having actually recorded that).
-      let isRealAffiliateLink = !!existing.isRealAffiliateLink;
-      let failureReason: AffiliateLinkFailureReason | undefined;
-
-      // "Not real" reflects the WORKER's state at the moment this doc was
-      // first created (not configured yet, campaign not approved yet) —
-      // not a permanent fact about the product — so it's worth one retry
-      // per cache hit rather than being stuck false for the doc's whole
-      // TTL. Once real, never retried again (no point re-hitting the
-      // Worker for a link that already works) — same code/tracking id
-      // either way, only destinationUrl/isRealAffiliateLink can change.
-      if (!isRealAffiliateLink) {
-        const attempt = await tryCreateRealAffiliateLink(platform, normalized, existingDoc.id);
-        if ('affLink' in attempt) {
-          destinationUrl = attempt.affLink;
-          isRealAffiliateLink = true;
-          updateFields.destinationUrl = destinationUrl;
-          updateFields.isRealAffiliateLink = true;
-        } else {
-          failureReason = attempt.reason;
-        }
+      // Every doc that reaches this point is a real affiliate link — CASE
+      // A/B (no commission / technical error) no longer ever create one
+      // (see the no-cache path below), so a fresh cache hit is always the
+      // real-link case now.
+      if (existing.isRealAffiliateLink) {
+        const newExpiry = Math.min(now + REDIRECT_CACHE_TTL_MS, createdAtMs + REDIRECT_CACHE_MAX_LIFETIME_MS);
+        await updateDoc(existingDoc.ref, {
+          lastHitAt: serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(newExpiry),
+          hitCount: increment(1),
+        });
+        return {
+          status: 'supported',
+          code: existingDoc.id,
+          redirectUrl: goUrl(existingDoc.id),
+          destinationUrl: existing.destinationUrl,
+          platform,
+          cacheHit: true,
+        };
       }
 
-      await updateDoc(existingDoc.ref, updateFields);
-      return {
-        status: 'supported',
-        code: existingDoc.id,
-        redirectUrl: goUrl(existingDoc.id),
-        destinationUrl,
-        platform,
-        cacheHit: true,
-        isRealAffiliateLink,
-        failureReason,
-      };
+      // A doc left over from before this fix, cached as "not real" — retry
+      // once (the Worker's state may have changed since); a success
+      // upgrades it in place, a repeat failure retires it (SUPERSEDED) so
+      // it stops being hit on every future paste and this behaves exactly
+      // like a brand-new CASE A/B result below — no lingering fake cache.
+      const retry = await tryCreateRealAffiliateLink(platform, normalized, existingDoc.id);
+      if ('affLink' in retry) {
+        const newExpiry = Math.min(now + REDIRECT_CACHE_TTL_MS, createdAtMs + REDIRECT_CACHE_MAX_LIFETIME_MS);
+        await updateDoc(existingDoc.ref, {
+          destinationUrl: retry.affLink,
+          isRealAffiliateLink: true,
+          lastHitAt: serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(newExpiry),
+          hitCount: increment(1),
+        });
+        return {
+          status: 'supported',
+          code: existingDoc.id,
+          redirectUrl: goUrl(existingDoc.id),
+          destinationUrl: retry.affLink,
+          platform,
+          cacheHit: true,
+        };
+      }
+      await updateDoc(existingDoc.ref, { status: 'SUPERSEDED' });
+      return { status: 'no_tracking', platform, reason: retry.reason, fallbackUrl: productUrl };
     }
 
     await updateDoc(existingDoc.ref, { status: 'SUPERSEDED' });
   }
 
   const code = generateShortCode();
-  // Try a real ACCESSTRADE link first (workers/accesstrade-sync); fall
-  // back to the internal-tag-only link unchanged from before whenever
-  // that's unavailable (worker not configured, campaign not yet approved
-  // for this platform, or any error) — never a fabricated link either way.
-  // The fallback is still written as destinationUrl (so "Mua ngay" always
-  // has *somewhere* valid to send an already-open result card to), but
-  // isRealAffiliateLink stays false — callers must gate on that flag, not
-  // on whether destinationUrl merely exists.
   const attempt = await tryCreateRealAffiliateLink(platform, normalized, code);
-  const isRealAffiliateLink = 'affLink' in attempt;
-  const destinationUrl = isRealAffiliateLink ? attempt.affLink : buildAffiliateUrl(platform, normalized, code);
+
+  if (!('affLink' in attempt)) {
+    // CASE A (not_in_campaign, confirmed by ACCESSTRADE's own documented
+    // response) or CASE B (any other/technical reason) — never persisted
+    // to redirectCache either way (sections 2/8: no fake cache for a link
+    // that isn't real), customer still buys via their own original link,
+    // just distinguished by wording in the UI.
+    return { status: 'no_tracking', platform, reason: attempt.reason, fallbackUrl: productUrl };
+  }
 
   await setDoc(doc(db, 'redirectCache', code), {
     userId: uid,
@@ -382,8 +346,8 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     platform,
     normalizedProductUrl: normalized,
     originalUrl: productUrl,
-    destinationUrl,
-    isRealAffiliateLink,
+    destinationUrl: attempt.affLink,
+    isRealAffiliateLink: true,
     status: 'ACTIVE',
     createdAt: serverTimestamp(),
     lastHitAt: serverTimestamp(),
@@ -395,10 +359,8 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     status: 'supported',
     code,
     redirectUrl: goUrl(code),
-    destinationUrl,
+    destinationUrl: attempt.affLink,
     platform,
     cacheHit: false,
-    isRealAffiliateLink,
-    failureReason: 'reason' in attempt ? attempt.reason : undefined,
   };
 }

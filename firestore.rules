@@ -208,7 +208,7 @@ service cloud.firestore {
         || (isPaymentBot()
             && resource.data.status == 'PENDING'
             && request.resource.data.status in ['CONFIRMED', 'CANCELLED']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt', 'customerVisible'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedAt', 'customerVisible', 'eligibleAt'])
             // customerVisible may only ever flip PENDING's existing false/
             // absent to true here (the CONFIRMED case) or stay untouched
             // (the CANCELLED case) — never the reverse.

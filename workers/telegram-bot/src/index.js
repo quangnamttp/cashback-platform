@@ -514,13 +514,24 @@ async function tryClaimOrderStatus(env, idToken, orderId, expectedUpdateTime, st
   // A MANUAL order is already customerVisible:true, so this write is a
   // harmless no-op overwrite for it. CANCELLED never touches this field —
   // an admin-rejected AFFILIATE conversion must never become visible.
-  const fieldNames = status === 'CONFIRMED' ? ['status', 'confirmedAt', 'customerVisible'] : ['status', 'confirmedAt'];
+  //
+  // eligibleAt mirrors apps/web/lib/orderEntry.ts's approveOrdersBatch —
+  // same fixed 3-day wait, computed once here (this Worker's own clock,
+  // not the customer's) and never recomputed. Only ever a timeline display
+  // input (app/orders/page.tsx's deriveOrderTimelineStep) — never triggers
+  // any release on its own.
+  const fieldNames = status === 'CONFIRMED' ? ['status', 'confirmedAt', 'customerVisible', 'eligibleAt'] : ['status', 'confirmedAt'];
   const mask = fieldNames.map((p) => `updateMask.fieldPaths=${p}`).join('&');
   const body = {
     fields: {
       status: { stringValue: status },
       confirmedAt: { timestampValue: new Date().toISOString() },
-      ...(status === 'CONFIRMED' ? { customerVisible: { booleanValue: true } } : {}),
+      ...(status === 'CONFIRMED'
+        ? {
+            customerVisible: { booleanValue: true },
+            eligibleAt: { timestampValue: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString() },
+          }
+        : {}),
     },
   };
   const precondition = expectedUpdateTime

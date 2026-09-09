@@ -22,6 +22,20 @@ type OrderDoc = {
   commissionAmount: number;
   status: OrderStatus;
   orderDate?: { toDate: () => Date };
+  confirmedAt?: { toDate: () => Date };
+  // Set once at approval time (see lib/orderEntry.ts's approveOrdersBatch
+  // / workers/telegram-bot's tryClaimOrderStatus) — the earliest moment
+  // step ④ below can activate. Absent on any order approved before this
+  // field existed, or on a MANUAL order approved that way originally —
+  // deriveOrderTimelineStep treats a missing value as "not yet known",
+  // never as "already eligible".
+  eligibleAt?: { toMillis: () => number };
+  // Only meaningful for source:'AFFILIATE' — the affiliate network's own
+  // verdict on the commission, independent of this order's own status.
+  // Absent/undefined for a MANUAL order (no such upstream concept), which
+  // deriveOrderTimelineStep treats as "nothing to wait on".
+  commissionStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  source?: 'MANUAL' | 'AFFILIATE';
   // Set by lib/orderEntry.ts's upsertOrder when a REFUNDED order had
   // cashback that needed clawing back — customer-visible so a return
   // doesn't look like it silently kept a cashback it never really settled.
@@ -42,12 +56,40 @@ const statusPillClass: Record<OrderStatus, string> = {
   CANCELLED: 'order-pill danger',
 };
 
+// The 5-step customer timeline (section 4 of the "hoàn thiện nghiệp vụ"
+// request) — neutral language only, no ACCESSTRADE/Sub-ID/FROZEN/APPROVED
+// ever shown. Steps ①② both complete the instant an order is visible at
+// all (a PENDING AFFILIATE order is invisible by design — see
+// firestore.rules — so there's no earlier customer-visible state to show
+// separately for step ① alone). ③→④ needs BOTH the fixed eligibleAt
+// timestamp AND (for an AFFILIATE order only) the network's own commission
+// approval — a MANUAL order has no such upstream concept, so it's treated
+// as always satisfied for that part. ⑤ is the ledger's own RELEASED
+// status, the one moment real money actually reaches the wallet.
+type TimelineStep = 1 | 2 | 3 | 4 | 5;
+
+function deriveOrderTimelineStep(order: OrderDoc, ledgerStatus: 'FROZEN' | 'RELEASED' | 'REJECTED' | undefined): TimelineStep {
+  if (ledgerStatus === 'RELEASED') return 5;
+  const eligibleAtMs = order.eligibleAt?.toMillis?.() ?? null;
+  const commissionOk = order.source !== 'AFFILIATE' || order.commissionStatus === 'APPROVED';
+  if (eligibleAtMs !== null && Date.now() >= eligibleAtMs && commissionOk && ledgerStatus === 'FROZEN') return 4;
+  return 3;
+}
+
+const TIMELINE_LABELS: Record<TimelineStep, string> = {
+  1: 'Đơn hàng đã được ghi nhận',
+  2: 'Đơn hàng đã được xác nhận',
+  3: 'Đang chờ hoàn tiền',
+  4: 'Đủ điều kiện hoàn tiền',
+  5: '💰 Tiền hoàn đã vào ví',
+};
+
 export default function OrdersPage() {
   const { t, lang } = useLanguage();
   const { uid } = useAuth();
   usePageTitle(t('orders_title'));
   const [orders, setOrders] = useState<OrderDoc[]>([]);
-  const [ledgerByOrder, setLedgerByOrder] = useState<Record<string, number>>({});
+  const [ledgerByOrder, setLedgerByOrder] = useState<Record<string, { amount: number; status: 'FROZEN' | 'RELEASED' | 'REJECTED' }>>({});
   const [hasReferrer, setHasReferrer] = useState(false);
   const [query_, setQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
@@ -85,10 +127,11 @@ export default function OrdersPage() {
     const unsubLedger = onSnapshot(
       query(collection(db, 'cashbackLedger'), where('userId', '==', uid), where('type', '==', 'CUSTOMER_CASHBACK')),
       (snap) => {
-        const map: Record<string, number> = {};
+        const map: Record<string, { amount: number; status: 'FROZEN' | 'RELEASED' | 'REJECTED' }> = {};
         snap.docs.forEach((d) => {
-          const data = d.data() as { orderId: string; amount: number };
-          map[data.orderId] = (map[data.orderId] ?? 0) + data.amount;
+          const data = d.data() as { orderId: string; amount: number; status: 'FROZEN' | 'RELEASED' | 'REJECTED' };
+          const prev = map[data.orderId];
+          map[data.orderId] = { amount: (prev?.amount ?? 0) + data.amount, status: data.status };
         });
         setLedgerByOrder(map);
       },
@@ -103,7 +146,7 @@ export default function OrdersPage() {
   }, [uid]);
 
   const cashbackFor = (order: OrderDoc) =>
-    ledgerByOrder[order.id] ?? computeCommissionSplit(order.commissionAmount, hasReferrer).customerAmount;
+    ledgerByOrder[order.id]?.amount ?? computeCommissionSplit(order.commissionAmount, hasReferrer).customerAmount;
 
   const filtered = useMemo(() => {
     return orders.filter((row) => {
@@ -196,6 +239,11 @@ export default function OrdersPage() {
                         <span className={statusPillClass[item.status] ?? 'order-pill'}>
                           ● {t(statusKeyMap[item.status] as any) || item.status}
                         </span>
+                        {item.status === 'CONFIRMED' && (
+                          <div className="muted-copy" style={{ fontSize: '0.75rem', marginTop: 3 }}>
+                            {TIMELINE_LABELS[deriveOrderTimelineStep(item, ledgerByOrder[item.id]?.status)]}
+                          </div>
+                        )}
                         <div className="order-table-date">{date ? date.toLocaleString('vi-VN') : '—'}</div>
                         {item.cashbackClawback && (
                           <div className="muted-copy" style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: 4 }}>
@@ -256,25 +304,63 @@ export default function OrdersPage() {
             </div>
 
             <div className="modal-timeline-title">{t('modal_timeline_title')}</div>
-            <div>
-              <div className="modal-timeline-item">
-                <div className="modal-timeline-dot">＋</div>
-                <div className="modal-timeline-content">
-                  <strong>{t('modal_timeline_recorded')}</strong>
-                  <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
+            {activeOrder.status === 'CONFIRMED' ? (
+              (() => {
+                const currentStep = deriveOrderTimelineStep(activeOrder, ledgerByOrder[activeOrder.id]?.status);
+                const eligibleDate = activeOrder.eligibleAt?.toMillis ? new Date(activeOrder.eligibleAt.toMillis()) : null;
+                return (
+                  <div>
+                    {([1, 2, 3, 4, 5] as TimelineStep[]).map((step) => {
+                      const done = step <= currentStep;
+                      return (
+                        <div key={step}>
+                          <div className="modal-timeline-item">
+                            <div className="modal-timeline-dot">{done ? '✓' : step}</div>
+                            <div className="modal-timeline-content">
+                              <strong>{TIMELINE_LABELS[step]}</strong>
+                              {step === 1 && (
+                                <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
+                              )}
+                              {step === 2 && (
+                                <span>{activeOrder.confirmedAt ? activeOrder.confirmedAt.toDate().toLocaleString('vi-VN') : '—'}</span>
+                              )}
+                              {step === 3 && currentStep === 3 && eligibleDate && (
+                                <span>Dự kiến đủ điều kiện: {eligibleDate.toLocaleString('vi-VN')}</span>
+                              )}
+                            </div>
+                          </div>
+                          {step < 5 && (
+                            <div style={{ display: 'flex' }}>
+                              <div className="modal-timeline-line" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            ) : (
+              <div>
+                <div className="modal-timeline-item">
+                  <div className="modal-timeline-dot">＋</div>
+                  <div className="modal-timeline-content">
+                    <strong>{t('modal_timeline_recorded')}</strong>
+                    <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex' }}>
+                  <div className="modal-timeline-line" />
+                </div>
+                <div className="modal-timeline-item">
+                  <div className="modal-timeline-dot">✓</div>
+                  <div className="modal-timeline-content">
+                    <strong>{t(statusKeyMap[activeOrder.status] as any) || activeOrder.status}</strong>
+                    <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'flex' }}>
-                <div className="modal-timeline-line" />
-              </div>
-              <div className="modal-timeline-item">
-                <div className="modal-timeline-dot">✓</div>
-                <div className="modal-timeline-content">
-                  <strong>{t(statusKeyMap[activeOrder.status] as any) || activeOrder.status}</strong>
-                  <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
-                </div>
-              </div>
-            </div>
+            )}
 
             {activeOrder.productUrl && (
               <a href={activeOrder.productUrl} target="_blank" rel="noreferrer" className="button button-primary modal-cta">

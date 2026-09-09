@@ -116,10 +116,9 @@ export type AffiliateConversion = {
 export interface AffiliateProvider {
   id: AffiliateProviderId;
   /** Turns our own tracking code + the raw destination URL into whatever
-   * deep-link format the provider's real affiliate system requires. See
-   * lib/redirectLink.ts's buildAffiliateUrl — the web-side function this
-   * interface method will eventually replace the body of, once a real
-   * provider is approved and its own deep-link rules are known. */
+   * deep-link format the provider's real affiliate system requires — see
+   * workers/accesstrade-sync/src/index.js's handleCreateLink for the real,
+   * live implementation (this interface predates that integration). */
   buildTrackingLink(input: { subId: string; destinationUrl: string }): string;
   /** Turns the provider's raw webhook/poll payload into our normalized
    * shape, or null if the payload isn't a conversion this app cares about. */

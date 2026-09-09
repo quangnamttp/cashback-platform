@@ -274,11 +274,32 @@ async function handleCreateLink(request, env) {
     const { ok, json } = await accesstradeApi(env, 'POST', '/v2/tiktokshop_product_feeds/create_link', {
       body: { product_url: productUrl, ...(productId ? { product_id: productId } : {}), ...trackingFields },
     });
-    // Documented failure shape: {status:false, message:"The link is not
-    // part of the campaign"} — treated as "not eligible", never faked.
-    if (!ok || json?.status === false || !json?.aff_url) {
-      console.log('create_link (tiktok) not eligible:', JSON.stringify(json));
+    // Three genuinely different situations, previously all collapsed into
+    // one 'not_in_campaign' answer — the exact defect that made it
+    // impossible to tell "ACCESSTRADE says this product truly isn't in
+    // the campaign" apart from "the HTTP call itself failed" or "the
+    // response didn't match either documented shape". Now distinguished:
+    //   1. !ok — the request itself failed (network/timeout/4xx/5xx from
+    //      accesstradeApi's own fetch) — a technical error, never
+    //      reinterpreted as "no commission".
+    //   2. json.status === false — ACCESSTRADE's own documented failure
+    //      shape ({status:false, message:"The link is not part of the
+    //      campaign"}) — this alone is real evidence of "not eligible".
+    //   3. ok && status !== false but aff_url still missing — the request
+    //      succeeded yet matches NEITHER documented shape — an unexpected
+    //      response, treated as a technical error (never guessed to be
+    //      "no commission" without the documented failure shape saying so).
+    if (!ok) {
+      console.error('create_link (tiktok) request failed:', JSON.stringify(json));
+      return Response.json({ supported: false, reason: 'technical_error' });
+    }
+    if (json?.status === false) {
+      console.log('create_link (tiktok) not eligible (documented failure shape):', JSON.stringify(json));
       return Response.json({ supported: false, reason: 'not_in_campaign' });
+    }
+    if (!json?.aff_url) {
+      console.error('create_link (tiktok) unexpected response shape:', JSON.stringify(json));
+      return Response.json({ supported: false, reason: 'technical_error' });
     }
     return Response.json({ supported: true, affLink: json.aff_short_url || json.aff_url });
   }
@@ -291,9 +312,23 @@ async function handleCreateLink(request, env) {
     const { ok, json } = await accesstradeApi(env, 'POST', '/v1/product_link/create', {
       body: { campaign_id: campaignId, urls: [productUrl], ...trackingFields },
     });
+    // Same three-way split as TikTok above, using this endpoint's own
+    // documented shape instead: {data:{error_link:[],success_link:[...],
+    // suspend_url:[]}, success:true} — a URL ACCESSTRADE doesn't convert
+    // lands in error_link/suspend_url instead of success_link, WITH
+    // success:true still at the top level (that's the documented "some
+    // URLs succeeded, some didn't" contract, not a request failure).
+    if (!ok) {
+      console.error(`create_link (${platform}) request failed:`, JSON.stringify(json));
+      return Response.json({ supported: false, reason: 'technical_error' });
+    }
+    if (json?.success !== true) {
+      console.error(`create_link (${platform}) unexpected response shape:`, JSON.stringify(json));
+      return Response.json({ supported: false, reason: 'technical_error' });
+    }
     const successLink = json?.data?.success_link?.[0];
-    if (!ok || !successLink?.aff_link) {
-      console.log(`create_link (${platform}) not eligible:`, JSON.stringify(json));
+    if (!successLink?.aff_link) {
+      console.log(`create_link (${platform}) not eligible (url not in success_link):`, JSON.stringify(json));
       return Response.json({ supported: false, reason: 'not_in_campaign' });
     }
     return Response.json({ supported: true, affLink: successLink.short_link || successLink.aff_link });

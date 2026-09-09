@@ -29,32 +29,27 @@ type CheckResult =
   | { status: 'unsupported' }
   | { status: 'invalid_link' }
   | { status: 'error' }
-  | {
-      status: 'supported';
-      platformCode: Platform;
-      platform: string;
-      code: string;
-      redirectUrl: string;
-      destinationUrl: string;
-      cacheHit: boolean;
-      isRealAffiliateLink: boolean;
-      failureReason?: AffiliateLinkFailureReason;
-    };
+  // No real tracking link — either genuinely no commission (reason ===
+  // 'not_in_campaign', the ONLY value that means that — see
+  // AffiliateLinkFailureReason's own comment) or a technical failure
+  // (anything else). Customer can still buy via fallbackUrl either way,
+  // just with different wording — see NO_TRACKING_COPY below. No
+  // technical/provider-name terms ever shown to the customer for either.
+  | { status: 'no_tracking'; platformCode: Platform; platform: string; reason: AffiliateLinkFailureReason; fallbackUrl: string }
+  // Reaching 'supported' now itself means a real tracking link exists —
+  // see lib/redirectLink.ts's createOrReuseRedirect, which never returns
+  // this status any other way.
+  | { status: 'supported'; platformCode: Platform; platform: string; code: string; redirectUrl: string; destinationUrl: string; cacheHit: boolean };
 
-// Never a guessed/estimated amount — only what the Worker or this call
-// site itself actually observed. See lib/redirectLink.ts's own comment on
-// AffiliateLinkFailureReason for where each value comes from.
-const AFFILIATE_FAILURE_LABEL: Record<AffiliateLinkFailureReason, string> = {
-  worker_not_configured: 'Hệ thống link tiếp thị ACCESSTRADE chưa được cấu hình.',
-  not_authenticated: 'Không xác thực được tài khoản — vui lòng đăng nhập lại.',
-  unauthenticated: 'Không xác thực được tài khoản — vui lòng đăng nhập lại.',
-  worker_unreachable: 'Không kết nối được tới hệ thống tạo link tiếp thị, vui lòng thử lại sau.',
-  platform_maintenance: 'Sàn này đang tạm bảo trì link tiếp thị ACCESSTRADE.',
-  not_configured: 'Sàn này chưa được cấu hình link tiếp thị ACCESSTRADE.',
-  not_in_campaign: 'Sản phẩm này chưa thuộc chiến dịch tiếp thị được ACCESSTRADE duyệt.',
-  unsupported_platform: 'Sàn này chưa được ACCESSTRADE hỗ trợ tạo link tiếp thị.',
-  bad_request: 'Link sản phẩm không hợp lệ để tạo link tiếp thị.',
-};
+// Exactly the 3 customer-facing states this page can show — neutral
+// wording only, no ACCESSTRADE/campaign/Sub-ID/API terms. `not_in_campaign`
+// is the only reason value that means "genuinely no commission"; every
+// other value is a technical failure and gets the retry copy instead —
+// see AffiliateLinkFailureReason's own comment in lib/redirectLink.ts.
+const NO_TRACKING_COPY = {
+  noCommission: { icon: '⚪', text: 'Sản phẩm này hiện không có mức hoàn tiền' },
+  technicalError: { icon: '🔄', text: 'Không thể tạo liên kết hoàn tiền lúc này. Vui lòng thử lại.' },
+} as const;
 
 type Voucher = {
   id: string;
@@ -192,6 +187,16 @@ export default function GetCashbackLinkPage() {
         setResult({ status: 'invalid_link' });
         return;
       }
+      if (data.status === 'no_tracking') {
+        setResult({
+          status: 'no_tracking',
+          platformCode: data.platform,
+          platform: PLATFORM_LABEL[data.platform] ?? data.platform,
+          reason: data.reason,
+          fallbackUrl: data.fallbackUrl,
+        });
+        return;
+      }
       setResult({
         status: 'supported',
         platformCode: data.platform,
@@ -200,8 +205,6 @@ export default function GetCashbackLinkPage() {
         redirectUrl: data.redirectUrl,
         destinationUrl: data.destinationUrl,
         cacheHit: data.cacheHit,
-        isRealAffiliateLink: data.isRealAffiliateLink,
-        failureReason: data.failureReason,
       });
 
       // Immediate, network-free title from the URL's own slug — shows the
@@ -386,19 +389,32 @@ export default function GetCashbackLinkPage() {
               </div>
             )}
 
+            {result?.status === 'no_tracking' && (() => {
+              const copy = result.reason === 'not_in_campaign' ? NO_TRACKING_COPY.noCommission : NO_TRACKING_COPY.technicalError;
+              return (
+                <div className="get-link-result-card">
+                  <span className="get-link-platform-detected">✅ Đã nhận diện: {result.platform}</span>
+                  <div className="get-link-affiliate-status not-real">{copy.icon} {copy.text}</div>
+                  <p className="get-link-unsupported-note">
+                    Bạn vẫn có thể mua bình thường qua link gốc bên dưới — chỉ là đơn này sẽ không được cộng tiền hoàn.
+                  </p>
+                  <a
+                    href={result.fallbackUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="button button-secondary get-link-unsupported-buy"
+                    style={{ display: 'inline-flex', marginTop: 4 }}
+                  >
+                    🛒 Mua ngay (không hoàn tiền)
+                  </a>
+                </div>
+              );
+            })()}
+
             {result?.status === 'supported' && (
               <div className="get-link-result-card">
                 <span className="get-link-platform-detected">✅ Đã nhận diện: {result.platform}</span>
-                {result.isRealAffiliateLink ? (
-                  <div className="get-link-affiliate-status real">🟢 Link tiếp thị ACCESSTRADE</div>
-                ) : (
-                  <div className="get-link-affiliate-status not-real">
-                    🔴 Không thể tạo link tiếp thị cho sản phẩm này
-                    {result.failureReason && (
-                      <span className="get-link-affiliate-status-reason"> — {AFFILIATE_FAILURE_LABEL[result.failureReason]}</span>
-                    )}
-                  </div>
-                )}
+                <div className="get-link-affiliate-status real">🟢 Sản phẩm này được hỗ trợ hoàn tiền</div>
 
                 <div className="quick-result-grid">
                   <div className="quick-product-card">
@@ -429,30 +445,28 @@ export default function GetCashbackLinkPage() {
                       {productPreview?.image && (
                         <div className="quick-product-verified-badge">✅ Đã xác minh sản phẩm thật</div>
                       )}
-                      {result.isRealAffiliateLink && (
-                        <>
-                          {/* ACCESSTRADE's own link-creation API (both v1
-                              product_link/create and v2 tiktokshop_product_
-                              feeds/create_link — confirmed against its
-                              official docs) never returns a commission or
-                              rate field at this step; commission is only
-                              known once a real order is confirmed
-                              (order-list's pub_commission). So this can
-                              never show a computed number here — showing
-                              one would be a guess dressed up as fact. */}
-                          <p className="quick-product-note">
-                            Chưa xác định được mức hoàn tiền cho sản phẩm này.
-                            <br />
-                            Số tiền chính xác được xác nhận khi đơn hàng được ACCESSTRADE đối soát.
-                          </p>
-                          <div
-                            className="quick-product-commission-note"
-                            title="Đây là % hoa hồng mà sàn thương mại điện tử trả cho chúng tôi trên mỗi đơn hàng — không phải % giá trị đơn hàng. Số tiền hoàn thực tế tùy theo mức hoa hồng thực tế sàn trả cho từng sản phẩm."
-                          >
-                            🎉 Bạn nhận {Math.round(COMMISSION_SPLIT.CUSTOMER_NO_REFERRER * 100)}% hoa hồng tiếp thị ⓘ
-                          </div>
-                        </>
-                      )}
+                      {/* The affiliate network's own link-creation API
+                          (confirmed against its official docs, both
+                          endpoints this site calls) never returns a
+                          commission or rate field at this step — commission
+                          is only known once a real order is confirmed. So
+                          this can never show a computed number here —
+                          showing one would be a guess dressed up as fact.
+                          (If a specific platform's product-search API ever
+                          documents a real, per-product rate, this is the
+                          one place to swap in a real "Hoa hồng dự kiến"
+                          figure — never before that's actually true.) */}
+                      <p className="quick-product-note">
+                        Chưa xác định được mức hoàn tiền cho sản phẩm này.
+                        <br />
+                        Số tiền chính xác được xác nhận khi đơn hàng được đối soát.
+                      </p>
+                      <div
+                        className="quick-product-commission-note"
+                        title="Đây là % hoa hồng mà sàn thương mại điện tử trả cho chúng tôi trên mỗi đơn hàng — không phải % giá trị đơn hàng. Số tiền hoàn thực tế tùy theo mức hoa hồng thực tế sàn trả cho từng sản phẩm."
+                      >
+                        🎉 Bạn nhận {Math.round(COMMISSION_SPLIT.CUSTOMER_NO_REFERRER * 100)}% hoa hồng tiếp thị ⓘ
+                      </div>
                     </div>
                   </div>
 
@@ -514,26 +528,15 @@ export default function GetCashbackLinkPage() {
                 <button type="button" className="button button-secondary" onClick={() => copyTrackingLink(absoluteRedirectUrl(result.redirectUrl))}>
                   {copied ? '✓' : '📋'} {t('get_link_copy')}
                 </button>
-                {result.isRealAffiliateLink ? (
-                  <a
-                    href={result.destinationUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="button button-primary"
-                    onClick={() => recordRedirectHit(result.code)}
-                  >
-                    🛒 {t('get_link_buy_now')}
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    className="button button-primary"
-                    disabled
-                    title="Chưa tạo được link tiếp thị thật cho sản phẩm này nên chưa thể theo dõi hoàn tiền — xem lý do ở trên."
-                  >
-                    🛒 {t('get_link_buy_now')}
-                  </button>
-                )}
+                <a
+                  href={result.destinationUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="button button-primary"
+                  onClick={() => recordRedirectHit(result.code)}
+                >
+                  🛒 {t('get_link_buy_now')}
+                </a>
                 <button
                   type="button"
                   className={`button ${selectedVoucherId ? 'button-primary' : 'button-secondary'}`}

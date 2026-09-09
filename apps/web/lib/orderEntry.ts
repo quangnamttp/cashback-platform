@@ -11,6 +11,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  Timestamp,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -560,11 +561,23 @@ export type PendingOrderForApproval = {
  * rate limit. callTelegramApi already treats a failed send as best-effort
  * and never blocks/fails the approval itself.
  */
+// The customer-facing "Trạng thái đơn hàng" timeline's step ④ ("Đủ điều
+// kiện hoàn tiền") never activates before this — an absolute timestamp set
+// ONCE at approval time, never recomputed, never auto-releasing anything
+// on its own (see deriveOrderTimelineStep in app/orders/page.tsx and its
+// own commissionStatus/ledger-status checks — this field alone is never
+// sufficient to reach step ④). serverTimestamp() is a write-time sentinel
+// with no arithmetic available before the write resolves, so this uses
+// the same wall-clock moment as a plain client Date instead — a few
+// seconds of clock drift is immaterial against a 3-day window.
+const ELIGIBLE_WAIT_MS = 3 * 24 * 60 * 60 * 1000;
+
 export async function approveOrdersBatch(orders: PendingOrderForApproval[]): Promise<void> {
   const db = getFirebaseDb();
   for (const order of orders) {
     const referrerUid = await resolveReferrer(db, order.userId);
     const orderRef = doc(db, 'orders', order.id);
+    const eligibleAt = Timestamp.fromMillis(Date.now() + ELIGIBLE_WAIT_MS);
     if (order.commissionAmount > 0) {
       const { writes } = await prepareCommissionLedgerEntries(db, {
         orderId: order.id,
@@ -572,9 +585,9 @@ export async function approveOrdersBatch(orders: PendingOrderForApproval[]): Pro
         referrerUid,
         commissionAmount: order.commissionAmount,
       });
-      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp(), customerVisible: true }, writes);
+      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp(), customerVisible: true, eligibleAt }, writes);
     } else {
-      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp(), customerVisible: true }, []);
+      await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp(), customerVisible: true, eligibleAt }, []);
     }
   }
 }
