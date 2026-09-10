@@ -6,7 +6,7 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { mockPlatforms } from '../../lib/mock-data';
 import { createOrReuseRedirect, detectPlatform, ensureUrlScheme, recordRedirectHit, savePreviewToRedirect, voucherMatchesMarketplace, type AffiliateLinkFailureReason, type Platform, type ResolvedProductInfo } from '../../lib/redirectLink';
 import { COMMISSION_SPLIT } from '../../lib/orderEntry';
-import { computeEstimatedCashback } from '../../lib/cashbackPolicy';
+import { computeEstimatedCashback, type CommissionSource } from '../../lib/cashbackPolicy';
 import { fetchProductPreview, isShortlink, resolveShortlink, type ProductPreview } from '../../lib/productPreview';
 import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
@@ -65,6 +65,11 @@ type CheckResult =
       // product's own independently-scraped real price (productPreview
       // state below) once available — see the productInfo useMemo.
       estimatedCommissionRate?: number;
+      // Which resolveCommission() tier produced estimatedCommissionRate/
+      // estimatedCommission's rate — see lib/cashbackPolicy.ts's
+      // CommissionSource. Read directly here (never re-derived/guessed)
+      // for the productInfo useMemo below.
+      estimatedCommissionSource?: CommissionSource;
       // Real name/image/price from ACCESSTRADE's own datafeed (Shopee/
       // Lazada) — see ResolvedProductInfo's own comment in
       // lib/redirectLink.ts. Takes priority over the page-scraped preview
@@ -206,16 +211,22 @@ export default function GetCashbackLinkPage() {
     const cashback = (() => {
       if (result.status !== 'supported') return undefined;
       if (result.estimatedCommission) {
+        // TikTok never sets estimatedCommissionSource (its commission is a
+        // direct per-product API field, not resolved from a rate tier) —
+        // falls back to ACCESSTRADE_PRODUCT_COMMISSION for that case.
+        // Shopee/Lazada set it from the real tier resolveCommission()
+        // (workers/accesstrade-sync) actually used — read directly, never
+        // re-inferred from whether some other field happens to be present.
         return computeEstimatedCashback(result.platformCode, result.estimatedCommission.amount, {
           priceSource: result.estimatedCommissionPriceSource ?? 'ACCESSTRADE_DIRECT',
-          commissionSource: result.estimatedCommissionPriceSource ? 'ACCESSTRADE_CAMPAIGN_POLICY' : 'ACCESSTRADE_PRODUCT_COMMISSION',
+          commissionSource: result.estimatedCommissionSource ?? 'ACCESSTRADE_PRODUCT_COMMISSION',
           confidence: 'HIGH',
         });
       }
       if (result.estimatedCommissionRate && productPreview?.price) {
         return computeEstimatedCashback(result.platformCode, result.estimatedCommissionRate * productPreview.price, {
           priceSource: 'SCRAPED_PREVIEW',
-          commissionSource: 'ACCESSTRADE_CAMPAIGN_POLICY',
+          commissionSource: result.estimatedCommissionSource ?? 'ACCESSTRADE_CAMPAIGN_POLICY',
           confidence: 'MEDIUM',
         });
       }
@@ -242,6 +253,7 @@ export default function GetCashbackLinkPage() {
       discount: product?.discount,
       commission: result.status === 'supported' ? result.estimatedCommission?.amount : undefined,
       commissionRate: result.status === 'supported' ? result.estimatedCommissionRate : undefined,
+      commissionSource: cashback?.commissionSource,
       estimatedCashback: cashback?.amount,
       cashbackPending,
       dataSource: product?.dataSource,
@@ -373,6 +385,7 @@ export default function GetCashbackLinkPage() {
         estimatedCommission: data.estimatedCommission,
         estimatedCommissionPriceSource: data.estimatedCommissionPriceSource,
         estimatedCommissionRate: data.estimatedCommissionRate,
+        estimatedCommissionSource: data.estimatedCommissionSource,
         product: data.product,
       });
 

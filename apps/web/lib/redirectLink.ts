@@ -4,6 +4,7 @@ import { collection, doc, getDoc, getDocs, increment, limit, orderBy, query, ser
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
 import { generateShortCode } from './ids';
 import { isShortlink } from './productPreview';
+import type { CommissionSource } from './cashbackPolicy';
 
 // URL of workers/accesstrade-sync (see that Worker's own README/comments) —
 // undefined/empty just means real ACCESSTRADE link creation is skipped and
@@ -245,6 +246,12 @@ type AffiliateLinkAttempt =
       // datafeed match — caller falls back to its own scraped price, see
       // lib/cashbackPolicy.ts's PriceSource).
       priceSource?: 'ACCESSTRADE_DATAFEED';
+      // Which resolveCommission() tier (workers/accesstrade-sync)
+      // produced commissionRate/commission's rate — orthogonal to
+      // priceSource above (that's the PRICE half; this is the RATE half).
+      // TikTok never sets this (its commission is a direct per-product
+      // API field, not resolved from a rate tier at all).
+      commissionSource?: CommissionSource;
       product?: ResolvedProductInfo;
     }
   | { reason: AffiliateLinkFailureReason };
@@ -282,6 +289,7 @@ async function tryCreateRealAffiliateLink(
       commission?: { amount: number; currency: string } | null;
       commissionRate?: number | null;
       priceSource?: 'ACCESSTRADE_DATAFEED' | null;
+      commissionSource?: CommissionSource | null;
       product?: ResolvedProductInfo | null;
     } = await res.json();
     if (json.supported && json.affLink) {
@@ -290,6 +298,7 @@ async function tryCreateRealAffiliateLink(
         ...(json.commission ? { commission: json.commission } : {}),
         ...(json.commissionRate ? { commissionRate: json.commissionRate } : {}),
         ...(json.priceSource ? { priceSource: json.priceSource } : {}),
+        ...(json.commissionSource ? { commissionSource: json.commissionSource } : {}),
         ...(json.product ? { product: json.product } : {}),
       };
     }
@@ -363,6 +372,12 @@ export type CreateRedirectResult =
       // (lib/productPreview.ts) once that resolves — never a guessed
       // placeholder price.
       estimatedCommissionRate?: number;
+      // Which resolveCommission() tier (workers/accesstrade-sync)
+      // produced estimatedCommissionRate/estimatedCommission's rate —
+      // see lib/cashbackPolicy.ts's CommissionSource for the tier
+      // meanings. Absent for TikTok (its commission is a direct
+      // per-product API field, not resolved from a rate tier).
+      estimatedCommissionSource?: CommissionSource;
       // Real name/image/price/discount from ACCESSTRADE's own datafeed
       // (Shopee/Lazada — see ResolvedProductInfo's own comment). Takes
       // priority over the page-scraped preview wherever both exist.
@@ -502,6 +517,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(existing.estimatedCommission ? { estimatedCommission: existing.estimatedCommission } : {}),
           ...(existing.estimatedCommissionPriceSource ? { estimatedCommissionPriceSource: existing.estimatedCommissionPriceSource } : {}),
           ...(existing.estimatedCommissionRate ? { estimatedCommissionRate: existing.estimatedCommissionRate } : {}),
+          ...(existing.estimatedCommissionSource ? { estimatedCommissionSource: existing.estimatedCommissionSource } : {}),
           ...(existing.product ? { product: existing.product } : {}),
         };
       }
@@ -523,6 +539,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
           ...(retry.priceSource ? { estimatedCommissionPriceSource: retry.priceSource } : {}),
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
+          ...(retry.commissionSource ? { estimatedCommissionSource: retry.commissionSource } : {}),
           ...(retry.product ? { product: retry.product } : {}),
         });
         return {
@@ -535,6 +552,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(retry.commission ? { estimatedCommission: retry.commission } : {}),
           ...(retry.priceSource ? { estimatedCommissionPriceSource: retry.priceSource } : {}),
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
+          ...(retry.commissionSource ? { estimatedCommissionSource: retry.commissionSource } : {}),
           ...(retry.product ? { product: retry.product } : {}),
         };
       }
@@ -573,6 +591,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
     ...(attempt.priceSource ? { estimatedCommissionPriceSource: attempt.priceSource } : {}),
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
+    ...(attempt.commissionSource ? { estimatedCommissionSource: attempt.commissionSource } : {}),
     ...(attempt.product ? { product: attempt.product } : {}),
   });
 
@@ -586,6 +605,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     ...(attempt.commission ? { estimatedCommission: attempt.commission } : {}),
     ...(attempt.priceSource ? { estimatedCommissionPriceSource: attempt.priceSource } : {}),
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
+    ...(attempt.commissionSource ? { estimatedCommissionSource: attempt.commissionSource } : {}),
     ...(attempt.product ? { product: attempt.product } : {}),
   };
 }

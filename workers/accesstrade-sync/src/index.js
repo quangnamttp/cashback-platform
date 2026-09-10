@@ -390,6 +390,164 @@ async function fetchCampaignCommissionRate(env, platform, campaignId) {
   return rate;
 }
 
+// --- Commission service: resolveCommission() ----------------------------
+// Single entry point for "what commission rate applies to this product,
+// right now, before any order exists" — tried in trust/precision order,
+// each tier only consulted if the previous one had nothing to offer:
+//
+//   1. Category-specific policy — GET /v1/cashback/campaigns. STRUCTURALLY
+//      READY but INERT today: this ACCESSTRADE account has only ever
+//      received {"code":"PX00401","message":"Invalid token"} from this
+//      endpoint (confirmed live 2026-09-09/10 against this exact Shopee
+//      campaign_id, same documented `Authorization: Token {access_key}`
+//      header every OTHER working call here uses — ruled out as an
+//      account-tier gate, not a code bug). fetchCashbackCampaignCommission
+//      below still genuinely calls the real endpoint every time (never
+//      skipped/stubbed) — the moment ACCESSTRADE grants this account
+//      access, real 200 responses start flowing through this tier with NO
+//      code change and NO frontend change, only the 401 stops happening.
+//   2. Campaign-wide flat rate — GET /v1/campaigns' own real
+//      description.commission_policy text (fetchCampaignCommissionRate
+//      above) — real, live, working today; this is the ONLY tier that
+//      currently ever produces a result.
+//
+// Deliberately does NOT touch /v1/order-list's pub_commission — that is
+// real, ACTUAL, post-purchase data with its own entirely separate path
+// (processOneOrder further below), never an input to a pre-purchase
+// estimate. Also deliberately does NOT call /v1/product_detail — that
+// endpoint requires a transaction_id that only exists after a real click
+// (see its own note near processOneOrder), so it has no role in a
+// before-purchase resolution and is never called here.
+//
+// categoryId/categoryName/productId/price are accepted (matching the
+// requested resolveCommission({merchant, campaignId, productId,
+// categoryId, categoryName, price}) shape) but are OPTIONAL and, for
+// Shopee/Lazada today, always undefined in practice — the ACCESSTRADE
+// static datafeed CSV (lookupDatafeedProduct) is the only real per-
+// product data source available pre-purchase and its own `category`
+// column is empty ("nan") for every row (confirmed live 2026-09-10,
+// entire current file, 12,858/12,858 rows) — there is no free source for
+// a real category today. Accepted now anyway so a future category source
+// (or /v1/product_detail once a transaction_id-bearing flow exists) can
+// pass them straight in without this function's signature changing again.
+async function resolveCommission(env, { platform, campaignId, categoryId, categoryName }) {
+  const categoryPolicy = await fetchCashbackCampaignCommission(env, platform, campaignId).catch((err) => {
+    console.error(`resolveCommission: category-policy tier threw (${platform}):`, err.message);
+    return undefined;
+  });
+  if (categoryPolicy) {
+    const matched = resolveCategoryCommissionRate(categoryPolicy, categoryId, categoryName);
+    if (matched) {
+      console.log(`[resolveCommission] platform=${platform} tier=CATEGORY_POLICY matchedBy=${matched.matchedBy} rate=${matched.rate}`);
+      return { rate: matched.rate, source: 'ACCESSTRADE_CASHBACK_CAMPAIGNS' };
+    }
+  }
+  const flatRate = await fetchCampaignCommissionRate(env, platform, campaignId);
+  if (flatRate != null) {
+    return { rate: flatRate, source: 'ACCESSTRADE_CAMPAIGN_POLICY' };
+  }
+  return undefined;
+}
+
+const CASHBACK_CAMPAIGNS_CACHE_TTL_S = 3600; // short — see fetchCashbackCampaignCommission's own comment on why
+
+// GET /v1/cashback/campaigns adapter. UNVERIFIED response shape/units:
+// this account has never received a real 200 from this endpoint (always
+// 401 — see resolveCommission's comment above), so nothing below has ever
+// been checked against real data. Parses exactly the documented field
+// names (campaign_id, min_commission, max_commission, commission_type,
+// category_id, category_name, is_default, all_commissions[]) and nothing
+// beyond them — no field is invented, no THEFACESHOP example value is
+// copied in. Cached for only 1 hour (not the 24h the confirmed-working
+// campaign-policy tier uses) specifically so that IF this account's
+// access is ever upgraded, the change is picked up automatically within
+// an hour with no deploy — while still not hammering a currently-always-
+// failing endpoint on every single create-link call.
+async function fetchCashbackCampaignCommission(env, platform, campaignId) {
+  if (!campaignId) return undefined;
+  const cacheKey = new Request(`https://cashback-campaigns-cache.internal/?campaign_id=${encodeURIComponent(campaignId)}`);
+  const cache = caches.default;
+  try {
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const body = await cached.json();
+      return body.policy ?? undefined;
+    }
+  } catch (err) {
+    console.error(`cashback/campaigns cache read failed (${platform}):`, err.message);
+  }
+
+  const { ok, status, json } = await accesstradeApi(env, 'GET', '/v1/cashback/campaigns', { query: { campaign_id: campaignId } });
+  const policy = ok ? (json?.data?.[0] ?? json?.data ?? null) : null;
+  if (!ok) {
+    console.log(`[resolveCommission] cashback/campaigns tier unavailable (${platform}, campaign_id=${campaignId}): HTTP ${status} — falling back to campaign-policy tier`);
+  }
+  try {
+    await cache.put(cacheKey, new Response(JSON.stringify({ policy }), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${CASHBACK_CAMPAIGNS_CACHE_TTL_S}` },
+    }));
+  } catch (err) {
+    console.error(`cashback/campaigns cache write failed (${platform}):`, err.message);
+  }
+  return policy ?? undefined;
+}
+
+// A single all_commissions[] entry (or the top-level policy object itself,
+// which the docs show carrying its own min_commission/commission_type as
+// a campaign-wide default) turned into a plain 0-1 fraction, or undefined
+// if it can't be trusted as one. min_commission (not max) is used
+// deliberately — the conservative default, matching the same choice
+// already made for the working /v1/campaigns tier (existing-customer
+// 1.8% over new-customer 24%) — never overstate a customer's estimate.
+// UNVERIFIED unit convention (see fetchCashbackCampaignCommission's own
+// comment) — this treats a value >= 1 as a plain percentage number (e.g.
+// 1.8 meaning 1.8%, consistent with how /v1/campaigns' OWN real policy
+// text writes rates, the one other confirmed-real ACCESSTRADE source this
+// project has — not a value copied from documentation). commission_type
+// is checked so a non-percentage entry (e.g. a flat currency amount) is
+// never misread as a rate. The final (0, 1] bound is the actual safety
+// net: if the real unit turns out different than inferred here, this
+// simply declines to produce a rate (falls through to tier 2) instead of
+// ever computing an absurd cashback number.
+function normalizeCommissionEntry(entry) {
+  if (!entry || entry.min_commission == null) return undefined;
+  const type = String(entry.commission_type || '').trim().toLowerCase();
+  if (type && !type.includes('percent') && type !== '%') return undefined;
+  const raw = Number(entry.min_commission);
+  if (!Number.isFinite(raw) || raw <= 0) return undefined;
+  const rate = raw >= 1 ? raw / 100 : raw;
+  return rate > 0 && rate <= 1 ? rate : undefined;
+}
+
+// category_id match first, then category_name, then whichever
+// all_commissions[] entry is flagged is_default, then the policy's own
+// top-level min_commission as the last, coarsest fallback (Section F: "if
+// the API only returns a campaign-wide min/max, use min_commission,
+// labeled as an estimate" — never category-specific, but still real data,
+// never a guess). Never invents a category — categoryId/categoryName
+// simply go unmatched (falls through to the next step) when absent or
+// when nothing in all_commissions lines up with them.
+function resolveCategoryCommissionRate(policy, categoryId, categoryName) {
+  const pool = Array.isArray(policy.all_commissions) ? policy.all_commissions : [];
+  if (categoryId != null) {
+    const byId = pool.find((c) => String(c.category_id) === String(categoryId));
+    const r = byId && normalizeCommissionEntry(byId);
+    if (r) return { rate: r, matchedBy: 'category_id' };
+  }
+  if (categoryName) {
+    const needle = categoryName.trim().toLowerCase();
+    const byName = pool.find((c) => (c.category_name || '').trim().toLowerCase() === needle);
+    const r = byName && normalizeCommissionEntry(byName);
+    if (r) return { rate: r, matchedBy: 'category_name' };
+  }
+  const def = pool.find((c) => c.is_default);
+  const defRate = def && normalizeCommissionEntry(def);
+  if (defRate) return { rate: defRate, matchedBy: 'is_default' };
+  const topRate = normalizeCommissionEntry(policy);
+  if (topRate) return { rate: topRate, matchedBy: 'campaign_min_commission' };
+  return undefined;
+}
+
 // Real product PRICE for Shopee/Lazada, needed to turn commissionRate into
 // an actual ₫ amount — neither platform's create-link response, nor any
 // working ACCESSTRADE API, nor a plain fetch() of the product page itself
@@ -710,13 +868,14 @@ async function handleCreateLink(request, env, ctx) {
     const createLinkPromise = accesstradeApi(env, 'POST', '/v1/product_link/create', {
       body: { campaign_id: campaignId, urls: [productUrl], ...trackingFields },
     });
-    // See fetchCampaignCommissionRate's own comment for exactly where this
-    // rate comes from (real campaign policy text, parsed) and its
-    // reliability tier. Best-effort only — cached at the edge so this is a
-    // cache hit for all but the first request per campaign per day; a
-    // failure here must never fail the link itself.
-    const commissionRatePromise = fetchCampaignCommissionRate(env, platform, campaignId).catch((err) => {
-      console.error(`campaign commission rate lookup threw (${platform}):`, err.message);
+    // See resolveCommission's own comment for the tier order (category
+    // policy when this account eventually gets access, campaign-wide flat
+    // rate today) and its reliability tier. Best-effort only — each tier
+    // is cached at the edge, so this is a cache hit for all but the first
+    // request per campaign per cache window; a failure here must never
+    // fail the link itself.
+    const commissionResolutionPromise = resolveCommission(env, { platform, campaignId }).catch((err) => {
+      console.error(`resolveCommission threw (${platform}):`, err.message);
       return undefined;
     });
     // ProductResolver — real name/price/discount/image, when this
@@ -752,7 +911,9 @@ async function handleCreateLink(request, env, ctx) {
       console.log(`create_link (${platform}) not eligible (url not in success_link):`, JSON.stringify(json));
       return Response.json({ supported: false, reason: 'not_in_campaign' });
     }
-    const [commissionRate, product] = await Promise.all([commissionRatePromise, productPromise]);
+    const [commissionResolution, product] = await Promise.all([commissionResolutionPromise, productPromise]);
+    const commissionRate = commissionResolution?.rate;
+    const commissionSource = commissionResolution?.source;
     console.log(
       `[ProductResolver] platform=${platform} source=${product ? 'ACCESSTRADE_DATAFEED' : 'NONE'} ` +
       `match=${product ? 'url' : 'n/a'} name=${!!product?.name} image=${!!product?.image} price=${!!product?.price}` +
@@ -787,6 +948,12 @@ async function handleCreateLink(request, env, ctx) {
       supported: true,
       affLink: successLink.short_link || successLink.aff_link,
       ...(commission ? { commission, priceSource: 'ACCESSTRADE_DATAFEED' } : commissionRate ? { commissionRate } : {}),
+      // Which resolveCommission() tier produced commissionRate/commission
+      // above — orthogonal to priceSource (that's about where the PRICE
+      // came from; this is about where the RATE came from). Always
+      // 'ACCESSTRADE_CAMPAIGN_POLICY' today (see resolveCommission's own
+      // comment on why the category tier is currently always inert).
+      ...(commissionSource ? { commissionSource } : {}),
       ...(product ? { product: { productId: shopeeProductId, name: product.name, image: product.image, price: product.price, discount: product.discount, dataSource: 'ACCESSTRADE_DATAFEED', updatedAt: new Date().toISOString() } } : {}),
       ...(shopeeProductId ? { productId: shopeeProductId } : {}),
     });
@@ -1235,6 +1402,25 @@ export default {
           ? parseLazadaModalDirectRate(commissionPolicyHtml)
           : undefined;
       return Response.json({ campaignId, platform, ok, status, parsedRate, name: json?.data?.[0]?.name });
+    }
+    // Read-only diagnostic: exercises the REAL resolveCommission() service
+    // end-to-end (both tiers, real network calls, real fallback) — no
+    // customer auth needed, no Firestore access, only ever reads. This is
+    // what actually proves the /v1/cashback/campaigns 401 falls through to
+    // the campaign-policy tier correctly, rather than trusting that from
+    // reading the code alone. Kept permanently, same operational-tool
+    // reasoning as /debug/campaign and /debug/datafeed-lookup above — also
+    // the fastest way to notice the moment ACCESSTRADE ever grants this
+    // account real /v1/cashback/campaigns access (tier flips to
+    // ACCESSTRADE_CASHBACK_CAMPAIGNS with zero code change).
+    if (url.pathname === '/debug/commission') {
+      const campaignId = url.searchParams.get('campaign_id');
+      const platform = url.searchParams.get('platform');
+      const categoryId = url.searchParams.get('category_id') || undefined;
+      const categoryName = url.searchParams.get('category_name') || undefined;
+      const startedAt = Date.now();
+      const resolution = await resolveCommission(env, { platform, campaignId, categoryId, categoryName });
+      return Response.json({ campaignId, platform, categoryId, categoryName, resolution: resolution ?? null, ms: Date.now() - startedAt });
     }
     // Read-only diagnostic: verifies lookupDatafeedProduct against a real
     // URL — no customer auth needed, no Firestore access. Kept
