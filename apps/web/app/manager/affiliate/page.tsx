@@ -249,7 +249,7 @@ export default function AdminAffiliatePage() {
                   {mockPlatforms.map((p) => (
                     <tr key={p.name}>
                       <td>{p.name}</td>
-                      <td>{p.description}</td>
+                      <td className="data-table-reason-cell">{p.description}</td>
                       <td><span className="badge badge-success">Đang hoạt động</span></td>
                     </tr>
                   ))}

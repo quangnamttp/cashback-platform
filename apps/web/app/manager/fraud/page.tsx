@@ -194,7 +194,7 @@ export default function AdminFraudPage() {
                   <td>{typeof signal.orderValue === 'number' ? formatCurrency(signal.orderValue, lang) : '—'}</td>
                   <td>{typeof signal.cashbackAmount === 'number' ? formatCurrency(signal.cashbackAmount, lang) : '—'}</td>
                   <td>{typeof signal.refundCount === 'number' ? `${signal.refundCount}/${signal.totalOrders} đơn` : '—'}</td>
-                  <td>{signal.reason}</td>
+                  <td className="data-table-reason-cell">{signal.reason}</td>
                   <td>
                     <span
                       className={`badge badge-${signal.riskLevel === 'HIGH' ? 'danger' : signal.riskLevel === 'MEDIUM' ? 'warning' : 'neutral'}`}

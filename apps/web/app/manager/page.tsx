@@ -118,7 +118,7 @@ export default function AdminPage() {
               {recentSignals.map((signal) => (
                 <tr key={signal.id}>
                   <td>{userLabel(users, signal.userId)}</td>
-                  <td>{signal.reason}</td>
+                  <td className="data-table-reason-cell">{signal.reason}</td>
                   <td>
                     <span className={`badge badge-${signal.riskLevel === 'HIGH' ? 'danger' : signal.riskLevel === 'MEDIUM' ? 'warning' : 'neutral'}`}>
                       {RISK_LABEL[signal.riskLevel] ?? signal.riskLevel}

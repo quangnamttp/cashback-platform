@@ -1093,6 +1093,19 @@ p {
   font-size: 0.8rem;
 }
 
+/* Overrides the base nowrap above for the one kind of .data-table cell
+   that legitimately holds a full generated sentence (fraud-signal reason,
+   platform description) rather than a short structured value — without
+   this, that cell has no width bound and forces the whole table far
+   wider than it needs to be (still inside .table-scroll's own horizontal
+   scroll, so it never breaks the page, but makes an otherwise-narrow
+   table unnecessarily wide to read one long cell). */
+.data-table-reason-cell {
+  white-space: normal;
+  max-width: 260px;
+  min-width: 180px;
+}
+
 .data-table tbody tr {
   transition: background 0.12s ease;
 }
