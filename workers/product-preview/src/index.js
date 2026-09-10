@@ -145,14 +145,28 @@ export default {
       return jsonResponse({ error: 'host not allowed' }, 403);
     }
 
+    // Shopee's own share-shortlink domain (s.shopee.vn) resolves its real
+    // HTTP 301 redirect ONLY for a desktop-looking User-Agent — confirmed
+    // live 2026-09-10: the SAME short link, same code, same request
+    // otherwise, gets a real 301 Location header with a desktop UA but a
+    // plain 200 (Shopee's own generic homepage, no redirect at all) with
+    // the mobile UA this Worker uses everywhere else. Scoped to exactly
+    // this one domain — every other host (TikTok, Lazada, Shopee's own
+    // canonical /product/ pages) keeps the mobile UA, which is already
+    // confirmed working for those and untested with desktop, so switching
+    // UA globally would risk regressing something that already works.
+    const useDesktopUa = /(^|\.)s\.shopee\.vn$/i.test(parsed.hostname);
+    const userAgent = useDesktopUa
+      ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      : 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+
     try {
       const upstream = await fetch(parsed.toString(), {
         redirect: 'follow',
         headers: {
-          // A real mobile browser UA — several marketplaces serve a
-          // reduced/blocked page to obvious non-browser requests.
-          'User-Agent':
-            'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+          // A real browser UA — several marketplaces serve a reduced/
+          // blocked page to obvious non-browser requests.
+          'User-Agent': userAgent,
           'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.8',
         },
         cf: { cacheTtl: 300, cacheEverything: true },

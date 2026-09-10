@@ -93,26 +93,60 @@ export function voucherMatchesMarketplace(marketplaces: string[] | undefined, pl
 const TRACKING_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'spm', 'ref', 'sp_atk', 'xptdk'];
 
 /**
+ * Shopee's shopId/itemId pair, extracted from ANY of its real URL shapes:
+ * the marketing pretty-slug (.../ten-san-pham-i.<shopid>.<itemid>) and any
+ * canonical path of the form /<word>/<shopid>/<itemid> — not just
+ * /product/<shopid>/<itemid>. Confirmed live 2026-09-10: resolving a real
+ * s.shopee.vn short link (see resolveShortlink) can land on
+ * shopee.vn/opaanlp/<shopid>/<itemid>, a different path prefix than the
+ * canonical /product/ form the ACCESSTRADE datafeed itself uses for the
+ * exact same id pair — anchoring on shape (word, then two digit runs)
+ * rather than one fixed word keeps this working if Shopee uses yet
+ * another prefix for some other entry point later. Mirrors
+ * workers/accesstrade-sync's own copy (kept in sync — no shared module
+ * between a 'use client' file and a standalone Worker, same reason every
+ * other Worker/web pair in this project duplicates instead of sharing).
+ */
+export function extractShopeeIds(productUrl: string): { shopId: string; itemId: string } | null {
+  try {
+    const pathMatch = /^\/[a-z]+\/(\d+)\/(\d+)/i.exec(new URL(productUrl).pathname);
+    if (pathMatch) return { shopId: pathMatch[1], itemId: pathMatch[2] };
+  } catch {
+    // fall through to the slug-form regex below
+  }
+  const m = /-i\.(\d+)\.(\d+)/.exec(productUrl);
+  return m ? { shopId: m[1], itemId: m[2] } : null;
+}
+
+/**
  * Strips tracking params so repeated views of the same product resolve to
- * the same cache key. TikTok Shop is a special case: resolving a
- * vt.tiktok.com shortlink (see resolveShortlink in lib/productPreview.ts)
- * lands on a URL like shop.tiktok.com/vn/pdp/<id>?chain_key=...&checksum=
- * ...&encode_params=...&sec_user_id=...&trackParams=...&u_code=...
- * (verified live 2026-09-09) — a dozen-plus params that identify the SHARE
- * EVENT, not the product, several containing large opaque encoded blobs.
- * The product id is already fully present in the path, so for TikTok Shop
- * the whole query string is dropped rather than trying to enumerate an
- * ever-changing list of TikTok-internal param names — sending that raw
- * share-tracking URL to ACCESSTRADE's product_url field risks their own
- * product-id-from-URL parser (see extractTikTokProductId below — the exact
- * same id is also sent explicitly as product_id so ACCESSTRADE never has
- * to depend on that parser at all) failing to recognize it.
+ * the same cache key. TikTok Shop and Shopee are both special-cased:
+ * resolving a vt.tiktok.com or s.shopee.vn shortlink (see resolveShortlink
+ * in lib/productPreview.ts) lands on a URL loaded with share/session
+ * tracking params (TikTok: chain_key/checksum/encode_params/sec_user_id/...,
+ * confirmed live 2026-09-09; Shopee: credential_token/exp_group/
+ * gads_t_sig/mmp_pid/uls_trackid/..., confirmed live 2026-09-10) that
+ * identify the SHARE EVENT, not the product, several containing large
+ * opaque encoded blobs — sending that raw URL to ACCESSTRADE's
+ * product_url field risks their own product-id-from-URL parsing failing
+ * to recognize it (exactly the bug already found and fixed for TikTok).
+ * Both platforms' product id is fully recoverable from the path alone, so
+ * both canonicalize down to a clean URL with no query string at all
+ * (Shopee's extra step: also normalizing WHICHEVER real path shape it
+ * resolved to, e.g. /opaanlp/, back to the same /product/<shopid>/<itemid>
+ * form the ACCESSTRADE datafeed's own `url` column uses, so a Shopee
+ * product's cache key/datafeed match is the same regardless of which
+ * entry point the customer's link happened to go through).
  */
 export function normalizeProductUrl(rawUrl: string, platform?: Platform | null): string {
   try {
     const url = new URL(rawUrl);
     if (platform === 'TIKTOK_SHOP') {
       return `${url.origin}${url.pathname}`;
+    }
+    if (platform === 'SHOPEE') {
+      const ids = extractShopeeIds(rawUrl);
+      if (ids) return `https://shopee.vn/product/${ids.shopId}/${ids.itemId}`;
     }
     TRACKING_PARAMS.forEach((p) => url.searchParams.delete(p));
     url.hash = '';

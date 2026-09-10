@@ -467,7 +467,19 @@ const DATAFEED_SEARCH_BUFFER_CAP = 200000; // characters kept in memory while sc
 // lookupDatafeedProduct bailed out before ever calling fetch().
 function extractShopeeIds(productUrl) {
   try {
-    const pathMatch = /^\/product\/(\d+)\/(\d+)/.exec(new URL(productUrl).pathname);
+    // Matches ANY single-word path segment followed by exactly two digit
+    // groups — not just /product/<id>/<id>. Confirmed live 2026-09-10:
+    // Shopee's own s.shopee.vn short-link redirect (once actually
+    // followed — see workers/product-preview's desktop-UA comment for
+    // why the mobile UA used everywhere else never got a real redirect
+    // here) lands on /opaanlp/<shopid>/<itemid>, a DIFFERENT prefix than
+    // the canonical /product/<shopid>/<itemid> form the datafeed itself
+    // uses — same id pair, different entry-point path. Anchoring on the
+    // shape (word, then exactly two digit runs) rather than one specific
+    // word makes this resilient to Shopee using yet another prefix for
+    // some other entry point later without needing another round of
+    // "which path shape now" fixes.
+    const pathMatch = /^\/[a-z]+\/(\d+)\/(\d+)/i.exec(new URL(productUrl).pathname);
     if (pathMatch) return { shopId: pathMatch[1], itemId: pathMatch[2] };
   } catch {
     // fall through to the slug-form regex below
