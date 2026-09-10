@@ -11,9 +11,8 @@ import { formatCurrency } from '../../lib/currency';
 import { useAuth } from '../../lib/auth';
 import { getFirebaseDb } from '../../lib/firebase';
 import { PLATFORM_LABEL, type Platform } from '../../lib/orderEntry';
-import { recordRedirectHit } from '../../lib/redirectLink';
-import { guessOrderValueRange } from '../../lib/cashbackEstimate';
-import { subscribeSystemRates, DEFAULT_RATES, type SystemRates } from '../../lib/systemConfig';
+import { recordRedirectHit, type ResolvedProductInfo } from '../../lib/redirectLink';
+import { computeEstimatedCashback, type CommissionSource } from '../../lib/cashbackPolicy';
 import { usePageTitle } from '../../lib/use-page-title';
 
 type RedirectDoc = {
@@ -21,6 +20,9 @@ type RedirectDoc = {
   platform: Platform;
   title?: string;
   image?: string;
+  // Scraped/preview price (lib/productPreview.ts via savePreviewToRedirect)
+  // — a fallback price only, used when `product` below has none. Never the
+  // commission-rate source itself.
   price?: number;
   destinationUrl: string;
   status: 'ACTIVE' | 'EXPIRED' | 'SUPERSEDED';
@@ -28,6 +30,16 @@ type RedirectDoc = {
   createdAt?: { toDate: () => Date };
   lastHitAt?: { toDate: () => Date };
   expiresAt?: { toDate: () => Date };
+  // The SAME real estimate data get-cashback-link computed and persisted
+  // at link-creation time (lib/redirectLink.ts's createOrReuseRedirect) —
+  // read directly here so this page can never show a different number for
+  // the same link (previously this recomputed its own, unrelated
+  // guessed-range estimate — see git history for the pre-fix version).
+  estimatedCommission?: { amount: number; currency: string };
+  estimatedCommissionPriceSource?: 'ACCESSTRADE_DATAFEED';
+  estimatedCommissionRate?: number;
+  estimatedCommissionSource?: CommissionSource;
+  product?: ResolvedProductInfo;
 };
 
 export default function LinkHistoryPage() {
@@ -35,11 +47,8 @@ export default function LinkHistoryPage() {
   usePageTitle(t('link_history_title'));
   const { uid } = useAuth();
   const [links, setLinks] = useState<RedirectDoc[]>([]);
-  const [rates, setRates] = useState<SystemRates>(DEFAULT_RATES);
   const [query_, setQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
-
-  useEffect(() => subscribeSystemRates(setRates), []);
 
   useEffect(() => {
     if (!uid) {
@@ -54,11 +63,6 @@ export default function LinkHistoryPage() {
   }, [uid]);
 
   const rows = useMemo(() => {
-    const platformRate: Record<Platform, number> = {
-      SHOPEE: rates.shopeeRate,
-      TIKTOK_SHOP: rates.tiktokRate,
-      LAZADA: rates.lazadaRate,
-    };
     const now = Date.now();
     return links.map((item) => {
       const expiresAtMs = item.expiresAt?.toDate?.().getTime() ?? 0;
@@ -66,19 +70,36 @@ export default function LinkHistoryPage() {
       // product — practically the same as expired from the customer's
       // point of view, so both render with the same "hết hạn" badge.
       const isExpired = item.status !== 'ACTIVE' || now > expiresAtMs;
-      const rate = platformRate[item.platform] ?? 0;
-      if (item.price) {
-        return { ...item, isExpired, cashbackLow: Math.round(item.price * rate), cashbackHigh: Math.round(item.price * rate) };
-      }
-      // Same guessed-tier range /get-cashback-link shows for this exact
-      // product (same title, same guessOrderValueRange call) — previously
-      // this used one fixed ASSUMED_ORDER_VALUE for every single link
-      // regardless of product, always showing the same "~4.000đ" no matter
-      // what was actually pasted.
-      const range = guessOrderValueRange(item.title);
-      return { ...item, isExpired, cashbackLow: Math.round(range.low * rate), cashbackHigh: Math.round(range.high * rate) };
+
+      // Mirrors get-cashback-link/page.tsx's productInfo useMemo exactly —
+      // same two tiers, same priority, same CashbackPolicy call — so a
+      // link shows the IDENTICAL number here as it did the moment it was
+      // created, sourced from the same persisted data instead of being
+      // independently recomputed (that independent recomputation using an
+      // unrelated admin-set flat rate + a title-keyword-guessed price
+      // range was exactly the bug this replaces — see PR history).
+      const cashback = (() => {
+        if (item.estimatedCommission) {
+          return computeEstimatedCashback(item.platform, item.estimatedCommission.amount, {
+            priceSource: item.estimatedCommissionPriceSource ?? 'ACCESSTRADE_DIRECT',
+            commissionSource: item.estimatedCommissionSource ?? 'ACCESSTRADE_PRODUCT_COMMISSION',
+            confidence: 'HIGH',
+          });
+        }
+        const price = item.product?.price ?? item.price;
+        if (item.estimatedCommissionRate && price) {
+          return computeEstimatedCashback(item.platform, item.estimatedCommissionRate * price, {
+            priceSource: item.product?.dataSource === 'ACCESSTRADE_DATAFEED' ? 'ACCESSTRADE_DATAFEED' : 'SCRAPED_PREVIEW',
+            commissionSource: item.estimatedCommissionSource ?? 'ACCESSTRADE_CAMPAIGN_POLICY',
+            confidence: 'MEDIUM',
+          });
+        }
+        return undefined;
+      })();
+
+      return { ...item, isExpired, estimatedCashback: cashback?.amount };
     });
-  }, [links, rates]);
+  }, [links]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -157,11 +178,11 @@ export default function LinkHistoryPage() {
                           </div>
                         </td>
                         <td className="order-table-cashback-cell">
-                          <strong className="order-card-cashback">
-                            {item.price
-                              ? formatCurrency(item.cashbackLow, lang)
-                              : `~${formatCurrency(item.cashbackLow, lang)} – ~${formatCurrency(item.cashbackHigh, lang)}`}
-                          </strong>
+                          {item.estimatedCashback != null ? (
+                            <strong className="order-card-cashback">{formatCurrency(item.estimatedCashback, lang)}</strong>
+                          ) : (
+                            <span className="muted-copy" style={{ fontSize: '0.85rem' }}>Được áp dụng</span>
+                          )}
                         </td>
                         <td className="order-table-status-cell">
                           <span className={item.isExpired ? 'order-pill danger' : 'order-pill success'}>
@@ -196,11 +217,8 @@ export default function LinkHistoryPage() {
               </table>
             </div>
           </div>
-          {/* Sàn không cho đọc giá thật của sản phẩm (đã kiểm chứng: kể cả
-              qua dịch vụ render JS ngoài cũng bị chặn) — số có dấu ~ chỉ là
-              ước tính tham khảo, không phải số tiền hoàn thật của đơn đó. */}
           <p className="muted-copy" style={{ fontSize: '0.78rem', marginTop: 10 }}>
-            Số có dấu ~ là ước tính tham khảo (chưa đọc được giá thật sản phẩm) — số tiền hoàn thật được tính lại chính xác khi đơn hàng được đối soát.
+            Số tiền hoàn hiển thị là dự kiến — số tiền hoàn thật được xác nhận sau khi đơn hàng được ghi nhận.
           </p>
         </div>
       </AppShell>
