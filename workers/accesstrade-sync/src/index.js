@@ -431,10 +431,25 @@ async function fetchCampaignCommissionRate(env, platform, campaignId) {
 // (or /v1/product_detail once a transaction_id-bearing flow exists) can
 // pass them straight in without this function's signature changing again.
 async function resolveCommission(env, { platform, campaignId, categoryId, categoryName }) {
-  const categoryPolicy = await fetchCashbackCampaignCommission(env, platform, campaignId).catch((err) => {
+  // Both tiers are started together and awaited via Promise.all — latency
+  // is MAX(tier1, tier2) instead of tier1-then-tier2's SUM. Previously
+  // tier 1 was awaited alone first: since this account gets a real 401
+  // from /v1/cashback/campaigns every time (see fetchCashbackCampaignCommission's
+  // own comment), that 401 round-trip (measured live 2026-09-10: ~2-3.5s
+  // on a cache-cold request) was pure added wait in front of tier 2 (~0.3-
+  // 1.4s alone) for an endpoint that never succeeds today. Tier 1 is still
+  // preferred the instant it DOES return a usable policy (unchanged
+  // priority) — this only changes how the two calls are scheduled, not
+  // which one wins or what either returns.
+  const categoryPolicyPromise = fetchCashbackCampaignCommission(env, platform, campaignId).catch((err) => {
     console.error(`resolveCommission: category-policy tier threw (${platform}):`, err.message);
     return undefined;
   });
+  const flatRatePromise = fetchCampaignCommissionRate(env, platform, campaignId).catch((err) => {
+    console.error(`resolveCommission: campaign-policy tier threw (${platform}):`, err.message);
+    return undefined;
+  });
+  const [categoryPolicy, flatRate] = await Promise.all([categoryPolicyPromise, flatRatePromise]);
   if (categoryPolicy) {
     const matched = resolveCategoryCommissionRate(categoryPolicy, categoryId, categoryName);
     if (matched) {
@@ -442,7 +457,6 @@ async function resolveCommission(env, { platform, campaignId, categoryId, catego
       return { rate: matched.rate, source: 'ACCESSTRADE_CASHBACK_CAMPAIGNS' };
     }
   }
-  const flatRate = await fetchCampaignCommissionRate(env, platform, campaignId);
   if (flatRate != null) {
     return { rate: flatRate, source: 'ACCESSTRADE_CAMPAIGN_POLICY' };
   }
