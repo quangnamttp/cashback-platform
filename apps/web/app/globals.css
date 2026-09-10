@@ -91,6 +91,38 @@ body {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
+/* Branded boot splash — see components/ui/AppLoadingScreen.tsx. Covers
+   the page for the brief pre-hydration window, then fades out once and
+   never reappears. pointer-events is dropped in the same rule that
+   starts the fade, so a fast click during the transition still reaches
+   the real page underneath instead of being swallowed. */
+.app-boot-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  transition: opacity 0.25s ease;
+}
+
+.app-boot-splash img {
+  width: 72px;
+  height: 72px;
+  animation: app-boot-pulse 1.1s ease-in-out infinite;
+}
+
+.app-boot-splash-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes app-boot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.92); opacity: 0.75; }
+}
+
 * { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
