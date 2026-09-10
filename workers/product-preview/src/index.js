@@ -100,6 +100,30 @@ class JsonLdCollector {
   }
 }
 
+// Lazada's share-shortlink domain (s.lazada.vn) does NOT do a real HTTP
+// redirect (confirmed live 2026-09-09: fetch()'s redirect:'follow' had
+// nothing to follow, upstream.url came back identical to the request) —
+// instead it serves an intermediate page directly, with the real
+// og:title/og:image for the product ALREADY embedded (so MetaCollector
+// above already picks those up correctly with zero extra work), plus a
+// <meta http-equiv="refresh" content="N;url=..."> pointing at the real
+// canonical product URL. That real URL is what's actually needed for
+// hasProductIdSignature/ACCESSTRADE/datafeed matching downstream — a
+// title+image alone isn't enough since the caller still needs a
+// canonical URL with real digits in it. Reads the same way a browser
+// would honor a meta-refresh, just without waiting out its delay.
+class RefreshRedirectCollector {
+  constructor(result) {
+    this.result = result;
+  }
+  element(el) {
+    if ((el.getAttribute('http-equiv') || '').toLowerCase() !== 'refresh') return;
+    const content = el.getAttribute('content') || '';
+    const m = /url=(.+)$/i.exec(content);
+    if (m && !this.result.metaRefreshUrl) this.result.metaRefreshUrl = m[1].trim();
+  }
+}
+
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') {
@@ -160,9 +184,48 @@ export default {
 
       await new HTMLRewriter()
         .on('meta', new MetaCollector(result))
+        .on('meta', new RefreshRedirectCollector(result))
         .on('script[type="application/ld+json"]', new JsonLdCollector(result))
         .transform(upstream)
         .text(); // drain the stream so the handlers above actually run
+
+      // Lazada's share-shortlink page never issues a real HTTP redirect
+      // (see RefreshRedirectCollector's own comment) — only a meta-refresh
+      // pointing at the real product URL. Override resolvedUrl with that
+      // real target so callers (hasProductIdSignature, ACCESSTRADE,
+      // datafeed matching) get an actual canonical product URL instead of
+      // the opaque share-link code, which has no digits/identity of its
+      // own at all.
+      if (result.metaRefreshUrl) {
+        try {
+          result.resolvedUrl = new URL(result.metaRefreshUrl, upstream.url).toString();
+        } catch {
+          // malformed meta-refresh target — keep the original resolvedUrl
+        }
+      }
+      delete result.metaRefreshUrl;
+
+      // Lazada's share-page og:title wraps the real product name in its
+      // own fixed template ("Thủ tục thanh toán <name>. \nMua ngay tại
+      // Lazada!" — confirmed live 2026-09-09, same wrapper text on every
+      // share link) — the real name is genuinely in there, just not
+      // clean, so it's stripped rather than the whole title rejected
+      // (this is Lazada's own fixed wrapper, not a generic-shell/no-
+      // product case like the two rejections above).
+      if (result.title) {
+        // A leading zero-width space/BOM-like character sometimes
+        // precedes the wrapper text on real pages (confirmed live) —
+        // stripped first (via explicit \u escapes, not literal invisible
+        // characters in source) so the prefix regex's anchor actually
+        // lines up with "Thủ tục thanh toán".
+        const invisiblePrefix = new RegExp('^[\\s\\u200B\\u200C\\u200D\\uFEFF]+');
+        const cleaned = result.title
+          .replace(invisiblePrefix, '')
+          .replace(/^Thủ tục thanh toán\s*/i, '')
+          .replace(/\.\s*Mua ngay tại Lazada!\s*$/i, '')
+          .trim();
+        if (cleaned) result.title = cleaned;
+      }
 
       // TikTok serves an anti-bot interstitial (title "Security Check") to
       // a plain fetch() hitting a direct shop.tiktok.com/.../pdp/<id> URL

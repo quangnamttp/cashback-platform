@@ -86,6 +86,14 @@ const SHORTLINK_PATTERNS = [
   /^https?:\/\/vt\.tiktok\.com\//i,
   /^https?:\/\/(vi-vn\.|vm\.)?tiktok\.com\/t\//i,
   /^https?:\/\/c\.la\.lazada\.(vn|com)\//i,
+  // Lazada's real share-link domain (confirmed live 2026-09-09) —
+  // s.lazada.vn, distinct from c.la.lazada.vn above (both real, Lazada
+  // apparently issues both forms). Missing this meant isShortlink()
+  // never recognized it, so a pasted s.lazada.vn link skipped resolution
+  // entirely and failed hasProductIdSignature (no digits in the short
+  // code itself) — always reported as "invalid_link" even for a
+  // perfectly real product share.
+  /^https?:\/\/s\.lazada\.(vn|com)\//i,
 ];
 
 /** True for a share/shortlink URL (s.shopee.vn, vt.tiktok.com, ...) — one
@@ -94,6 +102,8 @@ const SHORTLINK_PATTERNS = [
 export function isShortlink(productUrl: string): boolean {
   return SHORTLINK_PATTERNS.some((re) => re.test(productUrl));
 }
+
+export type ShortlinkResolution = { resolvedUrl: string; title?: string; image?: string; price?: number };
 
 /**
  * Resolves a share/shortlink to its real product URL by following its
@@ -107,8 +117,16 @@ export function isShortlink(productUrl: string): boolean {
  * purchase against. Returns null if the Worker isn't
  * configured or the resolve failed — caller should fall back to the
  * original (unresolved) URL rather than block link creation entirely.
+ *
+ * Also returns whatever title/image/price the SAME request already
+ * scraped (the Worker does both jobs in one fetch — see workers/
+ * product-preview) — the caller should use this directly instead of
+ * making a second, redundant fetchProductPreview call against the exact
+ * same resolvedUrl right after (confirmed live 2026-09-09: this was
+ * happening for every shortlink, doubling the Worker round-trip for no
+ * reason since the data was already sitting right here).
  */
-export async function resolveShortlink(productUrl: string): Promise<string | null> {
+export async function resolveShortlink(productUrl: string): Promise<ShortlinkResolution | null> {
   if (!WORKER_URL) return null;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
@@ -116,7 +134,13 @@ export async function resolveShortlink(productUrl: string): Promise<string | nul
     const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(productUrl)}`, { signal: controller.signal });
     if (!res.ok) return null;
     const json = await res.json();
-    return typeof json.resolvedUrl === 'string' ? json.resolvedUrl : null;
+    if (typeof json.resolvedUrl !== 'string') return null;
+    return {
+      resolvedUrl: json.resolvedUrl,
+      title: typeof json.title === 'string' ? json.title : undefined,
+      image: typeof json.image === 'string' ? json.image : undefined,
+      price: typeof json.price === 'number' && json.price > 0 ? json.price : undefined,
+    };
   } catch {
     return null;
   } finally {

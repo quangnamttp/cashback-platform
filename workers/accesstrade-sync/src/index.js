@@ -497,12 +497,24 @@ const DATAFEED_ROW_BACKWARD_WINDOW = 4000; // generous bound for "sku","name" �
 const DATAFEED_FORWARD_FIELD_RE = /^\s*,\s*"([\d.]*)"\s*,\s*"([\d.]*)"\s*,\s*"([^"]*)"/; // price, discount, image
 const DATAFEED_NAME_BACKWARD_RE = /"([^"]{0,300})"\s*,\s*$/; // captures the field right before the match point
 
+// A miss (product genuinely not in the ~92K-row Shopee file) means
+// scanning all the way to EOF — confirmed live 2026-09-09 to take up to
+// ~13s end-to-end, which is a real, customer-visible delay on a page
+// that's supposed to respond instantly. Capped so a miss fails fast
+// instead of exhausting the whole file — at the cost of occasionally
+// missing a real match that happens to sit past the cutoff, which is an
+// acceptable trade for a customer-facing wait time (this is only ever a
+// best-effort PRE-purchase estimate; a miss here just means the card
+// shows the friendly "chưa xác định số tiền" copy, nothing breaks).
+const DATAFEED_SEARCH_TIMEOUT_MS = 4000;
+
 async function lookupDatafeedProduct(platform, productUrl) {
   const feedUrl = DATAFEED_CSV_URL[platform];
   if (!feedUrl) return undefined;
   const searchUrl = platform === 'SHOPEE' ? canonicalShopeeDatafeedUrl(productUrl) : productUrl;
   if (!searchUrl) return undefined;
   const needle = `"${searchUrl}"`;
+  const deadline = Date.now() + DATAFEED_SEARCH_TIMEOUT_MS;
 
   const res = await fetch(feedUrl);
   if (!res.ok || !res.body) return undefined;
@@ -512,6 +524,10 @@ async function lookupDatafeedProduct(platform, productUrl) {
   let foundIdx = -1;
   try {
     for (;;) {
+      if (Date.now() > deadline) {
+        console.log(`[ProductResolver] datafeed search timed out (${platform}) after ${DATAFEED_SEARCH_TIMEOUT_MS}ms — treating as not found`);
+        return undefined;
+      }
       const { done, value } = await reader.read();
       if (!done) carry += decoder.decode(value, { stream: true });
       if (foundIdx === -1) foundIdx = carry.indexOf(needle);
@@ -668,9 +684,43 @@ async function handleCreateLink(request, env, ctx) {
     if (!campaignId) {
       return Response.json({ supported: false, reason: 'not_configured' });
     }
-    const { ok, json } = await accesstradeApi(env, 'POST', '/v1/product_link/create', {
+    // Three genuinely independent calls — none needs another's result —
+    // kicked off together instead of sequentially, so total latency is
+    // the SLOWEST of the three rather than their sum. Previously
+    // sequential: commission rate + datafeed lookup only started AFTER
+    // create-link finished, purely additive wait for no reason (confirmed
+    // live 2026-09-09 as a real, customer-visible slowdown, alongside the
+    // datafeed search's own worst-case time — see
+    // DATAFEED_SEARCH_TIMEOUT_MS above). If create-link itself fails
+    // below, the other two settle in the background and are simply
+    // discarded — wasted work in that one case, never a correctness
+    // issue, and a fair trade for the common (success) case being faster.
+    const createLinkPromise = accesstradeApi(env, 'POST', '/v1/product_link/create', {
       body: { campaign_id: campaignId, urls: [productUrl], ...trackingFields },
     });
+    // See fetchCampaignCommissionRate's own comment for exactly where this
+    // rate comes from (real campaign policy text, parsed) and its
+    // reliability tier. Best-effort only — cached at the edge so this is a
+    // cache hit for all but the first request per campaign per day; a
+    // failure here must never fail the link itself.
+    const commissionRatePromise = fetchCampaignCommissionRate(env, platform, campaignId).catch((err) => {
+      console.error(`campaign commission rate lookup threw (${platform}):`, err.message);
+      return undefined;
+    });
+    // ProductResolver — real name/price/discount/image, when this
+    // platform's ACCESSTRADE datafeed CSV actually has this product (see
+    // lookupDatafeedProduct's own comment: Shopee's feed is real/current;
+    // Lazada's is currently empty — its 1M+-product Datafeed API was
+    // investigated and ruled out for per-URL lookup, see that comment).
+    // Always attempted (not gated on commissionRate) since name/image are
+    // useful even when no rate is available. A failure here must never
+    // fail the link itself.
+    const productPromise = lookupDatafeedProduct(platform, productUrl).catch((err) => {
+      console.error(`datafeed product lookup threw (${platform}):`, err.message);
+      return undefined;
+    });
+
+    const { ok, json } = await createLinkPromise;
     // Same three-way split as TikTok above, using this endpoint's own
     // documented shape instead: {data:{error_link:[],success_link:[...],
     // suspend_url:[]}, success:true} — a URL ACCESSTRADE doesn't convert
@@ -690,32 +740,7 @@ async function handleCreateLink(request, env, ctx) {
       console.log(`create_link (${platform}) not eligible (url not in success_link):`, JSON.stringify(json));
       return Response.json({ supported: false, reason: 'not_in_campaign' });
     }
-    // See fetchCampaignCommissionRate's own comment for exactly where this
-    // rate comes from (real campaign policy text, parsed) and its
-    // reliability tier. Best-effort only — cached at the edge so this is a
-    // cache hit for all but the first request per campaign per day; a
-    // failure here must never fail the link itself (the aff_link above is
-    // already real and usable regardless of whether a rate is found).
-    let commissionRate;
-    try {
-      commissionRate = await fetchCampaignCommissionRate(env, platform, campaignId);
-    } catch (err) {
-      console.error(`campaign commission rate lookup threw (${platform}):`, err.message);
-    }
-    // ProductResolver — real name/price/discount/image, when this
-    // platform's ACCESSTRADE datafeed CSV actually has this product (see
-    // lookupDatafeedProduct's own comment: Shopee's feed is real/current;
-    // Lazada's is currently empty — its 1M+-product Datafeed API was
-    // investigated and ruled out for per-URL lookup, see that comment).
-    // Always attempted (not gated on commissionRate) since name/image are
-    // useful even when no rate is available. A failure here must never
-    // fail the link itself.
-    let product;
-    try {
-      product = await lookupDatafeedProduct(platform, productUrl);
-    } catch (err) {
-      console.error(`datafeed product lookup threw (${platform}):`, err.message);
-    }
+    const [commissionRate, product] = await Promise.all([commissionRatePromise, productPromise]);
     console.log(
       `[ProductResolver] platform=${platform} source=${product ? 'ACCESSTRADE_DATAFEED' : 'NONE'} ` +
       `match=${product ? 'url' : 'n/a'} name=${!!product?.name} image=${!!product?.image} price=${!!product?.price}` +

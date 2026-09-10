@@ -149,6 +149,14 @@ export default function GetCashbackLinkPage() {
   // wouldn't help when the broken image actually came from result.product
   // (ACCESSTRADE's datafeed, not the scraped preview).
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  // True only while the page-scraped preview fetch is genuinely still in
+  // flight for the CURRENT link — lets the UI tell "still might get a
+  // real Dự kiến hoàn number" (show a neutral loading state) apart from
+  // "confirmed no more data is coming" (show the friendly "Hoàn tiền:
+  // Được áp dụng" copy instead of a permanent "Đang xác định..." that
+  // reads like the product/link is broken — see productInfo's cashback
+  // tiers and the JSX render below).
+  const [productPreviewLoading, setProductPreviewLoading] = useState(false);
   const previewRequestRef = useRef(0);
 
   useEffect(() => {
@@ -214,6 +222,17 @@ export default function GetCashbackLinkPage() {
       return undefined;
     })();
 
+    // True while a real cashback number MIGHT still arrive — either the
+    // whole check is still in flight ('resolving'), or the MEDIUM-tier
+    // path is live (a real campaign rate exists, so a real number will
+    // appear the moment productPreview's own price lookup settles). Once
+    // this goes false with no cashback amount, that's the FINAL word —
+    // the JSX below switches from a loading state to the permanent
+    // "Hoàn tiền: Được áp dụng" copy instead of an indefinite
+    // "Đang xác định...", which read like the link/product was broken.
+    const cashbackPending = result.status === 'resolving'
+      || (!cashback && !!result.estimatedCommissionRate && productPreviewLoading);
+
     return {
       platform: result.platformCode,
       productId: product?.productId,
@@ -224,10 +243,11 @@ export default function GetCashbackLinkPage() {
       commission: result.status === 'supported' ? result.estimatedCommission?.amount : undefined,
       commissionRate: result.status === 'supported' ? result.estimatedCommissionRate : undefined,
       estimatedCashback: cashback?.amount,
+      cashbackPending,
       dataSource: product?.dataSource,
       updatedAt: product?.updatedAt,
     };
-  }, [result, productPreview, imageLoadFailed]);
+  }, [result, productPreview, productPreviewLoading, imageLoadFailed]);
 
   const filteredVouchers = useMemo(() => {
     const group = platformGroups.find((g) => g.key === activeGroup) ?? platformGroups[0];
@@ -267,6 +287,7 @@ export default function GetCashbackLinkPage() {
     setSelectedVoucherId(null);
     setProductPreview(null);
     setImageLoadFailed(false);
+    setProductPreviewLoading(false);
 
     const inputLink = ensureUrlScheme(link);
     // Instant feedback (client-side, no network) — platform detection is
@@ -295,6 +316,13 @@ export default function GetCashbackLinkPage() {
       // lib/redirectLink.ts) — the customer still gets the same neutral
       // "try again" wording and can still buy via the original shortlink.
       let targetLink = inputLink;
+      // Set only for the shortlink path — the SAME Worker call that
+      // resolved the redirect already scraped title/image/price for us,
+      // so the fetchProductPreview call further below is skipped entirely
+      // in that case rather than hitting the exact same URL a second time
+      // (confirmed live 2026-09-09: this was happening on every single
+      // shortlink paste, doubling that Worker round-trip for nothing).
+      let reusablePreview: { title?: string; image?: string; price?: number } | undefined;
       if (isShortlink(inputLink)) {
         const resolved = await resolveShortlink(inputLink);
         if (!resolved) {
@@ -312,7 +340,8 @@ export default function GetCashbackLinkPage() {
           });
           return;
         }
-        targetLink = resolved;
+        targetLink = resolved.resolvedUrl;
+        reusablePreview = { title: resolved.title, image: resolved.image, price: resolved.price };
       }
       const data = await createOrReuseRedirect(uid, targetLink);
       if (data.status === 'unsupported') {
@@ -359,25 +388,41 @@ export default function GetCashbackLinkPage() {
       // source — actually lands. Never blocks the flow above; if this
       // resolves after the user already changed the link, the request id
       // guard drops the stale response on the floor.
-      const requestId = ++previewRequestRef.current;
-      fetchProductPreview(targetLink).then((preview) => {
-        if (previewRequestRef.current === requestId && preview) {
-          // A real product page always has og:title AND og:image together —
-          // a scraped title with NO image is the generic site-wide
-          // fallback (e.g. Shopee serving "Shopee Việt Nam | Mua và Bán…"
-          // for a non-existent/invalid product id, confirmed live), which
-          // must never be shown as if it were the real product name.
-          setProductPreview({
-            title: preview.title && preview.image ? preview.title : undefined,
-            image: preview.image,
-            price: preview.price,
-          });
-          // Persisted onto the redirectCache doc so /link-history can show
-          // a real thumbnail/title/price for this link later, not just at
-          // the moment it was first pasted.
-          savePreviewToRedirect(data.code, preview);
-        }
+      // A real product page always has og:title AND og:image together — a
+      // scraped title with NO image is a generic site-wide fallback (e.g.
+      // Shopee serving "Shopee Việt Nam | Mua và Bán…" for a share link
+      // that never actually redirected anywhere — also caught server-side
+      // now, see workers/product-preview's known-generic-title rejection,
+      // but this is defense-in-depth for the general case), which must
+      // never be shown as if it were the real product name.
+      const acceptPreview = (preview: { title?: string; image?: string; price?: number }) => ({
+        title: preview.title && preview.image ? preview.title : undefined,
+        image: preview.image,
+        price: preview.price,
       });
+
+      if (reusablePreview) {
+        // Already have this synchronously — nothing left to wait for.
+        setProductPreview(acceptPreview(reusablePreview));
+        savePreviewToRedirect(data.code, reusablePreview);
+      } else {
+        setProductPreviewLoading(true);
+        const requestId = ++previewRequestRef.current;
+        fetchProductPreview(targetLink).then((preview) => {
+          if (previewRequestRef.current !== requestId) return; // stale — a newer link replaced this one
+          if (preview) {
+            setProductPreview(acceptPreview(preview));
+            // Persisted onto the redirectCache doc so /link-history can
+            // show a real thumbnail/title/price for this link later, not
+            // just at the moment it was first pasted.
+            savePreviewToRedirect(data.code, preview);
+          }
+          // Settled either way — the "might still get a number" window
+          // (see productPreviewLoading's own comment) is over regardless
+          // of whether this actually found anything.
+          setProductPreviewLoading(false);
+        });
+      }
     } catch {
       setResult({ status: 'error' });
     } finally {
@@ -426,7 +471,7 @@ export default function GetCashbackLinkPage() {
     if (!uid || !link.trim()) return;
     try {
       const trimmed = ensureUrlScheme(link);
-      const targetLink = isShortlink(trimmed) ? (await resolveShortlink(trimmed)) || trimmed : trimmed;
+      const targetLink = isShortlink(trimmed) ? (await resolveShortlink(trimmed))?.resolvedUrl || trimmed : trimmed;
       const r = await createOrReuseRedirect(uid, targetLink);
       if (r.status === 'supported') {
         // Open the marketplace URL directly rather than the intermediate
@@ -594,14 +639,41 @@ export default function GetCashbackLinkPage() {
                           order/referrer exists — purely a display
                           estimate, never written to any order/ledger/
                           wallet document. */}
+                      {/* Three states, not two: a real number (HIGH/MEDIUM
+                          confidence, see productInfo's own comment); a
+                          brief loading state while a number still MIGHT
+                          arrive (productInfo.cashbackPending); or — once
+                          that window closes with nothing found — a
+                          friendly "vẫn được hoàn tiền" message instead of
+                          leaving "Đang xác định..." up indefinitely, which
+                          reads like the link/product is broken rather
+                          than "this specific product just doesn't have a
+                          pre-purchase number available". Never a guessed
+                          amount in that third state — the real figure is
+                          only ever confirmed once ACCESSTRADE reports a
+                          real order. */}
                       <div className="quick-product-estimate-block">
-                        <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
-                        <span className="quick-product-estimate-amount">
-                          {productInfo?.estimatedCashback != null ? formatCurrency(productInfo.estimatedCashback, lang) : 'Đang xác định...'}
-                        </span>
+                        {productInfo?.estimatedCashback != null ? (
+                          <>
+                            <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
+                            <span className="quick-product-estimate-amount">{formatCurrency(productInfo.estimatedCashback, lang)}</span>
+                          </>
+                        ) : productInfo?.cashbackPending ? (
+                          <>
+                            <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
+                            <span className="quick-product-estimate-amount">Đang xác định...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="quick-product-estimate-label">🤑 Hoàn tiền</span>
+                            <span className="quick-product-estimate-amount">Được áp dụng</span>
+                          </>
+                        )}
                       </div>
                       <p className="quick-product-note">
-                        Số tiền chính xác được xác nhận khi đơn hàng được đối soát.
+                        {productInfo?.estimatedCashback != null || productInfo?.cashbackPending
+                          ? 'Số tiền chính xác được xác nhận khi đơn hàng được đối soát.'
+                          : '💰 Số tiền hoàn sẽ được xác nhận sau khi đơn hàng được ghi nhận. 🎉 Mua hàng qua link này vẫn được hoàn tiền.'}
                       </p>
                       <div
                         className="quick-product-commission-note"
