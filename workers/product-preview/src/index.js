@@ -18,6 +18,18 @@ function isAllowedHost(hostname) {
   return ALLOWED_HOST_PATTERNS.some((re) => re.test(hostname));
 }
 
+// Shopee's own shopId/itemId, from ANY of its real URL shapes — the
+// pretty-slug (...-i.<shopid>.<itemid>) and any canonical-looking path of
+// the form /<word>/<shopid>/<itemid> (not just /product/). Mirrors
+// apps/web/lib/redirectLink.ts's and workers/accesstrade-sync's own copies
+// (kept in sync — no shared module between separate Workers/a 'use client'
+// file).
+const SHOPEE_ID_PATH = /^\/[a-z]+\/(\d+)\/(\d+)/i;
+function extractShopeeIds(pathname) {
+  const m = SHOPEE_ID_PATH.exec(pathname);
+  return m ? { shopId: m[1], itemId: m[2] } : null;
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -274,6 +286,49 @@ export default {
       if (result.title === 'Shopee Việt Nam | Mua và Bán Trên Ứng Dụng Di Động Hoặc Website') {
         result.title = null;
         result.image = null;
+      }
+
+      // Shopee's share/redirect flow (s.shopee.vn -> /opaanlp/<shopid>/
+      // <itemid>, confirmed live 2026-09-10) lands on an "open app landing
+      // page" — a bare client-rendered SPA shell with NO server-rendered
+      // og:title/og:image/JSON-LD at all, regardless of whether the ids are
+      // real (243KB empty shell every time). The SAME shopid/itemid pair
+      // under the canonical https://shopee.vn/product/<shopid>/<itemid> URL
+      // IS fully server-rendered with the real product's og:title/og:image/
+      // JSON-LD (884-973KB, confirmed on two independent real short links
+      // side-by-side against their /opaanlp/ counterpart) — so once the ids
+      // are known, metadata is scraped from THAT canonical URL instead of
+      // whatever non-canonical path the redirect actually landed on. Only
+      // triggered when the first pass found nothing (title still null),
+      // so a page that already scraped fine (e.g. a long link pasted
+      // straight at /product/... or Lazada/TikTok) never pays for a second
+      // fetch. Same User-Agent as the first fetch — shopee.vn/product/
+      // pages (as opposed to s.shopee.vn short links) already render fine
+      // with either UA (this is the same host a customer's pasted long
+      // Shopee link hits directly today), so reusing it here doesn't touch
+      // that already-working path's behavior.
+      if (!result.title) {
+        try {
+          const resolvedParsed = new URL(result.resolvedUrl);
+          if (/(^|\.)shopee\.(vn|com)$/i.test(resolvedParsed.hostname) && !/^\/product\//i.test(resolvedParsed.pathname)) {
+            const ids = extractShopeeIds(resolvedParsed.pathname);
+            if (ids) {
+              const canonicalUrl = `https://shopee.vn/product/${ids.shopId}/${ids.itemId}`;
+              const productPage = await fetch(canonicalUrl, {
+                headers: { 'User-Agent': userAgent, 'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.8' },
+                cf: { cacheTtl: 300, cacheEverything: true },
+              });
+              await new HTMLRewriter()
+                .on('meta', new MetaCollector(result))
+                .on('script[type="application/ld+json"]', new JsonLdCollector(result))
+                .transform(productPage)
+                .text();
+            }
+          }
+        } catch {
+          // canonical re-fetch failed — leave title/image/price null, caller
+          // shows the friendly "no data yet" fallback, never fake data.
+        }
       }
 
       return jsonResponse(result, 200);
