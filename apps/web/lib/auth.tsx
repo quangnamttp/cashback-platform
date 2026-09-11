@@ -390,7 +390,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = useCallback(async () => {
     if (!isFirebaseConfigured()) throw new Error(NOT_CONFIGURED_ERROR);
     const auth = getFirebaseAuth();
-    await setPersistence(auth, browserLocalPersistence);
+    // Deliberately NOT awaited (see FINAL ROOT-CAUSE AUDIT, "Google Login
+    // Safari" — 2026-09-11) — awaiting this here used to insert a real
+    // async gap (an IndexedDB write, slow on a cold/first call) between
+    // the click and signInWithPopup below. Safari's popup-blocker tracks
+    // "recent user activation" strictly; that gap was enough for Safari to
+    // no longer treat the popup as gesture-triggered on the FIRST attempt
+    // (a second click worked because the same write had already warmed
+    // up), which matches the "works on Safari WEB only after retrying"
+    // symptom exactly — signInWithRedirect below was never affected
+    // (a full-page navigation isn't subject to the same popup-gesture
+    // rule), which is also why PWA (redirect) never showed this.
+    // JS is single-threaded: everything setPersistence does SYNCHRONOUSLY
+    // (pointing the auth instance at the new persistence backend) still
+    // runs to completion before the very next line executes — only its
+    // own internal async I/O is deferred, running alongside the popup/
+    // redirect instead of blocking it. persistence value/behavior is
+    // unchanged; only when its own write settles relative to the popup
+    // call is different. Logged, not swallowed, if it ever rejects.
+    setPersistence(auth, browserLocalPersistence).catch((err) => {
+      console.error('setPersistence(browserLocalPersistence) failed', err);
+    });
     const provider = new GoogleAuthProvider();
     // Without this, Google silently reuses whichever Google account is
     // already active in the browser and skips the picker — fine for a
