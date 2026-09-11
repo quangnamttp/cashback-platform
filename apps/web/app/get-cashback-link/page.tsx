@@ -268,10 +268,21 @@ export default function GetCashbackLinkPage() {
     const cashbackPending = result.status === 'resolving'
       || (!cashback && result.status === 'supported' && result.platformCode !== 'SHOPEE' && !!result.estimatedCommissionRate && productPreviewLoading);
 
+    const productName = product?.name || productPreview?.title;
+    // Same "don't show an indefinite loading label" reasoning as
+    // cashbackPending above, applied to the title itself — a Shopee short
+    // link with no D1/ACCESSTRADE name AND no scraped title (see
+    // handleCheck's own comment on when fetchProductPreview still runs in
+    // the background for that exact case) must eventually settle on a
+    // real, final label instead of "Đang lấy thông tin sản phẩm" staying
+    // up forever once nothing more is coming.
+    const productNamePending = result.status === 'resolving' || (!productName && productPreviewLoading);
+
     return {
       platform: result.platformCode,
       productId: product?.productId,
-      productName: product?.name || productPreview?.title,
+      productName,
+      productNamePending,
       productImage: imageLoadFailed ? undefined : product?.image || productPreview?.image,
       price: product?.price ?? (productPreview?.price || undefined),
       discount: product?.discount,
@@ -439,7 +450,18 @@ export default function GetCashbackLinkPage() {
         price: preview.price,
       });
 
-      if (reusablePreview) {
+      // Shopee's own D1-cached short-link resolve (see lib/productPreview.ts's
+      // resolveShortlinkCached) never carries title/image — it only exists
+      // to find shopId/itemId fast, real name/image/price for Shopee comes
+      // from ACCESSTRADE's own datafeed (data.product above) instead. A
+      // reusablePreview with no title is therefore NOT "already have it,
+      // nothing to wait for" — still worth one real background scrape
+      // attempt so a product ACCESSTRADE also doesn't have a name/image for
+      // isn't stuck on the "Đang lấy thông tin sản phẩm" placeholder
+      // forever (see productInfo's own productNamePending comment). Never
+      // blocks checking/the estimate/the affiliate link — this only ever
+      // updates the card's title/image after the fact.
+      if (reusablePreview && reusablePreview.title && reusablePreview.image) {
         // Already have this synchronously — nothing left to wait for.
         setProductPreview(acceptPreview(reusablePreview));
         savePreviewToRedirect(data.code, reusablePreview);
@@ -655,7 +677,10 @@ export default function GetCashbackLinkPage() {
                       )}
                     </div>
                     <div className="quick-product-info-text">
-                      <h3 className="quick-product-title">{productInfo?.productName || 'Đang lấy thông tin sản phẩm'}</h3>
+                      <h3 className="quick-product-title">
+                        {productInfo?.productName
+                          || (productInfo?.productNamePending ? 'Đang lấy thông tin sản phẩm' : `Sản phẩm ${result.platform}`)}
+                      </h3>
                       {/* estimatedCommission is ONLY ever the real figure
                           ACCESSTRADE's own API returned (see
                           lib/redirectLink.ts's own comment for exactly
