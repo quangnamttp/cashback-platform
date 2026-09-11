@@ -129,7 +129,20 @@ export type ShortlinkResolution = { resolvedUrl: string; title?: string; image?:
 export async function resolveShortlink(productUrl: string): Promise<ShortlinkResolution | null> {
   if (!WORKER_URL) return null;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  // Was 8000 — measured live 2026-09-11 against a real s.shopee.vn link:
+  // the Worker's own chain for THIS domain is two sequential upstream
+  // fetches (follow the short-link redirect, then re-fetch the canonical
+  // /product/<id>/<id> page for real og:title/image — see workers/
+  // product-preview's own comment on why /opaanlp/ needs that second hop),
+  // timed cold at 4.3s-5.1s from a low-latency connection alone. A mobile
+  // connection's extra RTT/TLS overhead on top of that regularly pushed
+  // the real total past 8000ms, aborting a resolve that would otherwise
+  // have succeeded a moment later — surfacing as reason:'resolve_error'
+  // ("Không thể tạo liên kết...") on a link that was never actually
+  // broken, just slow. 15000 keeps a real ceiling (still fails, same
+  // honest fallback, if the Worker/Shopee is genuinely unreachable) while
+  // giving real cold resolves enough room to finish.
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(productUrl)}`, { signal: controller.signal });
     if (!res.ok) return null;

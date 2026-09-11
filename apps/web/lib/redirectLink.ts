@@ -281,11 +281,26 @@ async function tryCreateRealAffiliateLink(
   try {
     const idToken = await getFirebaseAuth().currentUser?.getIdToken();
     if (!idToken) return { reason: 'not_authenticated' };
-    const res = await fetch(`${ACCESSTRADE_WORKER_URL}/create-link`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, platform, productUrl, subId, ...(productId ? { productId } : {}) }),
-    });
+    // This call had NO timeout at all until now — on a genuinely stuck
+    // mobile connection it could leave the "Đang kiểm tra..." spinner
+    // running indefinitely with zero feedback, worse than an honest error.
+    // 15000 matches resolveShortlink's own ceiling (lib/productPreview.ts)
+    // — comfortably above every real product_link/create duration measured
+    // live this session (130ms-2.4s) — so this can only ever fire on a
+    // real stuck/unreachable connection, never a normal-but-slow one.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let res: Response;
+    try {
+      res = await fetch(`${ACCESSTRADE_WORKER_URL}/create-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, platform, productUrl, subId, ...(productId ? { productId } : {}) }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!res.ok) return { reason: 'worker_unreachable' };
     const json: {
       supported: boolean;
