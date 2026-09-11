@@ -692,6 +692,48 @@ const DATAFEED_NAME_BACKWARD_RE = /"([^"]{0,300})"\s*,\s*$/; // captures the fie
 // shows the friendly "chưa xác định số tiền" copy, nothing breaks).
 const DATAFEED_SEARCH_TIMEOUT_MS = 4000;
 
+// GET /v1/datafeeds?domain=shopee.vn&sku=<itemId> — the OFFICIAL ACCESSTRADE
+// per-product lookup endpoint (docs provided 2026-09-11), confirmed live
+// against real products: `sku` is exactly Shopee's own itemId (NOT
+// ACCESSTRADE's own `product_id`, which is a separate internal id like
+// "322_4949621399", and NOT shopId_itemId — verified by reading the raw
+// CSV's own sku column AND cross-checking 3 real products' API responses).
+// `domain=shopee.vn` alone (no sku) returns total:12813 — the EXACT same
+// row count as the CSV/D1 index, confirming this is the same underlying
+// dataset, just queryable per-product instead of requiring a full
+// download+scan. Verified live: a product confirmed absent from the CSV
+// (shopId 37104925 and 947189686 — see D1 rebuild investigation) is ALSO
+// total:0 here, so this is not a way to find MORE products than the CSV
+// already has — only a way to find a specific one FRESHER (update_time is
+// today's date, vs. up to an hour of staleness from the CSV-based rebuild)
+// and FASTER (121-750ms measured for a single sku, vs a 19MB download).
+// Used only as a fallback on a D1 MISS (see lookupShopeeProductFromIndex
+// below) — never called on a D1 hit, and never on every single request,
+// specifically to avoid unknown rate-limit exposure on an endpoint whose
+// docs (as provided) don't state one, the same caution already applied to
+// every other ACCESSTRADE endpoint in this file.
+async function fetchShopeeProductFromDatafeedApi(env, ids) {
+  const { ok, json } = await accesstradeApi(env, 'GET', '/v1/datafeeds', {
+    query: { domain: 'shopee.vn', sku: ids.itemId },
+  });
+  if (!ok) return undefined;
+  const row = Array.isArray(json?.data) ? json.data[0] : undefined;
+  if (!row) return undefined;
+  // Matches CSV's own sku-is-itemId identity, but itemId alone (sku) isn't
+  // guaranteed globally unique across every shop by ACCESSTRADE's own
+  // contract — cheap extra safety: reject a row whose own url doesn't
+  // actually carry the shopId we asked for, rather than trusting sku alone.
+  const rowIds = row.url ? extractShopeeIds(row.url) : null;
+  if (!rowIds || rowIds.shopId !== ids.shopId) return undefined;
+  const price = Number(row.price);
+  return {
+    name: row.name || undefined,
+    price: Number.isFinite(price) && price > 0 ? price : undefined,
+    discount: row.discount != null ? Number(row.discount) || 0 : undefined,
+    image: row.image || undefined,
+  };
+}
+
 // Shopee only — reads the D1 index rebuildDatafeedIndex() below maintains,
 // instead of downloading+scanning the ~19MB CSV per request (measured live
 // 2026-09-11: up to ~4s on a miss, the old DATAFEED_SEARCH_TIMEOUT_MS path
@@ -700,25 +742,57 @@ const DATAFEED_SEARCH_TIMEOUT_MS = 4000;
 // `env` is the one necessary addition to this function's inputs — D1 is
 // only reachable through the bindings object, which the call sites already
 // have in scope; platform/productUrl/return shape are all unchanged.
+//
+// On a D1 miss, falls back to the real GET /v1/datafeeds API (see
+// fetchShopeeProductFromDatafeedApi above) before giving up — catches a
+// product added to ACCESSTRADE's feed after the last hourly rebuild, or
+// one whose price/name changed since. A live-API hit is opportunistically
+// upserted into D1 (same ON CONFLICT DO UPDATE pattern rebuildDatafeedIndex
+// uses) so the NEXT request for this same product is a fast D1 hit again —
+// self-healing cache, never a second API call for the same product within
+// the same hour unless rebuildDatafeedIndex overwrites it first anyway.
 async function lookupShopeeProductFromIndex(productUrl, env) {
   const ids = extractShopeeIds(productUrl);
   if (!ids) return undefined;
   const id = `${ids.shopId}_${ids.itemId}`;
+  let row;
   try {
-    const row = await env.DATAFEED_DB.prepare(
+    row = await env.DATAFEED_DB.prepare(
       'SELECT name, price, discount, image FROM shopee_products WHERE id = ?1',
     ).bind(id).first();
-    if (!row) return undefined;
+  } catch (err) {
+    console.error(`[DatafeedIndex] D1 lookup threw for id=${id}:`, err.message);
+  }
+  if (row) {
     return {
       name: row.name || undefined,
       price: row.price && row.price > 0 ? row.price : undefined,
       discount: row.discount != null ? row.discount : undefined,
       image: row.image || undefined,
     };
+  }
+
+  let apiProduct;
+  try {
+    apiProduct = await fetchShopeeProductFromDatafeedApi(env, ids);
   } catch (err) {
-    console.error(`[DatafeedIndex] D1 lookup threw for id=${id}:`, err.message);
+    console.error(`[DatafeedIndex] /v1/datafeeds fallback threw for id=${id}:`, err.message);
     return undefined;
   }
+  if (!apiProduct) return undefined;
+
+  try {
+    await env.DATAFEED_DB.prepare(
+      'INSERT INTO shopee_products (id, name, price, discount, image, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ' +
+      'ON CONFLICT(id) DO UPDATE SET name=excluded.name, price=excluded.price, discount=excluded.discount, image=excluded.image, updated_at=excluded.updated_at',
+    ).bind(id, apiProduct.name || null, apiProduct.price || null, apiProduct.discount ?? 0, apiProduct.image || null, Date.now()).run();
+  } catch (err) {
+    // Best-effort cache population only — a write failure here must never
+    // fail the lookup itself, since apiProduct is already real, correct
+    // data ready to return regardless of whether it gets cached.
+    console.error(`[DatafeedIndex] D1 cache-populate failed for id=${id}:`, err.message);
+  }
+  return apiProduct;
 }
 
 async function lookupDatafeedProduct(platform, productUrl, env) {
@@ -1698,6 +1772,27 @@ export default {
       const startedAt = Date.now();
       await rebuildDatafeedIndex(env);
       return Response.json({ ok: true, ms: Date.now() - startedAt });
+    }
+    // Read-only diagnostic: exercises the REAL GET /v1/datafeeds endpoint
+    // directly (real network call, real Authorization header built from
+    // env.ACCESSTRADE_API_KEY server-side only — never returned/logged).
+    // Added 2026-09-11 to investigate whether this endpoint can look up a
+    // single Shopee product by sku/domain instead of the static CSV. Kept
+    // permanently, same operational-tool reasoning as the other /debug/*
+    // routes — never called from the customer-facing /create-link path.
+    if (url.pathname === '/debug/datafeeds') {
+      const domain = url.searchParams.get('domain') || undefined;
+      const sku = url.searchParams.get('sku') || undefined;
+      const campaign = url.searchParams.get('campaign') || undefined;
+      const page = url.searchParams.get('page') || undefined;
+      const limit = url.searchParams.get('limit') || undefined;
+      const price_from = url.searchParams.get('price_from') || undefined;
+      const price_to = url.searchParams.get('price_to') || undefined;
+      const startedAt = Date.now();
+      const { ok, status, json } = await accesstradeApi(env, 'GET', '/v1/datafeeds', {
+        query: { domain, sku, campaign, page, limit, price_from, price_to },
+      });
+      return Response.json({ domain, sku, campaign, page, limit, ok, status, json, ms: Date.now() - startedAt });
     }
     return new Response('OK', { status: 200 });
   },
