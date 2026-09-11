@@ -286,22 +286,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // that made /manager flaky). Later snapshots update state as usual
         // without touching authLoading again.
         let firstSnapshot = true;
-        profileUnsubRef.current = onSnapshot(doc(db, 'users', nextUser.uid), (snap) => {
-          const data = snap.data();
-          setAvatarUrl(data?.avatarUrl ?? null);
-          setIsAdmin(data?.role === 'admin');
-          // No Admin SDK anymore to actually disable the Firebase Auth
-          // account, so a LOCKED status is enforced here instead — the
-          // account can still technically re-authenticate elsewhere, but
-          // every tab of this app signs it out the moment status flips.
-          if (data?.status === 'LOCKED') {
-            signOut(getFirebaseAuth()).catch(() => undefined);
-          }
-          if (firstSnapshot) {
-            firstSnapshot = false;
-            setAuthLoading(false);
-          }
-        });
+        profileUnsubRef.current = onSnapshot(
+          doc(db, 'users', nextUser.uid),
+          (snap) => {
+            const data = snap.data();
+            setAvatarUrl(data?.avatarUrl ?? null);
+            setIsAdmin(data?.role === 'admin');
+            // No Admin SDK anymore to actually disable the Firebase Auth
+            // account, so a LOCKED status is enforced here instead — the
+            // account can still technically re-authenticate elsewhere, but
+            // every tab of this app signs it out the moment status flips.
+            if (data?.status === 'LOCKED') {
+              signOut(getFirebaseAuth()).catch(() => undefined);
+            }
+            if (firstSnapshot) {
+              firstSnapshot = false;
+              setAuthLoading(false);
+            }
+          },
+          // Without this, a listener error (permission hiccup, dropped
+          // network, expired token right after sign-in) left firstSnapshot
+          // stuck true forever — authLoading never clears, so RequireAuth/
+          // RequireAdmin (both `return null` while authLoading) show a
+          // permanent blank screen with no path back except a full app
+          // restart. This never guesses a role/status from a failed read —
+          // isAdmin/avatarUrl simply stay at whatever they already were
+          // (their existing defaults on a fresh sign-in) — it only ever
+          // unblocks rendering so the user sees the real page (or, for an
+          // admin-only page, RequireAdmin's own fail-closed "not admin"
+          // redirect) instead of an indefinite blank one. Deliberately no
+          // signOut() here — a transient Firestore error is not evidence
+          // the account is actually invalid.
+          (err) => {
+            console.error('users profile onSnapshot failed', err);
+            if (firstSnapshot) {
+              firstSnapshot = false;
+              setAuthLoading(false);
+            }
+          },
+        );
 
         registerSessionAndWatch(nextUser).catch((err) => console.error('registerSession failed', err));
       } else {

@@ -13,10 +13,16 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function LoginPageInner() {
   const { t } = useLanguage();
-  const { loginWithEmail, registerWithEmail, loginWithGoogle } = useAuth();
+  const { isLoggedIn, authLoading, loginWithEmail, registerWithEmail, loginWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/';
+  // Guards against a crafted/stale ?next=/login (or /login/...) ever
+  // sending the effect below back to this same page — that would re-run
+  // it forever. Every real caller (RequireAuth) only ever sets `next` to
+  // the PROTECTED page it bounced from, never to /login itself, so this
+  // only ever fires on a malformed/manual URL.
+  const rawNext = searchParams.get('next') || '/';
+  const next = rawNext.startsWith('/login') ? '/' : rawNext;
 
   const refFromLink = searchParams.get('ref') || '';
   const [tab, setTab] = useState<'login' | 'register'>(refFromLink ? 'register' : 'login');
@@ -44,6 +50,23 @@ function LoginPageInner() {
   // submit the form at all until React has taken over and re-enabled it.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Completes navigation once Firebase actually reports a signed-in user —
+  // the ONLY reliable signal for both sign-in paths. handleGoogle's own
+  // router.push(next) below still fires immediately for the popup path
+  // (same-page-load, harmless no-op re-navigation once this effect also
+  // fires from the resulting isLoggedIn flip), but signInWithRedirect
+  // (see lib/auth.tsx's shouldUseRedirectForGoogle) navigates the whole
+  // tab to Google and back — this component remounts fresh on return with
+  // no in-memory continuation of that call, so nothing else here would
+  // ever navigate away from a now-signed-in /login. router.replace (not
+  // push) so a logged-in visit doesn't leave /login sitting in back-button
+  // history in front of `next`.
+  useEffect(() => {
+    if (!authLoading && isLoggedIn) {
+      router.replace(next);
+    }
+  }, [authLoading, isLoggedIn, next, router]);
 
   const mapFirebaseError = (err: unknown): string => {
     if (err instanceof Error && err.message === 'firebase-not-configured') {
