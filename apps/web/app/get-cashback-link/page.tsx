@@ -701,6 +701,20 @@ export default function GetCashbackLinkPage() {
                             <span className="quick-product-estimate-label">🤑 Dự kiến hoàn</span>
                             <span className="quick-product-estimate-amount">Đang xác định...</span>
                           </>
+                        ) : productInfo?.platform === 'SHOPEE' ? (
+                          // Shopee specifically: never word this as a
+                          // settled "Được áp dụng" when no real price/
+                          // commission could be determined (ACCESSTRADE
+                          // Datafeeds miss + no other trustworthy price
+                          // source — see workers/accesstrade-sync's own
+                          // resolveCommission/lookupShopeeProductFromIndex
+                          // comments) — that reads as more certain than it
+                          // is. Lazada/TikTok keep the original wording
+                          // below, unchanged.
+                          <>
+                            <span className="quick-product-estimate-label">🤑 Hoàn tiền</span>
+                            <span className="quick-product-estimate-amount">Đang xác định mức hoàn</span>
+                          </>
                         ) : (
                           <>
                             <span className="quick-product-estimate-label">🤑 Hoàn tiền</span>

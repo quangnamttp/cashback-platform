@@ -10,6 +10,12 @@ const cache = new Map<string, ProductPreview | null>();
 // tier is skipped — fetchProductPreview below still works via microlink.
 const WORKER_URL = process.env.NEXT_PUBLIC_SCRAPER_WORKER_URL;
 
+// workers/accesstrade-sync's own URL — same var lib/redirectLink.ts reads.
+// Only used here for its D1-cached /resolve-shortlink route (see
+// resolveShortlink below); duplicated rather than imported to avoid a
+// circular import (redirectLink.ts already imports FROM this file).
+const ACCESSTRADE_WORKER_URL = process.env.NEXT_PUBLIC_ACCESSTRADE_WORKER_URL;
+
 /**
  * Tier 1 — our own scraper (see workers/product-preview). Follows
  * shortlink redirects (s.shopee.vn) itself and reads the real page's
@@ -105,28 +111,63 @@ export function isShortlink(productUrl: string): boolean {
 
 export type ShortlinkResolution = { resolvedUrl: string; title?: string; image?: string; price?: number };
 
+const SHOPEE_SHORTLINK_PATTERN = /^https:\/\/s\.shopee\.vn\//i;
+
+// Shopee only — routes through workers/accesstrade-sync's own D1-cached
+// /resolve-shortlink instead of workers/product-preview, so a repeated
+// paste of the same real short link (confirmed live 2026-09-11: 0.27s-4s,
+// dominated by Shopee's own redirect response time) skips that network
+// round-trip entirely on a cache hit. No title/image either way — same
+// tradeoff already accepted for `fast=1` below, D1/ACCESSTRADE-datafeed
+// data supersedes it moments later regardless. Falls back to the plain
+// product-preview path (same as every other platform) if
+// NEXT_PUBLIC_ACCESSTRADE_WORKER_URL isn't configured, rather than failing
+// short-link resolution outright.
+async function resolveShopeeShortlinkCached(productUrl: string): Promise<ShortlinkResolution | null> {
+  if (!ACCESSTRADE_WORKER_URL) return resolveShortlinkViaScraperWorker(productUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(`${ACCESSTRADE_WORKER_URL}/resolve-shortlink?url=${encodeURIComponent(productUrl)}`, {
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (typeof json.resolvedUrl !== 'string') return null;
+    return { resolvedUrl: json.resolvedUrl };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /**
- * Resolves a share/shortlink to its real product URL by following its
- * redirects through the Worker (same request the Worker already makes for
- * scraping — this just reads its `resolvedUrl` field). MUST be called
+ * Resolves a share/shortlink to its real product URL — Shopee routes
+ * through the D1-cached workers/accesstrade-sync endpoint above, every
+ * other platform through workers/product-preview's full scrape (see
+ * resolveShortlinkViaScraperWorker below for exactly why). MUST be called
  * (and its result used, not the original shortlink) before generating a
  * tracking link for one of these — normalizeProductUrl in lib/redirectLink.ts
  * only strips/appends query params, it doesn't follow redirects, so
  * sending a bare shortlink to ACCESSTRADE's create-link instead of the
  * real product URL produces a link the marketplace can't attribute a
- * purchase against. Returns null if the Worker isn't
- * configured or the resolve failed — caller should fall back to the
- * original (unresolved) URL rather than block link creation entirely.
- *
- * Also returns whatever title/image/price the SAME request already
- * scraped (the Worker does both jobs in one fetch — see workers/
- * product-preview) — the caller should use this directly instead of
- * making a second, redundant fetchProductPreview call against the exact
- * same resolvedUrl right after (confirmed live 2026-09-09: this was
- * happening for every shortlink, doubling the Worker round-trip for no
- * reason since the data was already sitting right here).
+ * purchase against. Returns null if resolution isn't configured or failed
+ * — caller should fall back to the original (unresolved) URL rather than
+ * block link creation entirely.
  */
 export async function resolveShortlink(productUrl: string): Promise<ShortlinkResolution | null> {
+  if (SHOPEE_SHORTLINK_PATTERN.test(productUrl)) {
+    return resolveShopeeShortlinkCached(productUrl);
+  }
+  return resolveShortlinkViaScraperWorker(productUrl);
+}
+
+// Lazada/TikTok Shop short links — unchanged path via workers/
+// product-preview's full scrape (title/image still useful there, since
+// neither platform has a D1/live-datafeed price source the way Shopee now
+// does — see get-cashback-link/page.tsx's productInfo priority order).
+async function resolveShortlinkViaScraperWorker(productUrl: string): Promise<ShortlinkResolution | null> {
   if (!WORKER_URL) return null;
   // `fast=1` — see workers/product-preview's own comment on this flag.
   // This function's only real job is finding the canonical product URL

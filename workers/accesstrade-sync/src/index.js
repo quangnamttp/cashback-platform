@@ -660,6 +660,87 @@ function extractShopeeIds(productUrl) {
   return m ? { shopId: m[1], itemId: m[2] } : null;
 }
 
+// --- Shopee short-link (s.shopee.vn) resolve cache, D1-backed ----------
+//
+// A share short-link's query string (share_channel_code, credential_token,
+// gads_t_sig, ...) describes the SHARE EVENT, not the product — two
+// different share events of the exact same short code resolve to the same
+// product every time (confirmed live across this whole engagement). Cache
+// key is origin+pathname ONLY, so those varying params never fragment the
+// cache. Never confused with redirectCache (Firestore, per-user tracking
+// links) — this is a small, anonymous, shared lookup table, same spirit as
+// the shopee_products D1 index above, and lives in the SAME D1 database
+// (no new binding needed).
+const SHOPEE_SHORTLINK_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — generous but bounded; a stale row is simply re-resolved and overwritten, never trusted forever
+
+function normalizeShopeeShortUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+// Real network round-trip ONLY on a cache miss. Deliberately does NOT reuse
+// workers/product-preview's HTMLRewriter/title/image scraping — this only
+// ever needs the resolved URL to extract shopId/itemId, the exact same
+// "fast=1" reasoning already applied to resolveShortlink() on the frontend
+// (see that function's own comment): a scraped title/image here would only
+// ever be a placeholder D1/ACCESSTRADE datafeed data already supersedes.
+async function resolveShopeeShortlinkCached(env, shortUrl) {
+  const id = normalizeShopeeShortUrl(shortUrl);
+  if (!id) return null;
+  const now = Date.now();
+
+  try {
+    const row = await env.DATAFEED_DB.prepare(
+      'SELECT resolved_url, shop_id, item_id, expires_at FROM shopee_shortlink_cache WHERE id = ?1',
+    ).bind(id).first();
+    if (row && row.expires_at > now) {
+      return { resolvedUrl: row.resolved_url, shopId: row.shop_id || undefined, itemId: row.item_id || undefined, cacheHit: true };
+    }
+  } catch (err) {
+    console.error('[ShortlinkCache] D1 read failed:', err.message);
+  }
+
+  let resolvedUrl;
+  try {
+    // Same desktop UA requirement already established for s.shopee.vn
+    // specifically (see workers/product-preview's own comment) — the
+    // mobile UA used elsewhere on this domain never gets a real redirect.
+    const res = await fetch(shortUrl, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'vi-VN,vi;q=0.9,en;q=0.8',
+      },
+    });
+    resolvedUrl = res.url;
+  } catch (err) {
+    console.error('[ShortlinkCache] resolve fetch threw:', err.message);
+    return null;
+  }
+  if (!resolvedUrl) return null;
+
+  const ids = extractShopeeIds(resolvedUrl);
+  // A resolve that didn't yield a parseable id is never cached — per this
+  // task's own "if resolve thất bại, không lưu kết quả lỗi lâu dài" rule,
+  // so the next request gets a fresh real attempt instead of a frozen miss.
+  if (!ids) return { resolvedUrl, shopId: undefined, itemId: undefined, cacheHit: false };
+
+  try {
+    await env.DATAFEED_DB.prepare(
+      'INSERT INTO shopee_shortlink_cache (id, short_url, resolved_url, shop_id, item_id, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ' +
+      'ON CONFLICT(id) DO UPDATE SET short_url=excluded.short_url, resolved_url=excluded.resolved_url, shop_id=excluded.shop_id, item_id=excluded.item_id, created_at=excluded.created_at, expires_at=excluded.expires_at',
+    ).bind(id, shortUrl, resolvedUrl, ids.shopId, ids.itemId, now, now + SHOPEE_SHORTLINK_CACHE_TTL_MS).run();
+  } catch (err) {
+    console.error('[ShortlinkCache] D1 write failed:', err.message);
+  }
+
+  return { resolvedUrl, shopId: ids.shopId, itemId: ids.itemId, cacheHit: false };
+}
+
 // Datafeed URLs are the canonical shopee.vn/product/<shopid>/<itemid> form
 // (confirmed live in real rows) — a customer's pasted pretty-slug URL
 // (.../ten-san-pham-i.<shopid>.<itemid>) must be rebuilt into that exact
@@ -1717,6 +1798,28 @@ export default {
         Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
         return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
       }
+    }
+    // Public (no auth — same security model as workers/product-preview,
+    // which this replaces for Shopee short links specifically): resolves
+    // a real s.shopee.vn share link to its canonical product URL, D1-cached
+    // 30 days (see resolveShopeeShortlinkCached above). Called by
+    // lib/productPreview.ts's resolveShortlink() ONLY for Shopee short
+    // links — Lazada/TikTok Shop short links are untouched, still resolved
+    // via workers/product-preview exactly as before. A plain GET with no
+    // custom request headers is a CORS "simple request" — no OPTIONS
+    // preflight needed, only Access-Control-Allow-Origin on the response.
+    if (url.pathname === '/resolve-shortlink') {
+      const shortUrl = url.searchParams.get('url');
+      if (!shortUrl || !/^https:\/\/s\.shopee\.vn\//i.test(shortUrl)) {
+        return Response.json({ error: 'invalid_url' }, { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
+      }
+      const startedAt = Date.now();
+      const result = await resolveShopeeShortlinkCached(env, shortUrl);
+      console.log(`[PERF] resolveShortlinkCached: ${Date.now() - startedAt} ms (${result?.cacheHit ? 'HIT' : 'MISS'})`);
+      return Response.json(
+        result ? { ...result, ms: Date.now() - startedAt } : { resolvedUrl: null, ms: Date.now() - startedAt },
+        { headers: { 'Access-Control-Allow-Origin': '*' } },
+      );
     }
     // Read-only diagnostic: shows exactly what fetchCampaignCommissionRate
     // parses for a given campaign, straight from the confirmed-working
