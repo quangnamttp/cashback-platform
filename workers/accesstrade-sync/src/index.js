@@ -692,10 +692,47 @@ const DATAFEED_NAME_BACKWARD_RE = /"([^"]{0,300})"\s*,\s*$/; // captures the fie
 // shows the friendly "chưa xác định số tiền" copy, nothing breaks).
 const DATAFEED_SEARCH_TIMEOUT_MS = 4000;
 
-async function lookupDatafeedProduct(platform, productUrl) {
+// Shopee only — reads the D1 index rebuildDatafeedIndex() below maintains,
+// instead of downloading+scanning the ~19MB CSV per request (measured live
+// 2026-09-11: up to ~4s on a miss, the old DATAFEED_SEARCH_TIMEOUT_MS path
+// further below — still used for Lazada, whose datafeed CSV is real but
+// currently empty, so this was never worth the same D1 treatment yet).
+// `env` is the one necessary addition to this function's inputs — D1 is
+// only reachable through the bindings object, which the call sites already
+// have in scope; platform/productUrl/return shape are all unchanged.
+async function lookupShopeeProductFromIndex(productUrl, env) {
+  const ids = extractShopeeIds(productUrl);
+  if (!ids) return undefined;
+  const id = `${ids.shopId}_${ids.itemId}`;
+  try {
+    const row = await env.DATAFEED_DB.prepare(
+      'SELECT name, price, discount, image FROM shopee_products WHERE id = ?1',
+    ).bind(id).first();
+    if (!row) return undefined;
+    return {
+      name: row.name || undefined,
+      price: row.price && row.price > 0 ? row.price : undefined,
+      discount: row.discount != null ? row.discount : undefined,
+      image: row.image || undefined,
+    };
+  } catch (err) {
+    console.error(`[DatafeedIndex] D1 lookup threw for id=${id}:`, err.message);
+    return undefined;
+  }
+}
+
+async function lookupDatafeedProduct(platform, productUrl, env) {
+  if (platform === 'SHOPEE') {
+    return lookupShopeeProductFromIndex(productUrl, env);
+  }
+  // ---- Lazada only below — unchanged CSV-download-and-scan path. Its
+  // datafeed CSV is real but currently an empty file (header row only, see
+  // this file's own earlier investigation notes), so this practically
+  // never runs today; left exactly as it was rather than folding Lazada
+  // into the new D1 index before there's any real data to index. ----
   const feedUrl = DATAFEED_CSV_URL[platform];
   if (!feedUrl) return undefined;
-  const searchUrl = platform === 'SHOPEE' ? canonicalShopeeDatafeedUrl(productUrl) : productUrl;
+  const searchUrl = productUrl;
   if (!searchUrl) return undefined;
   const needle = `"${searchUrl}"`;
   const deadline = Date.now() + DATAFEED_SEARCH_TIMEOUT_MS;
@@ -740,6 +777,175 @@ async function lookupDatafeedProduct(platform, productUrl) {
   }
 }
 
+// --- Datafeed index rebuild (Shopee only, D1) ---------------------------
+
+// Splits already-decoded text into complete CSV rows, respecting quoted
+// fields — a field can itself contain a literal newline (the `desc`
+// column does, confirmed live), so a plain string.split('\n') would cut
+// a real row in half. Toggling `inQuotes` on every `"` character (rather
+// than trying to specially detect the `""` escaped-quote sequence) is
+// still correct here: an escaped `""` toggles twice in a row, which nets
+// to no change, so `inQuotes` only ever really flips at a field's true
+// open/close quote regardless of how many escaped quotes sit inside it.
+// Returns the complete rows found plus whatever incomplete tail is left
+// over (to be prepended to the next chunk).
+function splitCsvRows(text) {
+  const rows = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') inQuotes = !inQuotes;
+    else if (c === '\n' && !inQuotes) {
+      rows.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return { rows, rest: text.slice(start) };
+}
+
+// Parses one complete CSV row into its raw field strings — same
+// quote-toggle idea as splitCsvRows, but this time actually unescaping
+// `""` into a literal `"` since callers need the real field VALUE, not
+// just where it ends.
+function parseCsvRow(row) {
+  const fields = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < row.length; i++) {
+    const c = row[i];
+    if (c === '"') {
+      if (inQuotes && row[i + 1] === '"') { field += '"'; i++; } else inQuotes = !inQuotes;
+    } else if (c === ',' && !inQuotes) {
+      fields.push(field);
+      field = '';
+    } else {
+      field += c;
+    }
+  }
+  fields.push(field);
+  return fields;
+}
+
+const DATAFEED_REBUILD_BATCH_SIZE = 200; // rows per D1 batch() call — small enough that one slow/failed batch never risks a huge amount of already-parsed work, large enough not to spend more calls than rows need for ~13K real rows
+// Purely a defensive wall-clock ceiling (NOT the same thing as Cloudflare's
+// own CPU-time budget, which this can't observe directly) — if a run
+// somehow runs unexpectedly long (slow upstream CSV, slow D1), stop
+// cleanly instead of risking the platform killing the invocation mid-
+// batch. Whatever rows were already upserted stay (real, correct data),
+// and the next hourly tick simply starts over from the top — never
+// corrupts anything, matches the "never delete, only upsert" safety
+// requirement below.
+const DATAFEED_REBUILD_WALLCLOCK_CAP_MS = 25000;
+
+// Reads ACCESSTRADE's real Shopee datafeed CSV ONCE and upserts every row
+// into D1's shopee_products table, keyed by "<shopId>_<itemId>" (the same
+// identity extractShopeeIds/shopeeProductId already use elsewhere in this
+// file — never a new concept of "product"). Runs on its own hourly cron
+// (see the scheduled() handler below) — completely separate from
+// pollOrders()'s */5 * * * * schedule, and never invoked from the
+// customer-facing /create-link path (lookupDatafeedProduct above only
+// ever READS this table).
+//
+// Safety, per this task's own requirements: every write is an upsert
+// (`ON CONFLICT ... DO UPDATE`) — nothing is ever DELETEd, and no
+// "truncate first" step exists, so a run that fails or gets cut off
+// partway through never leaves the table in a worse state than before it
+// started; whatever rows it reached are simply refreshed, everything
+// else keeps its previous (still real, just not-yet-refreshed) value.
+async function rebuildDatafeedIndex(env) {
+  const startedAt = Date.now();
+  const feedUrl = DATAFEED_CSV_URL.SHOPEE;
+  let res;
+  try {
+    res = await fetch(feedUrl);
+  } catch (err) {
+    console.error('[DatafeedIndex] fetch threw:', err.message);
+    return;
+  }
+  if (!res.ok || !res.body) {
+    console.error(`[DatafeedIndex] fetch failed: HTTP ${res.status}`);
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let carry = '';
+  let sawHeader = false;
+  let pending = [];
+  let scanned = 0;
+  let upserted = 0;
+  let malformed = 0;
+  let stoppedEarly = false;
+
+  const flush = async () => {
+    if (pending.length === 0) return;
+    const now = Date.now();
+    const stmts = pending.map((row) =>
+      env.DATAFEED_DB.prepare(
+        'INSERT INTO shopee_products (id, name, price, discount, image, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ' +
+        'ON CONFLICT(id) DO UPDATE SET name=excluded.name, price=excluded.price, discount=excluded.discount, image=excluded.image, updated_at=excluded.updated_at',
+      ).bind(row.id, row.name, row.price, row.discount, row.image, now),
+    );
+    await env.DATAFEED_DB.batch(stmts);
+    upserted += pending.length;
+    pending = [];
+  };
+
+  const processRow = (rawRow) => {
+    if (!rawRow.trim()) return;
+    if (!sawHeader) { sawHeader = true; return; } // skip the "sku","name",... header line
+    scanned++;
+    const fields = parseCsvRow(rawRow);
+    // "sku","name","url","price","discount","image","desc","category"
+    const [, name, url, priceRaw, discountRaw, image] = fields;
+    const ids = url ? extractShopeeIds(url) : null;
+    if (!ids) { malformed++; return; }
+    const price = Number(priceRaw);
+    pending.push({
+      id: `${ids.shopId}_${ids.itemId}`,
+      name: name || null,
+      price: Number.isFinite(price) && price > 0 ? price : null,
+      discount: discountRaw ? Number(discountRaw) || 0 : 0,
+      image: image || null,
+    });
+  };
+
+  try {
+    for (;;) {
+      if (Date.now() - startedAt > DATAFEED_REBUILD_WALLCLOCK_CAP_MS) {
+        stoppedEarly = true;
+        console.log(`[DatafeedIndex] stopped at wall-clock cap (${DATAFEED_REBUILD_WALLCLOCK_CAP_MS}ms) — will resume from the top on the next hourly tick`);
+        break;
+      }
+      const { done, value } = await reader.read();
+      if (value) carry += decoder.decode(value, { stream: true });
+      const { rows, rest } = splitCsvRows(carry);
+      carry = rest;
+      for (const row of rows) {
+        processRow(row);
+        if (pending.length >= DATAFEED_REBUILD_BATCH_SIZE) await flush();
+      }
+      if (done) {
+        if (carry.trim()) processRow(carry); // final row with no trailing newline
+        break;
+      }
+    }
+    await flush(); // last partial batch
+  } catch (err) {
+    console.error('[DatafeedIndex] rebuild threw mid-run:', err.message);
+    // Whatever was already flushed above this point is real, valid data —
+    // left in place deliberately, per the "never corrupt on failure" rule.
+  } finally {
+    try { reader.cancel(); } catch { /* best-effort */ }
+  }
+
+  console.log(
+    `[DatafeedIndex] rebuild ${stoppedEarly ? 'stopped early' : 'finished'}: ${scanned} row(s) scanned, ` +
+    `${upserted} upserted, ${malformed} malformed/unmatched, ${Date.now() - startedAt}ms`,
+  );
+}
+
 async function handleCreateLink(request, env, ctx) {
   let body;
   try {
@@ -752,7 +958,10 @@ async function handleCreateLink(request, env, ctx) {
     return Response.json({ supported: false, reason: 'bad_request' }, { status: 400 });
   }
 
+  // TEMPORARY perf-only instrumentation — same call, same result, just timed.
+  const verifyStart = Date.now();
   const uid = await verifyFirebaseIdToken(env, idToken);
+  console.log(`[PERF] verifyFirebaseIdToken: ${Date.now() - verifyStart} ms`);
   if (!uid) return Response.json({ supported: false, reason: 'unauthenticated' }, { status: 401 });
 
   const trackingFields = buildTrackingFields(body);
@@ -879,8 +1088,16 @@ async function handleCreateLink(request, env, ctx) {
     // below, the other two settle in the background and are simply
     // discarded — wasted work in that one case, never a correctness
     // issue, and a fair trade for the common (success) case being faster.
+    // TEMPORARY perf-only instrumentation below (createLinkStart/
+    // commissionStart/datafeedStart + the .finally() on each promise) —
+    // appended purely to log each branch's own real duration without
+    // altering what it resolves/rejects to, or the existing .catch()
+    // fallback values. Remove once the real bottleneck is confirmed.
+    const createLinkStart = Date.now();
     const createLinkPromise = accesstradeApi(env, 'POST', '/v1/product_link/create', {
       body: { campaign_id: campaignId, urls: [productUrl], ...trackingFields },
+    }).finally(() => {
+      console.log(`[PERF] product_link/create: ${Date.now() - createLinkStart} ms`);
     });
     // See resolveCommission's own comment for the tier order (category
     // policy when this account eventually gets access, campaign-wide flat
@@ -888,9 +1105,12 @@ async function handleCreateLink(request, env, ctx) {
     // is cached at the edge, so this is a cache hit for all but the first
     // request per campaign per cache window; a failure here must never
     // fail the link itself.
+    const commissionStart = Date.now();
     const commissionResolutionPromise = resolveCommission(env, { platform, campaignId }).catch((err) => {
       console.error(`resolveCommission threw (${platform}):`, err.message);
       return undefined;
+    }).finally(() => {
+      console.log(`[PERF] resolveCommission: ${Date.now() - commissionStart} ms`);
     });
     // ProductResolver — real name/price/discount/image, when this
     // platform's ACCESSTRADE datafeed CSV actually has this product (see
@@ -900,9 +1120,12 @@ async function handleCreateLink(request, env, ctx) {
     // Always attempted (not gated on commissionRate) since name/image are
     // useful even when no rate is available. A failure here must never
     // fail the link itself.
-    const productPromise = lookupDatafeedProduct(platform, productUrl).catch((err) => {
+    const datafeedStart = Date.now();
+    const productPromise = lookupDatafeedProduct(platform, productUrl, env).catch((err) => {
       console.error(`datafeed product lookup threw (${platform}):`, err.message);
       return undefined;
+    }).finally(() => {
+      console.log(`[PERF] datafeed: ${Date.now() - datafeedStart} ms`);
     });
 
     const { ok, json } = await createLinkPromise;
@@ -970,6 +1193,17 @@ async function handleCreateLink(request, env, ctx) {
       ...(commissionSource ? { commissionSource } : {}),
       ...(product ? { product: { productId: shopeeProductId, name: product.name, image: product.image, price: product.price, discount: product.discount, dataSource: 'ACCESSTRADE_DATAFEED', updatedAt: new Date().toISOString() } } : {}),
       ...(shopeeProductId ? { productId: shopeeProductId } : {}),
+      // Diagnostic only — never read by any commission/estimate logic, only
+      // surfaced so the frontend/ops can tell WHY Shopee's D1 lookup came up
+      // empty without needing a live wrangler tail: 'url_parse_failed' means
+      // extractShopeeIds itself couldn't find a shopId/itemId pair in this
+      // URL (shopeeProductId is undefined); 'product_not_found' means the
+      // pair WAS extracted but that key isn't in the shopee_products D1
+      // index (see lookupShopeeProductFromIndex) — a real, expected miss for
+      // a product outside ACCESSTRADE's ~12.8K-row Shopee datafeed. Lazada
+      // deliberately excluded (still on the old CSV-scan path, out of scope
+      // for this field).
+      ...(platform === 'SHOPEE' && !product ? { productLookupReason: shopeeProductId ? 'product_not_found' : 'url_parse_failed' } : {}),
     });
   }
 
@@ -1391,7 +1625,12 @@ export default {
         return new Response(null, { status: 204, headers: CORS_HEADERS });
       }
       if (request.method === 'POST') {
+        // TEMPORARY perf-only instrumentation — wraps the existing call with
+        // no change to its logic/response. Remove once the real bottleneck
+        // is confirmed and no longer needed.
+        const perfStart = Date.now();
         const res = await handleCreateLink(request, env, ctx);
+        console.log(`[PERF] total create-link: ${Date.now() - perfStart} ms`);
         const headers = new Headers(res.headers);
         Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
         return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
@@ -1446,8 +1685,19 @@ export default {
       const platform = url.searchParams.get('platform');
       const productUrl = url.searchParams.get('url');
       const startedAt = Date.now();
-      const product = await lookupDatafeedProduct(platform, productUrl);
+      const product = await lookupDatafeedProduct(platform, productUrl, env);
       return Response.json({ platform, productUrl, product: product ?? null, ms: Date.now() - startedAt });
+    }
+    // Manual trigger for rebuildDatafeedIndex() — same operational-tool
+    // reasoning as the debug routes above, and the only way to verify the
+    // rebuild actually completes (row counts, timing) without waiting for
+    // the top of the hour. No customer auth, no Firestore access — only
+    // ever writes to the D1 index (upsert-only, see that function's own
+    // safety comment), never touches anything customer/financial-facing.
+    if (url.pathname === '/debug/rebuild-datafeed') {
+      const startedAt = Date.now();
+      await rebuildDatafeedIndex(env);
+      return Response.json({ ok: true, ms: Date.now() - startedAt });
     }
     return new Response('OK', { status: 200 });
   },
@@ -1457,6 +1707,13 @@ export default {
     // line is gated behind an awaited Firebase sign-in call, so this is
     // the only way to see a tick land before any network I/O happens).
     console.log(`[CRON] scheduled fired ${new Date().toISOString()} (cron="${event.cron}")`);
+    // Two independent schedules on this one Worker (see wrangler.toml's
+    // crons array) — told apart by event.cron so each only ever runs its
+    // own job, never both on the same tick.
+    if (event.cron === '0 * * * *') {
+      ctx.waitUntil(rebuildDatafeedIndex(env).catch((err) => console.error('rebuildDatafeedIndex failed:', err.message)));
+      return;
+    }
     ctx.waitUntil(pollOrders(env).catch((err) => console.error('pollOrders failed:', err.message)));
   },
 };

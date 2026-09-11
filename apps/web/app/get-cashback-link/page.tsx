@@ -75,6 +75,11 @@ type CheckResult =
       // lib/redirectLink.ts. Takes priority over the page-scraped preview
       // (productPreview state) wherever both exist.
       product?: ResolvedProductInfo;
+      // Shopee-only diagnostic (see lib/redirectLink.ts's own comment) —
+      // never read by productInfo's cashback calculation, only kept around
+      // so a future debug UI/log could explain a miss without needing a
+      // live wrangler tail.
+      productLookupReason?: 'product_not_found' | 'url_parse_failed';
     };
 
 // Exactly the 3 customer-facing states this page can show — neutral
@@ -223,7 +228,22 @@ export default function GetCashbackLinkPage() {
           confidence: 'HIGH',
         });
       }
-      if (result.estimatedCommissionRate && productPreview?.price) {
+      // Shopee is intentionally excluded here — its ONLY real price source
+      // is the D1 datafeed index (workers/accesstrade-sync's
+      // lookupShopeeProductFromIndex), already covered by the
+      // result.estimatedCommission branch above for BOTH long and short
+      // links (a short link resolves to its canonical product URL, then
+      // runs through the exact same /create-link -> D1 lookup as a long
+      // link — see resolveShortlink/createOrReuseRedirect). Shopee's own
+      // product pages never carry a real price in scrapeable page metadata
+      // (confirmed live: no og:price/product:price meta tag, no JSON-LD
+      // offers.price on a real Shopee product page), so productPreview.price
+      // for a Shopee product — when a page's og:image/title scrape happens
+      // to also catch SOME price-looking field — must never be used as a
+      // second, uncontrolled price source standing in for D1. A miss here
+      // always falls through to the "Được áp dụng" fallback, never a
+      // scraped guess. Lazada/TikTok keep this branch unchanged.
+      if (result.platformCode !== 'SHOPEE' && result.estimatedCommissionRate && productPreview?.price) {
         return computeEstimatedCashback(result.platformCode, result.estimatedCommissionRate * productPreview.price, {
           priceSource: 'SCRAPED_PREVIEW',
           commissionSource: result.estimatedCommissionSource ?? 'ACCESSTRADE_CAMPAIGN_POLICY',
@@ -241,8 +261,12 @@ export default function GetCashbackLinkPage() {
     // the JSX below switches from a loading state to the permanent
     // "Hoàn tiền: Được áp dụng" copy instead of an indefinite
     // "Đang xác định...", which read like the link/product was broken.
+    // Shopee never has a MEDIUM tier to wait for (see the cashback branch
+    // above), so it's excluded here too — otherwise a Shopee D1 miss would
+    // show a loading spinner that can never resolve to a number instead of
+    // going straight to the honest "Được áp dụng" fallback.
     const cashbackPending = result.status === 'resolving'
-      || (!cashback && !!result.estimatedCommissionRate && productPreviewLoading);
+      || (!cashback && result.status === 'supported' && result.platformCode !== 'SHOPEE' && !!result.estimatedCommissionRate && productPreviewLoading);
 
     return {
       platform: result.platformCode,
@@ -387,6 +411,7 @@ export default function GetCashbackLinkPage() {
         estimatedCommissionRate: data.estimatedCommissionRate,
         estimatedCommissionSource: data.estimatedCommissionSource,
         product: data.product,
+        productLookupReason: data.productLookupReason,
       });
 
       // Best-effort real product title/thumbnail/price, scraped from the

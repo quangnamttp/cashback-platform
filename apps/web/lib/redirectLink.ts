@@ -253,6 +253,11 @@ type AffiliateLinkAttempt =
       // API field, not resolved from a rate tier at all).
       commissionSource?: CommissionSource;
       product?: ResolvedProductInfo;
+      // Shopee-only diagnostic — see workers/accesstrade-sync's own comment
+      // on the field of the same name. Never used to compute anything, only
+      // to tell "genuinely not in the datafeed" apart from "the URL itself
+      // couldn't be parsed" without needing a live wrangler tail.
+      productLookupReason?: 'product_not_found' | 'url_parse_failed';
     }
   | { reason: AffiliateLinkFailureReason };
 
@@ -291,6 +296,7 @@ async function tryCreateRealAffiliateLink(
       priceSource?: 'ACCESSTRADE_DATAFEED' | null;
       commissionSource?: CommissionSource | null;
       product?: ResolvedProductInfo | null;
+      productLookupReason?: 'product_not_found' | 'url_parse_failed' | null;
     } = await res.json();
     if (json.supported && json.affLink) {
       return {
@@ -300,6 +306,7 @@ async function tryCreateRealAffiliateLink(
         ...(json.priceSource ? { priceSource: json.priceSource } : {}),
         ...(json.commissionSource ? { commissionSource: json.commissionSource } : {}),
         ...(json.product ? { product: json.product } : {}),
+        ...(json.productLookupReason ? { productLookupReason: json.productLookupReason } : {}),
       };
     }
     return { reason: json.reason ?? 'worker_unreachable' };
@@ -382,6 +389,8 @@ export type CreateRedirectResult =
       // (Shopee/Lazada — see ResolvedProductInfo's own comment). Takes
       // priority over the page-scraped preview wherever both exist.
       product?: ResolvedProductInfo;
+      // Shopee-only diagnostic — see AffiliateLinkAttempt's own comment.
+      productLookupReason?: 'product_not_found' | 'url_parse_failed';
     };
 
 /**
@@ -519,6 +528,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(existing.estimatedCommissionRate ? { estimatedCommissionRate: existing.estimatedCommissionRate } : {}),
           ...(existing.estimatedCommissionSource ? { estimatedCommissionSource: existing.estimatedCommissionSource } : {}),
           ...(existing.product ? { product: existing.product } : {}),
+          ...(existing.productLookupReason ? { productLookupReason: existing.productLookupReason } : {}),
         };
       }
 
@@ -541,6 +551,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
           ...(retry.commissionSource ? { estimatedCommissionSource: retry.commissionSource } : {}),
           ...(retry.product ? { product: retry.product } : {}),
+          ...(retry.productLookupReason ? { productLookupReason: retry.productLookupReason } : {}),
         });
         return {
           status: 'supported',
@@ -554,6 +565,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
           ...(retry.commissionRate ? { estimatedCommissionRate: retry.commissionRate } : {}),
           ...(retry.commissionSource ? { estimatedCommissionSource: retry.commissionSource } : {}),
           ...(retry.product ? { product: retry.product } : {}),
+          ...(retry.productLookupReason ? { productLookupReason: retry.productLookupReason } : {}),
         };
       }
       await updateDoc(existingDoc.ref, { status: 'SUPERSEDED' });
@@ -593,6 +605,7 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
     ...(attempt.commissionSource ? { estimatedCommissionSource: attempt.commissionSource } : {}),
     ...(attempt.product ? { product: attempt.product } : {}),
+    ...(attempt.productLookupReason ? { productLookupReason: attempt.productLookupReason } : {}),
   });
 
   return {
@@ -607,5 +620,6 @@ export async function createOrReuseRedirect(uid: string, productUrl: string): Pr
     ...(attempt.commissionRate ? { estimatedCommissionRate: attempt.commissionRate } : {}),
     ...(attempt.commissionSource ? { estimatedCommissionSource: attempt.commissionSource } : {}),
     ...(attempt.product ? { product: attempt.product } : {}),
+    ...(attempt.productLookupReason ? { productLookupReason: attempt.productLookupReason } : {}),
   };
 }

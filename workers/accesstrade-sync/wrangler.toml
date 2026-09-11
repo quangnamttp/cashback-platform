@@ -2,12 +2,30 @@ name = "hoantiendv-accesstrade-sync"
 main = "src/index.js"
 compatibility_date = "2024-09-23"
 
-# Every 5 minutes -> 12 requests/hour to /v1/order-list per configured
-# merchant, far under ACCESSTRADE's documented 10 requests/minute limit
-# (and that endpoint's own response is cached 1 minute on their side
-# anyway, so anything faster than that buys nothing).
+# Two independent schedules on the SAME Worker, told apart inside
+# scheduled() by event.cron:
+#   */5 * * * *  (existing) -> pollOrders() — order-list sync.
+#   0 * * * *    (new)      -> rebuildDatafeedIndex() — refreshes the D1
+#                              Shopee price/name/image index from
+#                              ACCESSTRADE's static datafeed CSV. Hourly
+#                              is a deliberate, conservative starting
+#                              point — the CSV itself has no documented
+#                              update frequency; this can be tightened or
+#                              loosened later without touching the lookup
+#                              side (lookupDatafeedProduct) at all.
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "0 * * * *"]
+
+# D1 index for Shopee product price/name/image, keyed by "<shopId>_<itemId>"
+# — replaces lookupDatafeedProduct()'s old per-request CSV download+scan
+# (measured live 2026-09-11: up to ~4s on a miss) with a single indexed
+# lookup (see src/index.js's rebuildDatafeedIndex/lookupDatafeedProduct).
+# Populated by the new hourly cron above, never written to from the
+# customer-facing /create-link request path.
+[[d1_databases]]
+binding = "DATAFEED_DB"
+database_name = "hoantiendv-datafeed-index"
+database_id = "5346a45a-1c96-44d4-b3b4-15a6276e3b85"
 
 [vars]
 FIREBASE_PROJECT_ID = "hoantiendv"
