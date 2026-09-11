@@ -145,6 +145,11 @@ export default {
     const { searchParams } = new URL(request.url);
     const targetUrl = searchParams.get('url');
     if (!targetUrl) return jsonResponse({ error: 'missing url' }, 400);
+    // Opt-in, additive flag — only lib/productPreview.ts's resolveShortlink()
+    // sets it (see that function's own comment). Every other caller
+    // (fetchFromWorker, used for a plain pasted-link preview / link-history
+    // thumbnails) omits it and gets the exact same behavior as before.
+    const fast = searchParams.get('fast') === '1';
 
     let parsed;
     try {
@@ -307,7 +312,24 @@ export default {
       // with either UA (this is the same host a customer's pasted long
       // Shopee link hits directly today), so reusing it here doesn't touch
       // that already-working path's behavior.
-      if (!result.title) {
+      // `fast` skips this second fetch entirely — measured live 2026-09-11:
+      // this canonical re-fetch alone is the dominant cost of resolving a
+      // real s.shopee.vn short link (the FIRST fetch above + this one
+      // together ran 2.1s-5.1s; this second one is most of that). It only
+      // ever recovers title/image (Shopee's /opaanlp/ page never has a
+      // price to scrape either way — confirmed live, no og:price/JSON-LD
+      // price on this shape), and for Shopee that title/image is always
+      // superseded moments later by the real D1/ACCESSTRADE-datafeed name/
+      // image once /create-link resolves (see get-cashback-link/page.tsx's
+      // productInfo — product.name/image already takes priority over this
+      // scraped preview). resolveShortlink() sets `fast=1` specifically
+      // because its only job is finding the canonical product URL before
+      // generating a tracking link — a title/image it fetches is a nice
+      // early placeholder, not anything the estimate or the link itself
+      // depends on. fetchFromWorker's own plain-preview calls never send
+      // this flag, so a long-link paste / /link-history thumbnail keeps
+      // this exact lookup, unchanged.
+      if (!result.title && !fast) {
         try {
           const resolvedParsed = new URL(result.resolvedUrl);
           if (/(^|\.)shopee\.(vn|com)$/i.test(resolvedParsed.hostname) && !/^\/product\//i.test(resolvedParsed.pathname)) {

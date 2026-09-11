@@ -128,6 +128,16 @@ export type ShortlinkResolution = { resolvedUrl: string; title?: string; image?:
  */
 export async function resolveShortlink(productUrl: string): Promise<ShortlinkResolution | null> {
   if (!WORKER_URL) return null;
+  // `fast=1` — see workers/product-preview's own comment on this flag.
+  // This function's only real job is finding the canonical product URL
+  // before generating a tracking link; the Worker's own canonical
+  // re-fetch (needed only to recover title/image for Shopee's /opaanlp/
+  // landing shape) measured live as the dominant cost of resolving a real
+  // short link (2.1s-5.1s total). Skipping it here doesn't lose anything
+  // this function's own callers depend on — title/image, when set, is
+  // only ever a placeholder shown until the real D1/ACCESSTRADE-datafeed
+  // data arrives, which already takes priority over it once it does (see
+  // get-cashback-link/page.tsx's productInfo).
   const controller = new AbortController();
   // Was 8000 — measured live 2026-09-11 against a real s.shopee.vn link:
   // the Worker's own chain for THIS domain is two sequential upstream
@@ -144,7 +154,7 @@ export async function resolveShortlink(productUrl: string): Promise<ShortlinkRes
   // giving real cold resolves enough room to finish.
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(productUrl)}`, { signal: controller.signal });
+    const res = await fetch(`${WORKER_URL}?url=${encodeURIComponent(productUrl)}&fast=1`, { signal: controller.signal });
     if (!res.ok) return null;
     const json = await res.json();
     if (typeof json.resolvedUrl !== 'string') return null;

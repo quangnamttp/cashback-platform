@@ -756,6 +756,10 @@ async function lookupShopeeProductFromIndex(productUrl, env) {
   if (!ids) return undefined;
   const id = `${ids.shopId}_${ids.itemId}`;
   let row;
+  // TEMPORARY perf-only instrumentation — d1Lookup/datafeedFallback split
+  // out of the combined "[PERF] datafeed" total already logged one level up
+  // (handleCreateLink), to see which half of a miss is actually slow.
+  const d1Start = Date.now();
   try {
     row = await env.DATAFEED_DB.prepare(
       'SELECT name, price, discount, image FROM shopee_products WHERE id = ?1',
@@ -763,6 +767,7 @@ async function lookupShopeeProductFromIndex(productUrl, env) {
   } catch (err) {
     console.error(`[DatafeedIndex] D1 lookup threw for id=${id}:`, err.message);
   }
+  console.log(`[PERF] d1Lookup: ${Date.now() - d1Start} ms (${row ? 'HIT' : 'MISS'})`);
   if (row) {
     return {
       name: row.name || undefined,
@@ -773,12 +778,15 @@ async function lookupShopeeProductFromIndex(productUrl, env) {
   }
 
   let apiProduct;
+  const fallbackStart = Date.now();
   try {
     apiProduct = await fetchShopeeProductFromDatafeedApi(env, ids);
   } catch (err) {
     console.error(`[DatafeedIndex] /v1/datafeeds fallback threw for id=${id}:`, err.message);
+    console.log(`[PERF] datafeedFallback: ${Date.now() - fallbackStart} ms (threw)`);
     return undefined;
   }
+  console.log(`[PERF] datafeedFallback: ${Date.now() - fallbackStart} ms (${apiProduct ? 'HIT' : 'MISS'})`);
   if (!apiProduct) return undefined;
 
   try {
