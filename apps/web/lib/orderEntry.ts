@@ -213,18 +213,30 @@ function formatVnd(amount: number): string {
 type PreparedLedgerWrite = { ref: DocumentReference; data: Record<string, unknown> };
 
 /**
- * Pure preparation, no Firestore writes: computes the split, sends the
- * Telegram "duyệt hoàn tiền" notification (a side effect — deliberately
- * done HERE, once, before any transaction, never inside
- * confirmOrderWithLedger's transaction callback below, since a Firestore
- * transaction's updateFunction can be retried by the SDK on contention and
- * a retried network call would send the same Telegram message twice), and
- * returns the ledger docs to write. The caller commits them atomically
- * together with the order's own status flip via confirmOrderWithLedger.
+ * Pure preparation, no Firestore writes: computes the split and returns the
+ * ledger docs to write. The caller commits them atomically together with
+ * the order's own status flip via confirmOrderWithLedger.
+ *
+ * notifyImmediately controls whether the Telegram "duyệt hoàn tiền" (Topic
+ * 13) notification is sent HERE, right now — true for a MANUAL order (no
+ * external verdict to wait for, Admin's own CONFIRMED tap is final, same
+ * behavior as always) and false for an AFFILIATE order (workers/
+ * accesstrade-sync's own polling cron sends Topic 13 later, only once
+ * ACCESSTRADE's commissionStatus is actually APPROVED — see that Worker's
+ * syncConfirmedOrderCommission/notifyPayoutEligible). Fixed 2026-09-12:
+ * previously this sent Topic 13 unconditionally the instant an order was
+ * confirmed, regardless of source — before ACCESSTRADE had said anything
+ * about whether the commission would hold. When deferred, the ledger doc
+ * is created with telegramChatId/telegramMessageId left null; that Worker
+ * patches them in once it actually sends the message. The Telegram send
+ * (when it does happen here) still runs BEFORE any transaction — never
+ * inside confirmOrderWithLedger's transaction callback below, since a
+ * Firestore transaction's updateFunction can be retried by the SDK on
+ * contention and a retried network call would send the same message twice.
  */
 async function prepareCommissionLedgerEntries(
   db: ReturnType<typeof getFirebaseDb>,
-  params: { orderId: string; customerUserId: string; referrerUid: string | null; commissionAmount: number },
+  params: { orderId: string; customerUserId: string; referrerUid: string | null; commissionAmount: number; notifyImmediately: boolean },
 ): Promise<{ split: CommissionSplitPreview; writes: PreparedLedgerWrite[] }> {
   const split = computeCommissionSplit(params.commissionAmount, !!params.referrerUid);
   const writes: PreparedLedgerWrite[] = [];
@@ -236,14 +248,16 @@ async function prepareCommissionLedgerEntries(
     const requesterEmail: string = customerData?.email || '—';
 
     const ledgerRef = doc(collection(db, 'cashbackLedger'));
-    const telegramRef = await notifyCashbackApprovalToTelegram({
-      requesterName,
-      requesterEmail,
-      orderId: params.orderId,
-      amount: split.customerAmount,
-      amountLabel: formatVnd(split.customerAmount),
-      ledgerId: ledgerRef.id,
-    });
+    const telegramRef = params.notifyImmediately
+      ? await notifyCashbackApprovalToTelegram({
+          requesterName,
+          requesterEmail,
+          orderId: params.orderId,
+          amount: split.customerAmount,
+          amountLabel: formatVnd(split.customerAmount),
+          ledgerId: ledgerRef.id,
+        })
+      : null;
 
     writes.push({
       ref: ledgerRef,
@@ -426,11 +440,13 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
   // AND the ledger writes for this one case; every other transition below
   // falls through to the plain batch, unchanged.
   if (statusChanged && input.status === 'CONFIRMED' && input.commissionAmount > 0) {
+    const isAffiliate = (input.source ?? existing?.source) === 'AFFILIATE';
     const { writes } = await prepareCommissionLedgerEntries(db, {
       orderId,
       customerUserId: input.userId,
       referrerUid,
       commissionAmount: input.commissionAmount,
+      notifyImmediately: !isAffiliate,
     });
     await confirmOrderWithLedger(db, orderRef, orderFields, writes);
     return { orderId };
@@ -575,8 +591,16 @@ const ELIGIBLE_WAIT_MS = 3 * 24 * 60 * 60 * 1000;
 export async function approveOrdersBatch(orders: PendingOrderForApproval[]): Promise<void> {
   const db = getFirebaseDb();
   for (const order of orders) {
-    const referrerUid = await resolveReferrer(db, order.userId);
     const orderRef = doc(db, 'orders', order.id);
+    // One extra read to check `source` — PendingOrderForApproval doesn't
+    // carry it (its caller, app/manager/orders/page.tsx, is out of scope
+    // for this change), so this reads it directly instead. Decides whether
+    // Topic 13 sends immediately (MANUAL) or is deferred to workers/
+    // accesstrade-sync's own eligibility cron (AFFILIATE) — see
+    // prepareCommissionLedgerEntries' own comment.
+    const orderSnap = await getDoc(orderRef);
+    const isAffiliate = orderSnap.exists() && orderSnap.data().source === 'AFFILIATE';
+    const referrerUid = await resolveReferrer(db, order.userId);
     const eligibleAt = Timestamp.fromMillis(Date.now() + ELIGIBLE_WAIT_MS);
     if (order.commissionAmount > 0) {
       const { writes } = await prepareCommissionLedgerEntries(db, {
@@ -584,6 +608,7 @@ export async function approveOrdersBatch(orders: PendingOrderForApproval[]): Pro
         customerUserId: order.userId,
         referrerUid,
         commissionAmount: order.commissionAmount,
+        notifyImmediately: !isAffiliate,
       });
       await confirmOrderWithLedger(db, orderRef, { status: 'CONFIRMED', confirmedAt: serverTimestamp(), customerVisible: true, eligibleAt }, writes);
     } else {

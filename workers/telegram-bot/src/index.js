@@ -402,6 +402,16 @@ async function getOrderDoc(env, idToken, orderId) {
     productName: f.productName?.stringValue ?? '',
     orderValue: Number(f.orderValue?.integerValue ?? f.orderValue?.doubleValue ?? 0),
     commissionAmount: Number(f.commissionAmount?.integerValue ?? f.commissionAmount?.doubleValue ?? 0),
+    // 'AFFILIATE' (workers/accesstrade-sync) vs 'MANUAL'/absent (the admin's
+    // own /manager/orders form) — decides whether handleOrderDecision below
+    // may send Topic 13 immediately on CONFIRMED (MANUAL has no external
+    // ACCESSTRADE verdict to wait for) or must defer it to
+    // workers/accesstrade-sync's own eligibility-detection cron instead.
+    source: f.source?.stringValue ?? null,
+    // ACCESSTRADE's own commission verdict for an AFFILIATE order — used by
+    // handleCashbackDecision's pre-check below (release requires APPROVED),
+    // same field manager/payouts/page.tsx's isEligibleForPayout() reads.
+    commissionStatus: f.commissionStatus?.stringValue ?? null,
     // Needed by tryClaimOrderStatus below — an optimistic-concurrency
     // precondition, not displayed anywhere.
     updateTime: json.updateTime,
@@ -578,7 +588,11 @@ function renderOrderMessage(fields, status) {
     `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
     `💰 <b>Giá trị đơn:</b> <code>${escapeHtml(fields.orderValueLabel)}</code>`,
-    `💵 <b>Hoa hồng sàn trả:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    DIVIDER,
+    `💵 <b>Hoa hồng thực tế:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    `🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`,
+    `🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`,
+    DIVIDER,
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
     DIVIDER,
     ORDER_STATUS_LINE[status],
@@ -789,6 +803,30 @@ async function handleCashbackDecision(env, callbackQuery, ledgerId, targetStatus
   // state in sync so a stray second tap here is a no-op instead of an
   // error.
   if (ledgerDoc.status !== targetStatus) {
+    // Pre-check for a CLEARER error message than a raw Firestore
+    // permission-denied — the REAL enforcement is firestore.rules'
+    // canReleaseLedgerFor() (this can't be bypassed even if this check were
+    // skipped entirely), but telling Admin exactly WHY a release was
+    // refused is worth one extra read. Only applies to RELEASED — REJECTED
+    // stays as unrestricted as before (rejecting is never the risky
+    // direction).
+    if (targetStatus === 'RELEASED') {
+      const relatedOrder = ledgerDoc.orderId && ledgerDoc.orderId !== '—'
+        ? await getOrderDoc(env, idToken, ledgerDoc.orderId).catch(() => null)
+        : null;
+      if (relatedOrder) {
+        const isAffiliate = relatedOrder.source === 'AFFILIATE';
+        const orderReady = relatedOrder.status === 'CONFIRMED' && (!isAffiliate || relatedOrder.commissionStatus === 'APPROVED');
+        if (!orderReady) {
+          const reason = relatedOrder.status !== 'CONFIRMED'
+            ? `đơn hàng chưa ở trạng thái CONFIRMED (hiện tại: ${relatedOrder.status ?? 'không rõ'})`
+            : `ACCESSTRADE chưa APPROVED hoa hồng (hiện tại: ${relatedOrder.commissionStatus ?? 'không rõ'})`;
+          await answerCallback(env, callbackQuery.id, `⚠️ Chưa thể duyệt hoàn tiền — ${reason}.`, true);
+          return;
+        }
+      }
+    }
+
     // Claim FIRST (atomic, guarded by ledgerDoc.updateTime — see
     // tryClaimLedgerStatus) — only the caller that wins this race is
     // allowed to go on and credit the wallet below. Losing the race means a
@@ -932,6 +970,20 @@ async function handleOrderDecision(env, callbackQuery, orderId, targetStatus) {
         const split = computeCommissionSplit(order.commissionAmount, !!referrerUid);
         const requesterName = customerUser?.fullName || customerUser?.email || order.userId;
         const requesterEmail = customerUser?.email || '—';
+        // FIXED 2026-09-12 — Topic 13 used to be sent HERE, unconditionally,
+        // the instant Admin tapped "✅ Duyệt đơn hàng" — before ACCESSTRADE
+        // had said anything about whether the commission would actually
+        // hold. An AFFILIATE order (workers/accesstrade-sync) now waits:
+        // this still creates the SAME FROZEN ledger entry (nothing about
+        // the money math changes), but leaves telegramChatId/
+        // telegramMessageId null — that Worker's own polling cron sends
+        // Topic 13 later, only once ACCESSTRADE's commissionStatus is
+        // actually APPROVED (see its syncConfirmedOrderCommission/
+        // notifyPayoutEligible). A MANUAL order (the admin's own
+        // /manager/orders form) has no external verdict to wait for —
+        // Admin's own CONFIRMED tap remains the final word, so it keeps
+        // sending Topic 13 immediately, unchanged from before.
+        const isAffiliate = order.source === 'AFFILIATE';
 
         if (split.customerAmount > 0) {
           const ledgerId = await createLedgerDocument(env, idToken, {
@@ -944,37 +996,41 @@ async function handleOrderDecision(env, callbackQuery, orderId, targetStatus) {
             requesterName: { stringValue: requesterName },
             requesterEmail: { stringValue: requesterEmail },
           });
-          const cashbackFields = {
-            requesterName,
-            requesterEmail,
-            orderId,
-            amountLabel: formatVnd(split.customerAmount),
-            ledgerId,
-          };
-          const cashbackSend = await telegramApi(env, 'sendMessage', {
-            chat_id: chatId,
-            message_thread_id: 13,
-            parse_mode: 'HTML',
-            text: renderCashbackPendingMessage(cashbackFields),
-            reply_markup: { inline_keyboard: cashbackPendingKeyboard(cashbackFields) },
-          }).catch((err) => {
-            console.error('cashback follow-up sendMessage threw:', err.message);
-            return null;
-          });
-          if (cashbackSend?.ok) {
-            await fetch(
-              `${firestoreDocUrl(env, 'cashbackLedger', ledgerId)}?updateMask.fieldPaths=telegramChatId&updateMask.fieldPaths=telegramMessageId`,
-              {
-                method: 'PATCH',
-                headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  fields: {
-                    telegramChatId: { stringValue: String(cashbackSend.result.chat.id) },
-                    telegramMessageId: { integerValue: String(cashbackSend.result.message_id) },
-                  },
-                }),
-              },
-            ).catch((err) => console.error('ledger telegram-ref patch threw:', err.message));
+          if (!isAffiliate) {
+            const cashbackFields = {
+              requesterName,
+              requesterEmail,
+              orderId,
+              amountLabel: formatVnd(split.customerAmount),
+              ledgerId,
+            };
+            const cashbackSend = await telegramApi(env, 'sendMessage', {
+              chat_id: chatId,
+              message_thread_id: 13,
+              parse_mode: 'HTML',
+              text: renderCashbackPendingMessage(cashbackFields),
+              reply_markup: { inline_keyboard: cashbackPendingKeyboard(cashbackFields) },
+            }).catch((err) => {
+              console.error('cashback follow-up sendMessage threw:', err.message);
+              return null;
+            });
+            if (cashbackSend?.ok) {
+              await fetch(
+                `${firestoreDocUrl(env, 'cashbackLedger', ledgerId)}?updateMask.fieldPaths=telegramChatId&updateMask.fieldPaths=telegramMessageId`,
+                {
+                  method: 'PATCH',
+                  headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    fields: {
+                      telegramChatId: { stringValue: String(cashbackSend.result.chat.id) },
+                      telegramMessageId: { integerValue: String(cashbackSend.result.message_id) },
+                    },
+                  }),
+                },
+              ).catch((err) => console.error('ledger telegram-ref patch threw:', err.message));
+            }
+          } else {
+            console.log(`order ${orderId}: AFFILIATE — ledger ${ledgerId} created FROZEN, Topic 13 deferred until ACCESSTRADE commissionStatus=APPROVED (see workers/accesstrade-sync)`);
           }
         }
 
@@ -1010,6 +1066,12 @@ async function handleOrderDecision(env, callbackQuery, orderId, targetStatus) {
     customerUser = await getUserDoc(env, idToken, order.userId).catch(() => null);
   }
 
+  // Display-only recompute of the same split shown in section IV's spec —
+  // cheap (one referral lookup) and safe to redo regardless of which
+  // branch above ran, so this edited message stays accurate whether the
+  // order was just confirmed, already was, or got rejected instead.
+  const displayReferrerUid = await resolveReferrerUid(env, idToken, order.userId, customerUser?.referredBy).catch(() => null);
+  const displaySplit = computeCommissionSplit(order.commissionAmount, !!displayReferrerUid);
   const settledFields = {
     requesterName: customerUser?.fullName || customerUser?.email || order.userId,
     requesterEmail: customerUser?.email || '—',
@@ -1017,6 +1079,8 @@ async function handleOrderDecision(env, callbackQuery, orderId, targetStatus) {
     platformLabel: PLATFORM_LABEL[order.platform] ?? order.platform,
     orderValueLabel: formatVnd(order.orderValue),
     commissionAmountLabel: formatVnd(order.commissionAmount),
+    customerAmountLabel: formatVnd(displaySplit.customerAmount),
+    platformAmountLabel: formatVnd(displaySplit.platformAmount),
     orderId,
   };
   const editResult = await telegramApi(env, 'editMessageText', {

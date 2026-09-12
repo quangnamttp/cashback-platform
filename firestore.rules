@@ -57,6 +57,32 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == 'K6LgwLli7vSdn8hSZQNLKiCKBKo1';
     }
 
+    // The real backend gate for releasing a cashbackLedger entry — added
+    // 2026-09-12 because neither isAdmin() nor isPaymentBot() previously
+    // required anything at all beyond "the doc is currently FROZEN" (and
+    // isAdmin() didn't even require that) before allowing a FROZEN->RELEASED
+    // write. A client-side check (manager/payouts/page.tsx's
+    // isEligibleForPayout) is real UX but was never a security boundary —
+    // this is. Reads the ledger's own orderId (never a client-supplied
+    // value at this point — `resource.data`, not `request.resource.data`,
+    // so it's whatever the EXISTING doc already has) and requires that
+    // order to be admin-CONFIRMED, and — only for an AFFILIATE-sourced
+    // order, where ACCESSTRADE's own commission verdict is the thing this
+    // whole gate exists to wait for — commissionStatus == 'APPROVED' too. A
+    // MANUAL order (source != 'AFFILIATE') has no such external verdict to
+    // wait for, so CONFIRMED alone is sufficient for it, unchanged from
+    // before. A ledger entry with no orderId, or one whose orderId doesn't
+    // resolve to a real order (should not normally happen), is allowed
+    // through rather than permanently stuck — there is no order-side
+    // condition to even check in that case.
+    function canReleaseLedgerFor(orderId) {
+      return orderId == null
+        || !exists(/databases/$(database)/documents/orders/$(orderId))
+        || (get(/databases/$(database)/documents/orders/$(orderId)).data.status == 'CONFIRMED'
+            && (get(/databases/$(database)/documents/orders/$(orderId)).data.source != 'AFFILIATE'
+                || get(/databases/$(database)/documents/orders/$(orderId)).data.commissionStatus == 'APPROVED'));
+    }
+
     match /users/{uid} {
       // Also readable by whoever referred this account — /referrals shows
       // "who signed up with my code" by querying where('referredBy','==',
@@ -217,7 +243,21 @@ service cloud.firestore {
             && ((resource.data.status == 'PENDING' && request.resource.data.status == 'PENDING'
                  && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount']))
                 || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'REFUNDED'
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'commissionStatus', 'cashbackClawback']))));
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'commissionStatus', 'cashbackClawback']))
+                // NEW 2026-09-12 — closes the gap where commissionStatus
+                // froze forever the instant Admin confirmed an order: an
+                // AFFILIATE order's REAL ACCESSTRADE verdict (PENDING ->
+                // APPROVED, or its amount being revised) can keep changing
+                // for a while after Admin's own "Duyệt đơn" — see
+                // workers/accesstrade-sync's processOneOrder. status itself
+                // never moves here (that's the REFUNDED branch above, or
+                // isAdmin() for anything else) — only the 3 fields this
+                // Worker's own eligibility-detection loop needs to keep in
+                // sync, one of which (payoutNotificationSentAt) it also
+                // needs to be able to set exactly once to avoid a duplicate
+                // Topic 13 message.
+                || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'CONFIRMED'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'payoutNotificationSentAt']))));
     }
 
     // No time gate — admin has full discretion on when to release a
@@ -248,15 +288,41 @@ service cloud.firestore {
       // write (lib/orderEntry.ts) — FROZEN can only ever move to REJECTED
       // here, never RELEASED (releasing is exclusively the admin/
       // isPaymentBot() "✅ Duyệt hoàn tiền" action above).
+      //
+      // RELEASED specifically is now ALSO gated by canReleaseLedgerFor()
+      // (added 2026-09-12) for BOTH isAdmin() and isPaymentBot() — neither
+      // could previously be stopped by this file from releasing an
+      // AFFILIATE order's commission before ACCESSTRADE actually approved
+      // it (manager/payouts/page.tsx's isEligibleForPayout was UI-only,
+      // never enforced here). isAdmin() keeps full, unrestricted access to
+      // every OTHER transition (REJECTED, or any other field edit) exactly
+      // as before — only a write that sets status to RELEASED gets the
+      // extra requirement, and even then only on a doc that's currently
+      // FROZEN (closes the separate gap where isAdmin() previously had no
+      // "must currently be FROZEN" requirement at all).
       allow update: if isAdmin()
+          && (request.resource.data.status != 'RELEASED'
+              || (resource.data.status == 'FROZEN' && canReleaseLedgerFor(resource.data.orderId)))
         || (isPaymentBot()
             && resource.data.status == 'FROZEN'
             && request.resource.data.status in ['RELEASED', 'REJECTED']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'releasedBy', 'releasedAt']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'releasedBy', 'releasedAt'])
+            && (request.resource.data.status != 'RELEASED' || canReleaseLedgerFor(resource.data.orderId)))
         || (isConversionBot()
             && resource.data.status == 'FROZEN'
             && request.resource.data.status == 'REJECTED'
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+        // NEW 2026-09-12 — lets workers/accesstrade-sync record which
+        // Telegram message it sent to Topic 13 for this ledger entry (the
+        // same bookkeeping isPaymentBot()'s own ledger-create branch used
+        // to do inline when Topic 13 was sent at order-approval time —
+        // that send now happens later, from this Worker, once ACCESSTRADE
+        // actually approves the commission). Status must stay FROZEN;
+        // nothing money-related is touched.
+        || (isConversionBot()
+            && resource.data.status == 'FROZEN'
+            && request.resource.data.status == 'FROZEN'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['telegramChatId', 'telegramMessageId']));
     }
 
     match /withdrawalRequests/{requestId} {

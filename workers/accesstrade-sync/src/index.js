@@ -1406,6 +1406,15 @@ function formatVnd(amount) {
 // TELEGRAM_TOPICS.ORDER_APPROVAL (33) and same order_approve:/order_reject:
 // callback_data prefixes, so workers/telegram-bot's EXISTING webhook
 // handler processes taps on this message with zero changes needed there.
+// Shows the real commission SPLIT PREVIEW (customer/admin) alongside the
+// raw commissionAmount ACCESSTRADE reported, per this task's own explicit
+// requirement — Admin approving from Topic 33 must be able to see what
+// duyệt đơn actually implies in money terms, computed via the SAME
+// computeCommissionSplit/COMMISSION_SPLIT this whole codebase uses
+// everywhere else (never a new formula, see this file's own comment on
+// computeCommissionSplit above). commissionStatusLabel is ACCESSTRADE's
+// OWN current verdict (PENDING/APPROVED/REJECTED) — shown explicitly so
+// Admin never mistakes "Đã duyệt đơn" for "ACCESSTRADE đã APPROVED".
 function renderNewOrderMessage(fields) {
   const DIVIDER = '━━━━━━━━━━━━━━━━━━━';
   return [
@@ -1415,9 +1424,14 @@ function renderNewOrderMessage(fields) {
     `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
     `💰 <b>Giá trị đơn:</b> <code>${escapeHtml(formatVnd(fields.orderValue))}</code>`,
-    `💵 <b>Hoa hồng sàn trả:</b> <code>${escapeHtml(formatVnd(fields.commissionAmount))}</code>`,
+    DIVIDER,
+    `💵 <b>Hoa hồng thực tế:</b> <code>${escapeHtml(formatVnd(fields.commissionAmount))}</code>`,
+    `🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(formatVnd(fields.customerAmount))}</code>`,
+    `🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(formatVnd(fields.platformAmount))}</code>`,
+    DIVIDER,
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
     `🔗 <b>ACCESSTRADE order_id:</b> <code>${escapeHtml(fields.externalOrderId)}</code>`,
+    `📶 <b>Trạng thái hoa hồng:</b> ${escapeHtml(fields.commissionStatusLabel)}`,
     DIVIDER,
     '⏳ <b>Trạng thái:</b> Chờ duyệt',
   ].join('\n');
@@ -1448,6 +1462,58 @@ async function sendTelegramNewOrder(env, fields) {
   });
   if (!res?.ok) return null;
   return { chatId: String(res.result.chat.id), messageId: res.result.message_id };
+}
+
+// --- Commission split preview (Topic 33) + payout-eligibility detection ---
+// Mirrors computeCommissionSplit()/COMMISSION_SPLIT in apps/web/lib/
+// orderEntry.ts and workers/telegram-bot/src/index.js exactly (same
+// reason both of those already carry their own copy — no shared build
+// between this Worker and the web app or the OTHER Worker). Used ONLY to
+// render a preview in the Topic 33 "đơn hàng cần duyệt" message, computed
+// fresh from the real commissionAmount ACCESSTRADE reported — never
+// written anywhere, never the actual split used for the real ledger
+// entries (those are created by lib/orderEntry.ts/handleOrderDecision
+// when Admin taps "✅ Duyệt đơn hàng", exactly as before this change).
+const COMMISSION_SPLIT = {
+  CUSTOMER_WITH_REFERRER: 0.75,
+  REFERRER_BONUS: 0.05,
+  CUSTOMER_NO_REFERRER: 0.8,
+  PLATFORM_SHARE: 0.2,
+};
+
+function computeCommissionSplit(commissionAmount, hasReferrer) {
+  const safeAmount = Math.max(0, Math.round(commissionAmount || 0));
+  if (hasReferrer) {
+    return {
+      customerAmount: Math.round(safeAmount * COMMISSION_SPLIT.CUSTOMER_WITH_REFERRER),
+      referrerAmount: Math.round(safeAmount * COMMISSION_SPLIT.REFERRER_BONUS),
+      platformAmount: Math.round(safeAmount * COMMISSION_SPLIT.PLATFORM_SHARE),
+    };
+  }
+  return {
+    customerAmount: Math.round(safeAmount * COMMISSION_SPLIT.CUSTOMER_NO_REFERRER),
+    referrerAmount: 0,
+    platformAmount: Math.round(safeAmount * COMMISSION_SPLIT.PLATFORM_SHARE),
+  };
+}
+
+// Mirrors workers/telegram-bot/src/index.js's findUserIdByReferralCode/
+// resolveReferrerUid exactly — same reason as computeCommissionSplit above.
+async function findUserIdByReferralCode(env, idToken, referralCode) {
+  const rows = await firestoreRunQuery(env, idToken, {
+    from: [{ collectionId: 'users' }],
+    where: { fieldFilter: { field: { fieldPath: 'referralCode' }, op: 'EQUAL', value: { stringValue: referralCode } } },
+  });
+  if (rows.length === 0) return null;
+  const parts = rows[0].document.name.split('/');
+  return parts[parts.length - 1];
+}
+
+async function resolveReferrerUid(env, idToken, customerUserId, customerReferredBy) {
+  if (!customerReferredBy) return null;
+  const referrerUid = await findUserIdByReferralCode(env, idToken, customerReferredBy);
+  if (!referrerUid || referrerUid === customerUserId) return null;
+  return referrerUid;
 }
 
 // One customer's own refund history vs. total CONFIRMED-or-REFUNDED orders
@@ -1683,12 +1749,24 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
 
     const userDoc = await firestoreGet(env, idToken, 'users', userId).catch(() => null);
     const requesterLabel = (userDoc && (fv(userDoc.fields, 'fullName') || fv(userDoc.fields, 'email'))) || userId;
+    // Preview only (see computeCommissionSplit's own comment) — the REAL
+    // ledger entries (and their own referrer resolution) are created later,
+    // unchanged, when Admin actually taps "✅ Duyệt đơn hàng".
+    const referredByCode = userDoc ? fv(userDoc.fields, 'referredBy') : undefined;
+    const referrerUid = await resolveReferrerUid(env, idToken, userId, referredByCode).catch((err) => {
+      console.error(`order ${externalOrderId}: referrer lookup for Topic 33 preview threw:`, err.message);
+      return null;
+    });
+    const split = computeCommissionSplit(commissionAmount, !!referrerUid);
     const telegramRef = await sendTelegramNewOrder(env, {
       requesterLabel,
       productName: `Đơn hàng ACCESSTRADE #${externalOrderId}`,
       platformLabel: PLATFORM_LABEL[platform] ?? platform,
       orderValue,
       commissionAmount,
+      customerAmount: split.customerAmount,
+      platformAmount: split.platformAmount,
+      commissionStatusLabel: status,
       orderId,
       externalOrderId,
     });
@@ -1733,8 +1811,229 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     return;
   }
 
-  // CONFIRMED + still approved/pending, or already REFUNDED/CANCELLED —
-  // nothing to do this cycle.
+  if (existingStatus === 'CONFIRMED') {
+    // FIXED 2026-09-12 — this used to be "nothing to do this cycle" for
+    // every CONFIRMED order not being rejected, which meant commissionStatus
+    // froze at whatever value it had the instant Admin approved and could
+    // NEVER reach APPROVED afterwards, no matter what ACCESSTRADE later
+    // reported. Now keeps syncing commissionStatus/commissionAmount for as
+    // long as ACCESSTRADE keeps reporting this order, and — once (and only
+    // once) that sync reveals APPROVED with a real commission — notifies
+    // Topic 13. Never touches order.status here (that's the REFUNDED
+    // clawback branch above, or Admin/Telegram's own CONFIRMED write).
+    await syncConfirmedOrderCommission(env, idToken, orderId, existing, status, commissionAmount, platform);
+    return;
+  }
+
+  // Already REFUNDED/CANCELLED — nothing to do this cycle.
+}
+
+// --- Payout-eligibility detection (Topic 13), run only for an order
+// Admin has already CONFIRMED (see processOneOrder above) ---------------
+
+// Single source of truth for "does ACCESSTRADE's own data say this
+// commission is safe to pay out" — deliberately narrow (only the ACCESSTRADE
+// side of eligibility; commissionAmount/order/ledger state are checked by
+// this function's own caller and by notifyPayoutEligible below, and the
+// REAL, final backend gate before money ever moves is firestore.rules'
+// canReleaseLedgerFor(), not this function). Exported in spirit (not
+// literally, this Worker has no module system beyond this one file) as the
+// one place this decision is made — manager/payouts/page.tsx's own
+// isEligibleForPayout() checks the exact same order.commissionStatus field,
+// just from the browser instead of from this cron.
+function isAccesstradeApproved(commissionStatus, commissionAmount) {
+  return commissionStatus === 'APPROVED' && commissionAmount > 0;
+}
+
+async function syncConfirmedOrderCommission(env, idToken, orderId, existingDoc, freshCommissionStatus, freshCommissionAmount, platform) {
+  const existingCommissionStatus = fv(existingDoc.fields, 'commissionStatus');
+  const existingCommissionAmount = fv(existingDoc.fields, 'commissionAmount');
+  const alreadyNotified = !!fv(existingDoc.fields, 'payoutNotificationSentAt');
+  const roundedAmount = Math.round(freshCommissionAmount) || 0;
+  let currentUpdateTime = existingDoc.updateTime;
+
+  const commissionChanged = existingCommissionStatus !== freshCommissionStatus || existingCommissionAmount !== roundedAmount;
+  if (commissionChanged) {
+    if (env.DRY_RUN !== 'false') {
+      console.log(`[DRY_RUN] would SYNC ${orderId} (CONFIRMED) commissionStatus ${existingCommissionStatus} -> ${freshCommissionStatus}, commissionAmount ${existingCommissionAmount} -> ${roundedAmount}`);
+      return;
+    }
+    try {
+      const patched = await firestorePatch(env, idToken, 'orders', orderId, {
+        commissionStatus: { stringValue: freshCommissionStatus },
+        commissionAmount: { integerValue: String(roundedAmount) },
+      });
+      currentUpdateTime = patched.updateTime || currentUpdateTime;
+      console.log(`order ${orderId}: CONFIRMED, commissionStatus synced ${existingCommissionStatus} -> ${freshCommissionStatus} (amount ${roundedAmount})`);
+    } catch (err) {
+      console.error(`order ${orderId}: commissionStatus sync failed:`, err.message);
+      return; // don't act on eligibility against data that may now be stale
+    }
+  }
+
+  if (!isAccesstradeApproved(freshCommissionStatus, roundedAmount)) {
+    console.log(`order ${orderId}: not eligible for payout yet (commissionStatus=${freshCommissionStatus}, amount=${roundedAmount})`);
+    return;
+  }
+  if (alreadyNotified) {
+    return; // already handled on a previous cycle — see tryClaimPayoutNotification's own comment
+  }
+
+  if (env.DRY_RUN !== 'false') {
+    console.log(`[DRY_RUN] would CHECK payout eligibility + notify Topic 13 for ${orderId} (commissionStatus=APPROVED, amount=${roundedAmount})`);
+    return;
+  }
+
+  // Claim BEFORE looking up the ledger or sending anything — see this
+  // function's own precondition comment. Losing the claim means another
+  // cron tick (or a retry of this same one, e.g. after a transient error)
+  // already owns sending this order's Topic 13 message.
+  const claimed = await tryClaimPayoutNotification(env, idToken, orderId, currentUpdateTime);
+  if (!claimed) {
+    console.log(`order ${orderId}: another cycle already claimed the payout notification — skipping`);
+    return;
+  }
+
+  await notifyPayoutEligible(env, idToken, orderId, platform, roundedAmount);
+}
+
+// Atomic guard against sending Topic 13 twice for the same order — two
+// overlapping cron ticks (a slow previous run still finishing when the next
+// one fires), or a retry after a Worker restart mid-cycle. Uses the SAME
+// currentDocument.updateTime precondition every other atomic claim in this
+// codebase relies on (see tryClaimOrderStatus in workers/telegram-bot for
+// the identical pattern): the PATCH only applies if the order doc's
+// updateTime still matches what was just read/written a moment ago. Losing
+// the race (409/400) means someone else's claim already committed first —
+// this caller must NOT proceed to look up the ledger or send anything.
+async function tryClaimPayoutNotification(env, idToken, orderId, expectedUpdateTime) {
+  const precondition = expectedUpdateTime
+    ? `&currentDocument.updateTime=${encodeURIComponent(expectedUpdateTime)}`
+    : '&currentDocument.exists=true';
+  const res = await fetch(
+    `${firestoreDocUrl(env, 'orders', orderId)}?updateMask.fieldPaths=payoutNotificationSentAt${precondition}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { payoutNotificationSentAt: { timestampValue: new Date().toISOString() } } }),
+    },
+  );
+  if (res.status === 409 || res.status === 400) {
+    console.log(`tryClaimPayoutNotification: lost the race for ${orderId} (order changed since read)`);
+    return false;
+  }
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    console.error(`tryClaimPayoutNotification failed for ${orderId}:`, res.status, JSON.stringify(json));
+    return false;
+  }
+  return true;
+}
+
+// Sends the Topic 13 "đủ điều kiện hoàn tiền" message — only ever called
+// after tryClaimPayoutNotification above has already succeeded, so this
+// runs at most once per order. Reads the REAL, already-persisted
+// CUSTOMER_CASHBACK/PLATFORM_REVENUE ledger amounts (created by lib/
+// orderEntry.ts or workers/telegram-bot's handleOrderDecision when Admin
+// tapped "✅ Duyệt đơn hàng" — see this function's own comment on why:
+// those already ran the real, referrer-aware computeCommissionSplit, so
+// reading them back can never drift from what actually exists) rather than
+// recomputing the split itself.
+async function notifyPayoutEligible(env, idToken, orderId, platform, commissionAmount) {
+  let ledgerRows;
+  try {
+    ledgerRows = await firestoreRunQuery(env, idToken, {
+      from: [{ collectionId: 'cashbackLedger' }],
+      where: { fieldFilter: { field: { fieldPath: 'orderId' }, op: 'EQUAL', value: { stringValue: orderId } } },
+    });
+  } catch (err) {
+    console.error(`order ${orderId}: cashbackLedger lookup failed (payoutNotificationSentAt already claimed — will not retry automatically):`, err.message);
+    return;
+  }
+
+  const customerRow = ledgerRows.find((row) => fv(row.document.fields, 'type') === 'CUSTOMER_CASHBACK');
+  const platformRow = ledgerRows.find((row) => fv(row.document.fields, 'type') === 'PLATFORM_REVENUE');
+  if (!customerRow) {
+    console.error(`order ${orderId}: eligible for payout but NO CUSTOMER_CASHBACK ledger entry exists yet (Admin may not have tapped "Duyệt đơn hàng" through the ledger-creating path) — payoutNotificationSentAt already claimed, Topic 13 NOT sent. Needs manual follow-up.`);
+    return;
+  }
+  const ledgerId = customerRow.document.name.split('/').pop();
+  const ledgerStatus = fv(customerRow.document.fields, 'status');
+  if (ledgerStatus !== 'FROZEN') {
+    console.log(`order ${orderId}: ledger ${ledgerId} is already ${ledgerStatus} (not FROZEN) — Topic 13 not sent, nothing left to approve`);
+    return;
+  }
+
+  const customerAmount = fv(customerRow.document.fields, 'amount') || 0;
+  const platformAmount = platformRow ? (fv(platformRow.document.fields, 'amount') || 0) : Math.max(0, commissionAmount - customerAmount);
+  const userId = fv(customerRow.document.fields, 'userId');
+  const requesterName = fv(customerRow.document.fields, 'requesterName') || userId;
+
+  const send = await sendTelegramPayoutEligible(env, {
+    requesterName,
+    platformLabel: PLATFORM_LABEL[platform] ?? platform,
+    orderId,
+    commissionAmountLabel: formatVnd(commissionAmount),
+    customerAmountLabel: formatVnd(customerAmount),
+    platformAmountLabel: formatVnd(platformAmount),
+    ledgerId,
+  });
+  if (!send) {
+    console.error(`order ${orderId}: Topic 13 send failed for ledger ${ledgerId} — payoutNotificationSentAt already claimed, message NOT sent. Needs manual follow-up (check /manager/payouts).`);
+    return;
+  }
+
+  await firestorePatch(env, idToken, 'cashbackLedger', ledgerId, {
+    telegramChatId: { stringValue: send.chatId },
+    telegramMessageId: { integerValue: String(send.messageId) },
+  }).catch((err) => console.error(`order ${orderId}: ledger telegram-ref patch failed:`, err.message));
+  console.log(`order ${orderId}: Topic 13 sent for ledger ${ledgerId} (customer=${customerAmount}, platform=${platformAmount})`);
+}
+
+function renderPayoutEligibleMessage(fields) {
+  const DIVIDER = '━━━━━━━━━━━━━━━━━━━';
+  return [
+    '🎉 <b>ĐƠN HÀNG ĐỦ ĐIỀU KIỆN HOÀN TIỀN</b>',
+    DIVIDER,
+    `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
+    `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
+    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    DIVIDER,
+    `💰 <b>Hoa hồng ACCESSTRADE:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    `🤑 <b>Khách nhận:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`,
+    `🏦 <b>Hệ thống/Admin giữ:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`,
+    DIVIDER,
+    '✅ <b>ACCESSTRADE:</b> APPROVED',
+    '🔒 <b>Cashback hiện tại:</b> FROZEN',
+    '⏳ <b>Trạng thái:</b> Chờ Admin duyệt hoàn',
+  ].join('\n');
+}
+
+function payoutEligibleKeyboard(ledgerId) {
+  return [[
+    { text: '💰 Duyệt hoàn tiền', callback_data: `cb_approve:${ledgerId}` },
+    { text: '❌ Từ chối hoàn tiền', callback_data: `cb_reject:${ledgerId}` },
+  ]];
+}
+
+async function sendTelegramPayoutEligible(env, fields) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return null;
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: env.TELEGRAM_CHAT_ID,
+      message_thread_id: 13,
+      parse_mode: 'HTML',
+      text: renderPayoutEligibleMessage(fields),
+      reply_markup: { inline_keyboard: payoutEligibleKeyboard(fields.ledgerId) },
+    }),
+  }).then((r) => r.json()).catch((err) => {
+    console.error('sendTelegramPayoutEligible threw:', err.message);
+    return null;
+  });
+  if (!res?.ok) return null;
+  return { chatId: String(res.result.chat.id), messageId: res.result.message_id };
 }
 
 // order-list's own docs mention `page` as an available param but never
