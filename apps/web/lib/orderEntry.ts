@@ -395,7 +395,10 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
       commissionAmountLabel: formatVnd(input.commissionAmount),
       customerAmountLabel: formatVnd(splitPreview.customerAmount),
       platformAmountLabel: formatVnd(splitPreview.platformAmount),
-      commissionStatusLabel: input.commissionStatus || '—',
+      // Omit entirely (never a '—' placeholder) when absent — true for
+      // every MANUAL order, since commissionStatus is an AFFILIATE-only
+      // concept (see orderApprovalMessageText's own conditional line).
+      ...(input.commissionStatus ? { commissionStatusLabel: input.commissionStatus } : {}),
       orderId,
     });
   }
