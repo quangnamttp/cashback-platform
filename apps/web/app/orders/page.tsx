@@ -19,6 +19,7 @@ type OrderDoc = {
   productName: string;
   productUrl?: string | null;
   imageUrl?: string | null;
+  orderValue: number;
   commissionAmount: number;
   status: OrderStatus;
   orderDate?: { toDate: () => Date };
@@ -279,6 +280,8 @@ export default function OrdersPage() {
               <span className="order-card-id">#{activeOrder.id}</span>
             </div>
 
+            <h3 style={{ marginTop: 8, marginBottom: 0 }}>{activeOrder.productName}</h3>
+
             <div className="modal-amount-box">
               <div>
                 <div className="amount-label">Hoàn tiền</div>
@@ -288,6 +291,14 @@ export default function OrdersPage() {
             </div>
 
             <div className="modal-field-list">
+              <div className="modal-field-row">
+                <span>Giá trị đơn</span>
+                <span>{activeOrder.orderValue.toLocaleString('vi-VN')} đ</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Hoa hồng thực tế</span>
+                <span>{activeOrder.commissionAmount.toLocaleString('vi-VN')} đ</span>
+              </div>
               <div className="modal-field-row">
                 <span>{t('tbl_status')}</span>
                 <span>{t(statusKeyMap[activeOrder.status] as any) || activeOrder.status}</span>

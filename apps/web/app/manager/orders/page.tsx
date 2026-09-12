@@ -155,6 +155,7 @@ export default function AdminOrdersPage() {
   }, [ledger]);
 
   const detailOrder = orders.find((o) => o.id === detailOrderId) ?? null;
+  const detailCashback = detailOrder ? cashbackByOrder.get(detailOrder.id) : undefined;
 
   const matchingUsers = useMemo(() => {
     if (!userQuery.trim()) return [];
@@ -682,8 +683,19 @@ export default function AdminOrdersPage() {
       <Modal open={!!detailOrderId} onClose={() => setDetailOrderId(null)}>
         {detailOrder && (
           <>
-            <h3 style={{ marginTop: 0 }}>Chi tiết đơn hàng</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 4 }}>{detailOrder.productName}</h3>
             <div className="modal-field-list">
+              <div className="modal-field-row">
+                <span>Sàn</span>
+                <span>
+                  {PLATFORM_LABEL[detailOrder.platform] ?? detailOrder.platform}
+                  {detailOrder.source === 'AFFILIATE' && (
+                    <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title={`Tự động từ ${detailOrder.affiliateProvider ?? 'affiliate provider'}`}>
+                      🤖 {detailOrder.affiliateProvider ?? 'AUTO'}
+                    </span>
+                  )}
+                </span>
+              </div>
               <div className="modal-field-row">
                 <span>Mã đơn</span>
                 <span className="modal-code-row">{detailOrder.id}<CopyIdChip value={detailOrder.id} /></span>
@@ -693,8 +705,28 @@ export default function AdminOrdersPage() {
                 <span>{userLabel(users, detailOrder.userId)}</span>
               </div>
               <div className="modal-field-row">
-                <span>Nguồn đơn</span>
-                <span>{detailOrder.source === 'AFFILIATE' ? `Tự động (${detailOrder.affiliateProvider ?? 'affiliate'})` : 'Nhập thủ công'}</span>
+                <span>Giá trị đơn</span>
+                <span>{formatCurrency(detailOrder.orderValue, lang)}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Hoa hồng thực tế</span>
+                <span>{formatCurrency(detailOrder.commissionAmount, lang)}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Khách được hoàn</span>
+                <span>{detailCashback ? formatCurrency(detailCashback.amount, lang) : '—'}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Trạng thái đơn hàng</span>
+                <span className={`badge ${statusBadge[detailOrder.status] ?? 'badge-neutral'}`}>{ORDER_STATUS_LABEL[detailOrder.status] ?? detailOrder.status}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Trạng thái hoàn tiền</span>
+                {detailCashback ? (
+                  <span className={`badge ${CASHBACK_STATUS_BADGE[detailCashback.status]}`}>{CASHBACK_STATUS_LABEL[detailCashback.status]}</span>
+                ) : (
+                  <span className="muted-copy">—</span>
+                )}
               </div>
               {detailOrder.cashbackClawback && (
                 <div className="modal-field-row">
@@ -704,22 +736,6 @@ export default function AdminOrdersPage() {
                   </span>
                 </div>
               )}
-              <div className="modal-field-row">
-                <span>External Order ID (sàn/ACCESSTRADE)</span>
-                <span>{detailOrder.externalOrderId || '—'}</span>
-              </div>
-              <div className="modal-field-row">
-                <span>Sub ID / Tracking ID</span>
-                <span>{detailOrder.subId || detailOrder.trackingId || '—'}</span>
-              </div>
-              <div className="modal-field-row">
-                <span>Affiliate Conversion ID</span>
-                <span>{detailOrder.affiliateConversionId || '—'}</span>
-              </div>
-              <div className="modal-field-row">
-                <span>Commission Status (provider)</span>
-                <span>{detailOrder.commissionStatus || '—'}</span>
-              </div>
               {detailOrder.productUrl && (
                 <div className="modal-field-row">
                   <span>Link sản phẩm</span>

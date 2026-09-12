@@ -1675,6 +1675,14 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     // defined one is used.
     const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
     const subId = rows.map((row) => row?._extra?.sub_params?.sub1).find((v) => !!v);
+    // CONFIRMED live against the same real response (order_id
+    // 260911RD0KW95Q): each row's real product title lives at
+    // `_extra.product_name`, not any documented field — a "bonus"/reward
+    // line item carries an empty string there, so this skips blanks and
+    // takes the first row with a real name. Falls back to the old
+    // ACCESSTRADE-id placeholder only when no row has one at all (never an
+    // empty product name written to Firestore).
+    const productName = rows.map((row) => row?._extra?.product_name).find((v) => !!v) || `Đơn hàng ACCESSTRADE #${externalOrderId}`;
     console.log(`order ${externalOrderId}: raw order-products data (full, for manual review) =`, JSON.stringify(json?.data));
 
     // --- MAPPING CHECK — read this block, not just the pass/fail, before
@@ -1705,7 +1713,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     const orderFields = {
       userId: { stringValue: userId },
       platform: { stringValue: platform },
-      productName: { stringValue: `Đơn hàng ACCESSTRADE #${externalOrderId}` },
+      productName: { stringValue: productName },
       productUrl: order.at_product_link ? { stringValue: order.at_product_link } : { nullValue: null },
       imageUrl: { nullValue: null },
       orderValue: { integerValue: String(Math.round(orderValue)) },
@@ -1755,7 +1763,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     const split = computeCommissionSplit(commissionAmount, !!referrerUid);
     const telegramRef = await sendTelegramNewOrder(env, {
       requesterLabel,
-      productName: `Đơn hàng ACCESSTRADE #${externalOrderId}`,
+      productName,
       platformLabel: PLATFORM_LABEL[platform] ?? platform,
       orderValue,
       commissionAmount,
