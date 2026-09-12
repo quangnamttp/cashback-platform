@@ -296,10 +296,6 @@ export default function OrdersPage() {
                 <span>{activeOrder.orderValue.toLocaleString('vi-VN')} đ</span>
               </div>
               <div className="modal-field-row">
-                <span>Hoa hồng thực tế</span>
-                <span>{activeOrder.commissionAmount.toLocaleString('vi-VN')} đ</span>
-              </div>
-              <div className="modal-field-row">
                 <span>{t('tbl_status')}</span>
                 <span>{t(statusKeyMap[activeOrder.status] as any) || activeOrder.status}</span>
               </div>
