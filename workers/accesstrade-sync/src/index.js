@@ -2310,6 +2310,27 @@ export default {
       }
       return Response.json({ hours, includeMapping, sinceIso, untilIso, byPlatform, ms: Date.now() - startedAt });
     }
+    // TEMPORARY test-only receiver (added 2026-09-12, per explicit request)
+    // — lets a real ACCESSTRADE Postback call be observed (logged only)
+    // before any decision is made about building a real, Firestore-writing
+    // receiver. Never reads/writes Firestore, never touches
+    // processOneOrder/pollOrders/handleCreateLink or any customer-facing
+    // path — purely logs whatever query params arrive and returns 200.
+    // Gated by a shared-secret query param (?key=...): not a real security
+    // boundary (nothing sensitive is ever exposed or written here), just
+    // noise reduction against random callers hitting a guessed path.
+    // Remove once the real receiver (if built) supersedes it, or once the
+    // test is done and the answer is no.
+    if (url.pathname === '/debug/postback-test') {
+      const POSTBACK_TEST_KEY = 'pbtest_8f2k1m9x';
+      if (url.searchParams.get('key') !== POSTBACK_TEST_KEY) {
+        return new Response('forbidden', { status: 403 });
+      }
+      const params = Object.fromEntries(url.searchParams.entries());
+      delete params.key;
+      console.log('[PostbackTest] received:', JSON.stringify(params));
+      return new Response('OK', { status: 200 });
+    }
     // TEMPORARY read-only diagnostic (added 2026-09-12) — plain
     // firestoreGet on a single `orders` doc, to independently confirm what
     // pollOrders actually wrote (or didn't) after a real DRY_RUN=false
