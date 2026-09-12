@@ -31,11 +31,15 @@
 // a point, then genuinely unknown until tested against a real conversion.
 // Every place below relying on one of these is commented individually too.
 // ============================================================
-//   - Whether `sub1` sent at link-creation time comes back as literally
-//     `sub_id1` inside order-products' `data._extra.parameters` — the docs
-//     show that field existing in an EXAMPLE, never states it's guaranteed
-//     to equal what was sent as sub1. This is the single most important
-//     thing to verify with a real conversion before trusting this at all.
+//   - RESOLVED 2026-09-12 against a real conversion (order_id
+//     260911RD0KW95Q): `sub1` sent at link-creation time comes back as
+//     `data[i]._extra.sub_params.sub1` — NOT `data._extra.parameters.sub_id1`
+//     as originally assumed from the docs' example (that field/shape never
+//     appeared in this account's real responses, so the mapping check
+//     silently produced 'UNKNOWN' for every real order until this fix).
+//     `data` is a list of per-product line items, one per product in the
+//     order; every row of the same order carries the same sub1 (same
+//     tracking link), so processOneOrder takes the first row with one set.
 //   - since/until format for /v1/order-list: CONFIRMED wrong as Unix
 //     seconds — production calls returned HTTP 500 for every merchant.
 //     Fixed 2026-09-08 to send ISO 8601 (e.g. 2021-01-01T00:00:00Z) per
@@ -1598,9 +1602,19 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       console.error(`order ${externalOrderId}: order-products fetch failed, skipping this cycle`);
       return;
     }
-    const params = json?.data?._extra?.parameters || json?._extra?.parameters || {};
-    const subId = params.sub_id1;
-    console.log(`order ${externalOrderId}: raw _extra.parameters (full, for manual review) =`, JSON.stringify(params));
+    // FIXED 2026-09-12 — CONFIRMED live against a real order-products
+    // response (order_id 260911RD0KW95Q): `data` is a LIST of per-product
+    // line items (one per product in the order), and the real tracking
+    // value lives at each row's `_extra.sub_params.sub1` — NOT
+    // `_extra.parameters.sub_id1`, which this previously read and which
+    // this account's real responses have never actually populated (always
+    // silently produced mappingResult 'UNKNOWN', for every order, not just
+    // this one). Every line item of the same order was created from the
+    // same tracking link, so any row's sub1 is equally valid — the first
+    // defined one is used.
+    const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
+    const subId = rows.map((row) => row?._extra?.sub_params?.sub1).find((v) => !!v);
+    console.log(`order ${externalOrderId}: raw order-products data (full, for manual review) =`, JSON.stringify(json?.data));
 
     // --- MAPPING CHECK — read this block, not just the pass/fail, before
     // ever trusting a real order created from this. `redirectCache`'s own
@@ -1613,7 +1627,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     console.log([
       `[MAPPING CHECK] order_id=${externalOrderId}`,
       `sub1 gửi khi tạo link: (không lưu riêng — chính là redirectCache doc id được tra cứu bên dưới, xem lib/redirectLink.ts)`,
-      `sub_id1 ACCESSTRADE trả về: ${subId ?? '(KHÔNG CÓ — field sub_id1 vắng mặt trong _extra.parameters)'}`,
+      `sub1 ACCESSTRADE trả về: ${subId ?? '(KHÔNG CÓ — không dòng nào trong data[] có _extra.sub_params.sub1)'}`,
       `userId dự kiến: ${userId ?? '(không xác định)'}`,
       `mapping: ${mappingResult}`,
     ].join('\n  '));
@@ -1757,15 +1771,30 @@ async function fetchAllOrderListPages(env, platform, merchant, sinceIso, untilIs
   return all;
 }
 
+// WIDENED 2026-09-12 from 3 to 72 hours — CONFIRMED live via a real test
+// order (order_id 260911RD0KW95Q): ACCESSTRADE's since/until on
+// /v1/order-list filters by the order's own click_time/sales_time, NOT by
+// when it was last updated/confirmed. That order's click_time was 22:08
+// but it wasn't confirmed until 02:18, ~4 hours later — already outside a
+// 3-hour window by the time any tick could have seen the confirmed status,
+// so it would never have been caught at all. 72 hours gives real
+// confirmation delays enough room. Safe to re-scan this much every 5
+// minutes: processOneOrder's own firestoreGet-before-write check (keyed on
+// the deterministic accesstrade_<order_id> doc id) means an
+// already-processed order already existing is only ever cheaply re-checked
+// for a status/commission change — never duplicated. order-products'
+// own per-new-order throttle (ORDER_PRODUCTS_THROTTLE_MS) and order-list's
+// own page cap (ORDER_LIST_MAX_PAGES) are unchanged, so this widening adds
+// no new unbounded request growth — it only widens which rows order-list
+// itself returns.
+const ORDER_LIST_WINDOW_HOURS = 72;
+
 async function pollOrders(env) {
   const idToken = await firestoreSignIn(env);
-  // 3-hour rolling window, re-scanned every run — idempotency (the
-  // deterministic accesstrade_<order_id> doc id) makes re-scanning
-  // overlap safe, and this covers a missed cron tick without needing a
-  // separate "last polled at" cursor doc. ISO 8601 (not Unix seconds) per
-  // ACCESSTRADE's docs — see this file's top-of-file note on since/until.
+  // ISO 8601 (not Unix seconds) per ACCESSTRADE's docs — see this file's
+  // top-of-file note on since/until.
   const untilIso = new Date().toISOString();
-  const sinceIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+  const sinceIso = new Date(Date.now() - ORDER_LIST_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
 
   for (const [platform, merchant] of configuredMerchants(env)) {
     const orders = await fetchAllOrderListPages(env, platform, merchant, sinceIso, untilIso);
@@ -1904,6 +1933,84 @@ export default {
         query: { domain, sku, campaign, page, limit, price_from, price_to },
       });
       return Response.json({ domain, sku, campaign, page, limit, ok, status, json, ms: Date.now() - startedAt });
+    }
+    // TEMPORARY read-only diagnostic (added 2026-09-12, per explicit
+    // request) — investigates whether pollOrders()'s 3-hour rolling window
+    // (see that function's own comment) is wide enough to see a real
+    // conversion, or whether ACCESSTRADE's since/until filters by the
+    // order's ORIGINAL date rather than by when it was last updated (which
+    // would mean an order past that window can never resurface on its
+    // own). Reuses fetchAllOrderListPages/configuredMerchants exactly as
+    // pollOrders does — same real GET /v1/order-list calls, same
+    // pagination/throttle — but with a caller-chosen window and ZERO
+    // Firestore access: no order-products call, no user mapping, no
+    // Firestore create/update, no interaction with DRY_RUN at all. Never
+    // called from pollOrders/scheduled() or from any customer-facing path.
+    if (url.pathname === '/debug/order-list') {
+      const hours = Number(url.searchParams.get('hours')) || 72;
+      // Optional, additive — mirrors processOneOrder's own sub_id1 lookup
+      // and redirectCache mapping check EXACTLY, but read-only: calls
+      // GET /v1/order-products (real network call, same throttle) and
+      // firestoreGet on redirectCache (a plain read), never firestoreCreate/
+      // firestorePatch, never touches `orders`/`cashbackLedger`, completely
+      // independent of DRY_RUN. Off by default (adds a real network call +
+      // a 6.5s throttle per order) — pass &mapping=1 to include it.
+      const includeMapping = url.searchParams.get('mapping') === '1';
+      const untilIso = new Date().toISOString();
+      const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+      const startedAt = Date.now();
+      const idToken = includeMapping ? await firestoreSignIn(env) : null;
+      const byPlatform = {};
+      for (const [platform, merchant] of configuredMerchants(env)) {
+        const orders = await fetchAllOrderListPages(env, platform, merchant, sinceIso, untilIso);
+        const entries = [];
+        for (const order of orders) {
+          const externalOrderId = String(order.order_id);
+          const entry = {
+            order_id: externalOrderId,
+            status: deriveOrderStatus(order),
+            billing: order.billing,
+            pub_commission: order.pub_commission,
+            is_confirmed: order.is_confirmed,
+            order_approved: order.order_approved,
+            order_pending: order.order_pending,
+            order_reject: order.order_reject,
+            click_time: order.click_time,
+            sales_time: order.sales_time,
+            confirmed_time: order.confirmed_time,
+            update_time: order.update_time,
+          };
+          if (includeMapping) {
+            const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-products', { query: { order_id: externalOrderId, merchant } });
+            await sleep(ORDER_PRODUCTS_THROTTLE_MS);
+            entry.orderProductsRaw = json ?? null; // full raw response, for manual review — this is a diagnostic route, not the live path
+            // Checking BOTH the shape processOneOrder currently assumes
+            // (data._extra.parameters.sub_id1) AND the real shape a live
+            // response just showed (data is a LIST of line items, each with
+            // its own _extra.sub_params.sub1) — reporting both so it's
+            // clear which one (if either) actually carries a value, rather
+            // than guessing which is "correct" from one sample.
+            const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
+            const legacyParams = json?.data?._extra?.parameters || json?._extra?.parameters || {};
+            const rowSub1 = rows.map((r) => r?._extra?.sub_params?.sub1).find((v) => v);
+            entry.sub_id1_legacyPath = legacyParams.sub_id1 ?? null;
+            entry.sub1_subParamsPath = rowSub1 ?? null;
+            entry.sub_id1 = legacyParams.sub_id1 ?? rowSub1 ?? null;
+            entry.redirectCacheDoc = null;
+            entry.userId = null;
+            entry.mapping = 'UNKNOWN';
+            if (entry.sub_id1) {
+              const doc = await firestoreGet(env, idToken, 'redirectCache', entry.sub_id1).catch(() => null);
+              entry.redirectCacheDoc = !!doc;
+              entry.userId = doc ? fv(doc.fields, 'userId') ?? null : null;
+              entry.mapping = doc && entry.userId ? 'MATCH' : 'NO_MATCH';
+            }
+          }
+          entries.push(entry);
+        }
+        byPlatform[platform] = { merchant, count: orders.length, orders: entries };
+      }
+      return Response.json({ hours, includeMapping, sinceIso, untilIso, byPlatform, ms: Date.now() - startedAt });
     }
     return new Response('OK', { status: 200 });
   },
