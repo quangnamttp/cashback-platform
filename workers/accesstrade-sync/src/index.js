@@ -2012,6 +2012,39 @@ export default {
       }
       return Response.json({ hours, includeMapping, sinceIso, untilIso, byPlatform, ms: Date.now() - startedAt });
     }
+    // TEMPORARY read-only diagnostic (added 2026-09-12) — plain
+    // firestoreGet on a single `orders` doc, to independently confirm what
+    // pollOrders actually wrote (or didn't) after a real DRY_RUN=false
+    // create, without trusting only the Worker's own log line. Read-only:
+    // no write, no update, not part of processOneOrder/pollOrders, never
+    // called from any customer-facing path.
+    if (url.pathname === '/debug/order-doc') {
+      const id = url.searchParams.get('id');
+      if (!id) return Response.json({ error: 'missing id' }, { status: 400 });
+      const idToken = await firestoreSignIn(env);
+      const doc = await firestoreGet(env, idToken, 'orders', id);
+      if (!doc) return Response.json({ id, exists: false });
+      const f = doc.fields;
+      return Response.json({
+        id,
+        exists: true,
+        fields: {
+          userId: fv(f, 'userId'),
+          platform: fv(f, 'platform'),
+          orderValue: fv(f, 'orderValue'),
+          commissionAmount: fv(f, 'commissionAmount'),
+          status: fv(f, 'status'),
+          source: fv(f, 'source'),
+          externalOrderId: fv(f, 'externalOrderId'),
+          subId: fv(f, 'subId'),
+          trackingId: fv(f, 'trackingId'),
+          affiliateProvider: fv(f, 'affiliateProvider'),
+          affiliateConversionId: fv(f, 'affiliateConversionId'),
+          commissionStatus: fv(f, 'commissionStatus'),
+          customerVisible: fv(f, 'customerVisible'),
+        },
+      });
+    }
     return new Response('OK', { status: 200 });
   },
   async scheduled(event, env, ctx) {

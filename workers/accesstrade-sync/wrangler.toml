@@ -39,7 +39,13 @@ TELEGRAM_CHAT_ID = "-1004411327315"
 # sub_id1 mapping confirmed correct by eye) makes the scheduled sync ONLY
 # log what it would create/update, with ZERO Firestore writes. Flip to
 # "false" only after that manual verification — never guess this open.
-DRY_RUN = "true"
+#
+# Flipped 2026-09-12 after exactly that verification against a real
+# conversion (order_id 260911RD0KW95Q): wrangler tail showed
+# "[DRY_RUN] would CREATE ... userId=hryhRmdo2AWEhXWhyln9qcBuSQM2,
+# value=52708, commission=3647" with mapping=MATCH, confirmed correct by
+# the account owner before this flip.
+DRY_RUN = "false"
 
 # ACCESSTRADE campaign_id / merchant per platform — NOT secret (confirmed
 # by the account owner as safe to store as plain config, same as
