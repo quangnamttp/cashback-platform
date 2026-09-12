@@ -377,6 +377,13 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
   if (!existing && input.status === 'PENDING') {
     const customerSnap = await getDoc(doc(db, 'users', input.userId));
     const customerData = customerSnap.exists() ? customerSnap.data() : null;
+    // Same preview calculation /manager/orders' own table already does
+    // (computeCommissionSplit keyed off whether this customer has a
+    // referredBy code) — reused here only to fill in the Telegram message,
+    // never written to the order doc and never the real split actually
+    // applied at CONFIRMED time (that one re-resolves and validates the
+    // referrer for real — see resolveReferrer above).
+    const splitPreview = computeCommissionSplit(input.commissionAmount, !!customerData?.referredBy);
     orderTelegramRef = await notifyOrderApprovalToTelegram({
       requesterName: customerData?.fullName || customerData?.email || input.userId,
       requesterEmail: customerData?.email || '—',
@@ -386,6 +393,9 @@ export async function upsertOrder(input: UpsertOrderInput): Promise<{ orderId: s
       orderValueLabel: formatVnd(input.orderValue),
       commissionAmount: input.commissionAmount,
       commissionAmountLabel: formatVnd(input.commissionAmount),
+      customerAmountLabel: formatVnd(splitPreview.customerAmount),
+      platformAmountLabel: formatVnd(splitPreview.platformAmount),
+      commissionStatusLabel: input.commissionStatus || '—',
       orderId,
     });
   }

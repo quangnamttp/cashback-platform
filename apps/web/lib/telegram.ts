@@ -405,12 +405,22 @@ export type OrderApprovalMessageFields = {
   commissionAmount: number;
   commissionAmountLabel: string;
   orderId: string;
+  // Optional: the commission-split preview (see computeCommissionSplit in
+  // lib/orderEntry.ts) and commission-status label. Only the brand-new-order
+  // send from upsertOrder computes and passes these today — the edit-after-
+  // decision call from /manager/orders' syncOrderTelegram does not, and is
+  // left untouched (out of scope here), so these stay optional and the
+  // lines below simply don't render for that caller instead of showing
+  // stale or guessed numbers.
+  customerAmountLabel?: string;
+  platformAmountLabel?: string;
+  commissionStatusLabel?: string;
 };
 
 export type OrderApprovalTelegramStatus = 'pending' | 'confirmed' | 'cancelled';
 
 const ORDER_STATUS_HEADER: Record<OrderApprovalTelegramStatus, string> = {
-  pending: `🆕 <b>ĐƠN HÀNG MỚI</b>`,
+  pending: `🛒 <b>ĐƠN HÀNG CẦN DUYỆT</b>`,
   confirmed: `✅ <b>ĐƠN HÀNG</b>`,
   cancelled: `❌ <b>ĐƠN HÀNG</b>`,
 };
@@ -429,8 +439,11 @@ function orderApprovalMessageText(fields: OrderApprovalMessageFields, status: Or
     `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
     `💰 <b>Giá trị đơn:</b> <code>${escapeHtml(fields.orderValueLabel)}</code>`,
-    `💵 <b>Hoa hồng sàn trả:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    `💵 <b>Hoa hồng thực tế:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    ...(fields.customerAmountLabel ? [`🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`] : []),
+    ...(fields.platformAmountLabel ? [`🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`] : []),
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    ...(fields.commissionStatusLabel ? [`📌 <b>Trạng thái hoa hồng:</b> <code>${escapeHtml(fields.commissionStatusLabel)}</code>`] : []),
     DIVIDER,
     ORDER_STATUS_LINE[status],
   ];
