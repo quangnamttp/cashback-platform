@@ -58,7 +58,15 @@ ACCESSTRADE_MERCHANT_SHOPEE = "shopee"
 # for reference/future use (e.g. a product-search feature), merchant is
 # what order-list/order-products actually need.
 ACCESSTRADE_CAMPAIGN_TIKTOKSHOP = "6648523843406889655"
-ACCESSTRADE_MERCHANT_TIKTOKSHOP = "tiktokshop"
+# CONFIRMED live 2026-09-12 via a real conversion (order_id
+# 586027041190479514): order-list/order-products' own `merchant` field for
+# this campaign is "tiktok_cps" (also the Advertiser value shown in this
+# account's own conversion report, and the transaction_id prefix) — NOT
+# "tiktokshop", which returned zero rows for this same real order no matter
+# the time window. "tiktokshop" was only ever an assumed value (matching
+# create_link's own v2 URL segment), never verified against order-list
+# until now.
+ACCESSTRADE_MERCHANT_TIKTOKSHOP = "tiktok_cps"
 # Lazada — campaign approved 2026-09-07, now enabled below alongside
 # Shopee/TikTok Shop.
 ACCESSTRADE_CAMPAIGN_LAZADA = "5087153089503673507"
