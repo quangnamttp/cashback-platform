@@ -137,8 +137,6 @@ export function forwardChatMessageToTelegram(params: {
 
 type TelegramMessageRef = { chatId: string; messageId: number };
 
-const DIVIDER = '━━━━━━━━━━━━━━━━━━━';
-
 export type WithdrawalMessageFields = {
   requesterName: string;
   requesterEmail: string;
@@ -173,7 +171,6 @@ const STATUS_LINE: Record<WithdrawalTelegramStatus, string> = {
 function withdrawalMessageText(fields: WithdrawalMessageFields, status: WithdrawalTelegramStatus): string {
   const lines = [
     STATUS_HEADER[status],
-    DIVIDER,
     `👤 <b>Người rút:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
     `🏦 <b>Ngân hàng:</b> <code>${escapeHtml(fields.bank)}</code>`,
@@ -181,7 +178,6 @@ function withdrawalMessageText(fields: WithdrawalMessageFields, status: Withdraw
     `📝 <b>Chủ tài khoản:</b> <code>${escapeHtml(fields.accountHolder)}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
     `🆔 <b>Mã lệnh:</b> <code>${escapeHtml(fields.requestId)}</code>`,
-    DIVIDER,
     STATUS_LINE[status],
   ];
   return lines.join('\n');
@@ -307,12 +303,10 @@ const CASHBACK_STATUS_LINE: Record<CashbackTelegramStatus, string> = {
 function cashbackMessageText(fields: CashbackMessageFields, status: CashbackTelegramStatus): string {
   const lines = [
     CASHBACK_STATUS_HEADER[status],
-    DIVIDER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
     `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
-    DIVIDER,
     CASHBACK_STATUS_LINE[status],
   ];
   return lines.join('\n');
@@ -433,7 +427,6 @@ const ORDER_STATUS_LINE: Record<OrderApprovalTelegramStatus, string> = {
 function orderApprovalMessageText(fields: OrderApprovalMessageFields, status: OrderApprovalTelegramStatus): string {
   const lines = [
     ORDER_STATUS_HEADER[status],
-    DIVIDER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
     `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
@@ -444,7 +437,6 @@ function orderApprovalMessageText(fields: OrderApprovalMessageFields, status: Or
     ...(fields.platformAmountLabel ? [`🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`] : []),
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
     ...(fields.commissionStatusLabel ? [`📌 <b>Trạng thái hoa hồng:</b> <code>${escapeHtml(fields.commissionStatusLabel)}</code>`] : []),
-    DIVIDER,
     ORDER_STATUS_LINE[status],
   ];
   return lines.join('\n');

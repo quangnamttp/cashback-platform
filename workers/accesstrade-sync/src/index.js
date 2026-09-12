@@ -1416,23 +1416,18 @@ function formatVnd(amount) {
 // OWN current verdict (PENDING/APPROVED/REJECTED) — shown explicitly so
 // Admin never mistakes "Đã duyệt đơn" for "ACCESSTRADE đã APPROVED".
 function renderNewOrderMessage(fields) {
-  const DIVIDER = '━━━━━━━━━━━━━━━━━━━';
   return [
     '🆕 <b>ĐƠN HÀNG MỚI (ACCESSTRADE)</b>',
-    DIVIDER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterLabel)}</code>`,
     `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
     `💰 <b>Giá trị đơn:</b> <code>${escapeHtml(formatVnd(fields.orderValue))}</code>`,
-    DIVIDER,
     `💵 <b>Hoa hồng thực tế:</b> <code>${escapeHtml(formatVnd(fields.commissionAmount))}</code>`,
     `🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(formatVnd(fields.customerAmount))}</code>`,
     `🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(formatVnd(fields.platformAmount))}</code>`,
-    DIVIDER,
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
     `🔗 <b>ACCESSTRADE order_id:</b> <code>${escapeHtml(fields.externalOrderId)}</code>`,
     `📶 <b>Trạng thái hoa hồng:</b> ${escapeHtml(fields.commissionStatusLabel)}`,
-    DIVIDER,
     '⏳ <b>Trạng thái:</b> Chờ duyệt',
   ].join('\n');
 }
@@ -1991,18 +1986,14 @@ async function notifyPayoutEligible(env, idToken, orderId, platform, commissionA
 }
 
 function renderPayoutEligibleMessage(fields) {
-  const DIVIDER = '━━━━━━━━━━━━━━━━━━━';
   return [
     '🎉 <b>ĐƠN HÀNG ĐỦ ĐIỀU KIỆN HOÀN TIỀN</b>',
-    DIVIDER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
-    DIVIDER,
     `💰 <b>Hoa hồng ACCESSTRADE:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
     `🤑 <b>Khách nhận:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`,
     `🏦 <b>Hệ thống/Admin giữ:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`,
-    DIVIDER,
     '✅ <b>ACCESSTRADE:</b> APPROVED',
     '🔒 <b>Cashback hiện tại:</b> FROZEN',
     '⏳ <b>Trạng thái:</b> Chờ Admin duyệt hoàn',

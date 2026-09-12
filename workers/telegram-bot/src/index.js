@@ -52,8 +52,6 @@ function escapeHtml(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-const DIVIDER = '━━━━━━━━━━━━━━━━━━━';
-
 const STATUS_HEADER = {
   paid: `✅ <b>YÊU CẦU RÚT TIỀN</b>`,
   rejected: `❌ <b>YÊU CẦU RÚT TIỀN</b>`,
@@ -80,7 +78,6 @@ const LOCK_CALLBACK_PREFIX = {
 function renderSettledMessage(fields, status) {
   return [
     STATUS_HEADER[status],
-    DIVIDER,
     `👤 <b>Người rút:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
     `🏦 <b>Ngân hàng:</b> <code>${escapeHtml(fields.bank)}</code>`,
@@ -88,7 +85,6 @@ function renderSettledMessage(fields, status) {
     `📝 <b>Chủ tài khoản:</b> <code>${escapeHtml(fields.accountHolder)}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
     `🆔 <b>Mã lệnh:</b> <code>${escapeHtml(fields.requestId)}</code>`,
-    DIVIDER,
     STATUS_LINE[status],
   ].join('\n');
 }
@@ -129,12 +125,10 @@ const CASHBACK_LOCK_CALLBACK_PREFIX = {
 function renderCashbackSettledMessage(fields, status) {
   return [
     CASHBACK_STATUS_HEADER[status],
-    DIVIDER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
     `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
-    DIVIDER,
     CASHBACK_STATUS_LINE[status],
   ].join('\n');
 }
@@ -582,7 +576,6 @@ const ORDER_STATUS_LINE = {
 function renderOrderMessage(fields, status) {
   return [
     ORDER_STATUS_HEADER[status],
-    DIVIDER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
     `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
@@ -592,7 +585,6 @@ function renderOrderMessage(fields, status) {
     `🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`,
     `🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`,
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
-    DIVIDER,
     ORDER_STATUS_LINE[status],
   ].join('\n');
 }
@@ -622,12 +614,10 @@ const CASHBACK_PENDING_LINE = `⏳ <b>Trạng thái:</b> Chờ duyệt`;
 function renderCashbackPendingMessage(fields) {
   return [
     CASHBACK_PENDING_HEADER,
-    DIVIDER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
     `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
-    DIVIDER,
     CASHBACK_PENDING_LINE,
   ].join('\n');
 }
