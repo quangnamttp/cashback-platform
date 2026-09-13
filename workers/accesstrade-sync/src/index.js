@@ -219,6 +219,38 @@ async function resolveFallbackImageFromRedirectCache(env, idToken, subId) {
   return productImage || fv(doc.fields, 'image') || null;
 }
 
+// ACCESSTRADE's own product-info sometimes lacks an image AND the
+// redirectCache snapshot from link-creation time never got one either
+// (scrape failed back then, or the product wasn't yet in the datafeed) —
+// last resort: query the LIVE Shopee datafeed index (lookupDatafeedProduct,
+// D1-backed, refreshed hourly — see rebuildDatafeedIndex) directly by this
+// order's own product id, same lookup /create-link already uses. Shopee
+// only: Lazada's datafeed CSV is confirmed empty (see lookupDatafeedProduct's
+// own comment) and TikTok has no separate datafeed concept — its image
+// already comes from the TikTok create-link API at redirectCache-creation
+// time (tier 2 above). `atProductLink` is the order's stored productUrl,
+// which for Shopee is ACCESSTRADE's own s.shopee.vn redirect wrapping the
+// real product URL in its `origin_link` query param, not a direct link —
+// unwrap it first or extractShopeeIds' path-shape match never fires.
+function unwrapAccesstradeRedirect(link) {
+  if (!link) return null;
+  try {
+    const origin = new URL(link).searchParams.get('origin_link');
+    return origin ? decodeURIComponent(origin) : link;
+  } catch {
+    return link;
+  }
+}
+async function resolveFallbackImageFromLiveDatafeed(env, platform, atProductLink) {
+  if (platform !== 'SHOPEE' || !atProductLink) return null;
+  const productUrl = unwrapAccesstradeRedirect(atProductLink);
+  const product = await lookupDatafeedProduct(platform, productUrl, env).catch((err) => {
+    console.error('resolveFallbackImageFromLiveDatafeed threw:', err.message);
+    return null;
+  });
+  return product?.image || null;
+}
+
 // --- 1. Link creation endpoint (POST /create-link) ---
 
 // Verifies the caller is a real signed-in Firebase user without needing
@@ -1878,10 +1910,13 @@ async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant)
   if (!currentImage) {
     // ACCESSTRADE's order-products still has nothing (imageUrl empty) for
     // a lot of real orders — fall back to the same redirectCache photo
-    // /link-history already shows for this product (see
-    // resolveFallbackImageFromRedirectCache's own comment) rather than
-    // leaving the customer with no photo at all.
-    const fallbackImage = imageUrl || (await resolveFallbackImageFromRedirectCache(env, idToken, fv(existingDoc.fields, 'subId')));
+    // /link-history already shows for this product, then to a live
+    // Shopee-datafeed lookup by this order's own product id (see both
+    // functions' own comments) rather than leaving the customer with no
+    // photo at all.
+    const fallbackImage = imageUrl
+      || (await resolveFallbackImageFromRedirectCache(env, idToken, fv(existingDoc.fields, 'subId')))
+      || (await resolveFallbackImageFromLiveDatafeed(env, fv(existingDoc.fields, 'platform'), fv(existingDoc.fields, 'productUrl')));
     if (fallbackImage) patch.imageUrl = { stringValue: fallbackImage };
   }
   if (Object.keys(patch).length === 0) {
@@ -1966,10 +2001,12 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
 
     // ACCESSTRADE often has no main_image_url at all for this order yet
     // (confirmed live 2026-09-13) — fall back to the SAME redirectCache doc
-    // just used for the mapping check above, which already has a real
-    // product photo from link-creation time (see
-    // resolveFallbackImageFromRedirectCache's own comment).
-    const finalImageUrl = imageUrl || await resolveFallbackImageFromRedirectCache(env, idToken, subId);
+    // just used for the mapping check above (real product photo from
+    // link-creation time), then to a live Shopee-datafeed lookup by this
+    // order's own product id (see both functions' own comments).
+    const finalImageUrl = imageUrl
+      || (await resolveFallbackImageFromRedirectCache(env, idToken, subId))
+      || (await resolveFallbackImageFromLiveDatafeed(env, platform, order.at_product_link));
 
     const orderFields = {
       userId: { stringValue: userId },
