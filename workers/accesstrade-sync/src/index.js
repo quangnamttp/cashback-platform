@@ -1771,7 +1771,16 @@ function legacyOrderPlaceholderName(externalOrderId) {
 // 260911RD0KW95Q): each row's real product title lives at
 // `_extra.product_name` (image at `_extra.main_image_url`), not any
 // documented field — a "bonus"/reward line item carries an empty string
-// there, so this skips blanks and takes the first row with a real value.
+// there. FIXED 2026-09-13 (order_id 260912TWVCDF10): a "bonus" row's name
+// is NOT always empty — ACCESSTRADE can populate a real title for a
+// giveaway insert too ("Card Visit gửi kèm sản phẩm để bảo hành điện tử",
+// "Thẻ cảm ơn quý khách hàng...") alongside the real purchased item, and
+// the old "take the first row with any name" logic happily picked that
+// giveaway's name over the actual product. Every row still carries its own
+// billing amount though (the real item's billing.pending/approved matches
+// the order's real value; every giveaway row's is 0) — rowBillingValue()
+// below picks the row with the largest billing amount instead, which is
+// robust regardless of row order or which rows happen to have a name.
 // Falls back to the placeholder / no image when no row has one at all
 // (never an empty string written to Firestore). Shared by both the initial
 // create (below) and backfillProductInfo (see that function's own comment
@@ -1779,10 +1788,19 @@ function legacyOrderPlaceholderName(externalOrderId) {
 // 2026-09-13: this data can arrive on ACCESSTRADE's side well after the
 // order itself is first seen, not always available at the very first
 // order-products call).
+function rowBillingValue(row) {
+  return (row?.billing?.pending || 0) + (row?.billing?.approved || 0);
+}
 function extractProductInfoFromRows(rows, externalOrderId) {
+  const namedRows = rows.filter((row) => !!row?._extra?.product_name);
+  const bestRow = namedRows.length
+    ? namedRows.reduce((best, row) => (rowBillingValue(row) > rowBillingValue(best) ? row : best))
+    : null;
   return {
-    productName: rows.map((row) => row?._extra?.product_name).find((v) => !!v) || orderPlaceholderName(externalOrderId),
-    imageUrl: rows.map((row) => row?._extra?.main_image_url).find((v) => !!v) || null,
+    productName: bestRow?._extra?.product_name || orderPlaceholderName(externalOrderId),
+    // Same reasoning — pull the image from the SAME row the name came from,
+    // never a different (possibly giveaway) row's photo.
+    imageUrl: bestRow?._extra?.main_image_url || null,
   };
 }
 
@@ -1799,11 +1817,26 @@ function extractProductInfoFromRows(rows, externalOrderId) {
 // CONFIRMED order is the one a customer can actually SEE the placeholder
 // on (see firestore.rules' customerVisible gate) — unlike the Topic 33
 // backfill, which only matters while still PENDING.
+// Names picked by the pre-2026-09-13 "first row with any name" logic
+// (extractProductInfoFromRows, see its own comment) that were actually a
+// giveaway/bonus item, not the real product — recognized here so the
+// already-stored wrong value gets one more re-derive attempt with the
+// fixed (billing-based) logic, same as the ACCESSTRADE-wording migration
+// above. Add an entry here (order id only needed for the code comment) any
+// time this specific historical bug is confirmed to have affected another
+// stored order.
+const KNOWN_WRONG_PRODUCT_NAMES = new Set([
+  'Card Visit gửi kèm sản phẩm để bảo hành điện tử', // order 260912TWVCDF10
+]);
+
 async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant) {
   const externalOrderId = fv(existingDoc.fields, 'externalOrderId') || orderId;
   const currentName = fv(existingDoc.fields, 'productName');
   const currentImage = fv(existingDoc.fields, 'imageUrl');
-  const stillPlaceholder = !currentName || currentName === orderPlaceholderName(externalOrderId) || currentName === legacyOrderPlaceholderName(externalOrderId);
+  const stillPlaceholder = !currentName
+    || currentName === orderPlaceholderName(externalOrderId)
+    || currentName === legacyOrderPlaceholderName(externalOrderId)
+    || KNOWN_WRONG_PRODUCT_NAMES.has(currentName);
   if (!stillPlaceholder && currentImage) return; // already has real data — nothing to do
 
   const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-products', { query: { order_id: externalOrderId, merchant } });
