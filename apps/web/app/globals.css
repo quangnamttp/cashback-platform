@@ -3611,18 +3611,21 @@ p {
   max-width: 420px;
 }
 
-/* Single line, ellipsis-truncated instead of wrapping — a long product name
-   must never grow this card's height (that used to push the thumbnail image
-   down since the row centers its items vertically). */
+/* Capped at 2 lines instead of wrapping freely — a long product name must
+   never grow this card's height without bound (that used to push the
+   thumbnail image down/out of alignment since the row centers its items
+   vertically). Redesigned 2026-09-13: the image + tags + name now form one
+   visual block (.order-card-product-row) instead of the name sitting on
+   its own separate full-width line below — see that class's own comment. */
 .order-card-info h3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: 0.85rem;
-  margin: 3px 0 3px;
+  margin: 3px 0 0;
   color: var(--text);
   line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
 }
 
 .order-card-tags {
@@ -4806,16 +4809,25 @@ p {
   box-shadow: var(--shadow-sm);
 }
 
-.ship-order-card .order-card-main {
+/* Redesigned 2026-09-13 — image + tags + name used to be 3 siblings of one
+   wrapping row (.order-card-main), so on a narrow phone the name (the
+   widest of the three) fell to its own separate full-width line below
+   the image instead of staying paired with it, leaving an awkward gap.
+   Now this row holds ONLY the image + text block as one unit; the
+   amount/status moved to their own row below (.ship-order-cashback-row)
+   so they never compete with the image for the same row's width. */
+.order-card-product-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-.ship-order-cashback-block {
-  margin-left: auto;
-  text-align: right;
+.ship-order-cashback-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .ship-tracker {

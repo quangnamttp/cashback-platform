@@ -175,8 +175,8 @@ export default function CashbackPage() {
               const date = item.orderDate?.toDate();
               return (
                 <div key={item.id} className="ship-order-card">
-                  <div className="order-card-main">
-                    <OrderThumb imageUrl={item.imageUrl} platform={platformName} size={44} />
+                  <div className="order-card-product-row">
+                    <OrderThumb imageUrl={item.imageUrl} platform={platformName} size={56} />
                     <div className="order-card-info">
                       <div className="order-card-tags">
                         <span className="order-card-platform">{platformName}</span>
@@ -185,16 +185,16 @@ export default function CashbackPage() {
                       </div>
                       <h3>{item.productName}</h3>
                     </div>
-                    <div className="ship-order-cashback-block">
-                      <div className="order-card-cashback">{formatCurrency(cashbackFor(item), lang)}</div>
-                      {isRefunded ? (
-                        <span className="order-pill danger">● Đã trả hàng</span>
-                      ) : (
-                        <span className={shippingStatusPillClass[stage] ?? 'order-pill'}>
-                          ● {t(shippingStatusKeyMap[stage] as any)}
-                        </span>
-                      )}
-                    </div>
+                  </div>
+                  <div className="ship-order-cashback-row">
+                    <div className="order-card-cashback">{formatCurrency(cashbackFor(item), lang)}</div>
+                    {isRefunded ? (
+                      <span className="order-pill danger">● Đã trả hàng</span>
+                    ) : (
+                      <span className={shippingStatusPillClass[stage] ?? 'order-pill'}>
+                        ● {t(shippingStatusKeyMap[stage] as any)}
+                      </span>
+                    )}
                   </div>
 
                   {isRefunded ? (
