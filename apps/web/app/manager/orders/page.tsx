@@ -23,6 +23,7 @@ import {
 } from '../../../lib/orderEntry';
 import { syncOrderStatusToTelegram } from '../../../lib/telegram';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { displayOrderId } from '../../../lib/orderId';
 
 const PLATFORM_OPTIONS: { value: Platform; label: string }[] = [
   { value: 'SHOPEE', label: 'Shopee' },
@@ -698,7 +699,7 @@ export default function AdminOrdersPage() {
               </div>
               <div className="modal-field-row">
                 <span>Mã đơn</span>
-                <span className="modal-code-row">{detailOrder.id}<CopyIdChip value={detailOrder.id} /></span>
+                <span className="modal-code-row">{displayOrderId(detailOrder.id)}<CopyIdChip value={detailOrder.id} /></span>
               </div>
               <div className="modal-field-row">
                 <span>Khách hàng</span>

@@ -12,6 +12,7 @@ import { getFirebaseDb } from '../../lib/firebase';
 import { computeCommissionSplit, PLATFORM_LABEL, type OrderStatus, type Platform } from '../../lib/orderEntry';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { usePageTitle } from '../../lib/use-page-title';
+import { displayOrderId } from '../../lib/orderId';
 
 type OrderDoc = {
   id: string;
@@ -248,7 +249,7 @@ export default function OrdersPage() {
                         <div className="order-table-date">{date ? date.toLocaleString('vi-VN') : '—'}</div>
                         {item.cashbackClawback && (
                           <div className="muted-copy" style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: 4 }}>
-                            ⚠️ Đơn hàng #{item.id} đã được xác nhận trả hàng. Khoản cashback của đơn hàng này sẽ được thu hồi.
+                            ⚠️ Đơn hàng #{displayOrderId(item.id)} đã được xác nhận trả hàng. Khoản cashback của đơn hàng này sẽ được thu hồi.
                           </div>
                         )}
                       </td>
@@ -277,7 +278,7 @@ export default function OrdersPage() {
           <>
             <div className="modal-header-row">
               <span className="order-card-platform">{PLATFORM_LABEL[activeOrder.platform] ?? activeOrder.platform}</span>
-              <span className="order-card-id">#{activeOrder.id}</span>
+              <span className="order-card-id">#{displayOrderId(activeOrder.id)}</span>
             </div>
 
             <h3 style={{ marginTop: 8, marginBottom: 0 }}>{activeOrder.productName}</h3>
@@ -302,8 +303,8 @@ export default function OrdersPage() {
               <div className="modal-field-row">
                 <span>{t('tbl_id')}</span>
                 <span className="modal-code-row">
-                  {activeOrder.id}
-                  <button className="modal-copy-icon-btn" onClick={() => copyCode(activeOrder.id)} title="Copy">
+                  {displayOrderId(activeOrder.id)}
+                  <button className="modal-copy-icon-btn" onClick={() => copyCode(displayOrderId(activeOrder.id))} title="Copy">
                     {copied ? '✓' : '📋'}
                   </button>
                 </span>

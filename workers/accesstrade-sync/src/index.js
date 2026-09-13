@@ -1430,6 +1430,16 @@ function formatVnd(amount) {
   return `${Math.round(amount || 0).toLocaleString('vi-VN')} ₫`;
 }
 
+// This Worker's own Firestore doc ids for AFFILIATE orders are
+// `accesstrade_<externalOrderId>` — never shown to a human as-is (2026-09-13,
+// mirrored in workers/telegram-bot and apps/web/lib/telegram.ts). Only ever
+// applied where an id is about to be READ by a person (a Telegram message
+// line, a stored reason string) — never touches callback_data or any
+// Firestore key/query, which must keep the real id to keep working.
+function displayOrderId(id) {
+  return typeof id === 'string' && id.startsWith('accesstrade_') ? id.slice('accesstrade_'.length) : id;
+}
+
 // Mirrors orderApprovalMessageText()/orderKeyboard() in apps/web/lib/
 // telegram.ts and workers/telegram-bot/src/index.js — third separate copy
 // for the same "no shared build" reason those two already document. Same
@@ -1455,7 +1465,7 @@ function renderNewOrderMessage(fields) {
     `💵 <b>Hoa hồng thực tế:</b> <code>${escapeHtml(formatVnd(fields.commissionAmount))}</code>`,
     `🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(formatVnd(fields.customerAmount))}</code>`,
     `🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(formatVnd(fields.platformAmount))}</code>`,
-    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(displayOrderId(fields.orderId))}</code>`,
     `🔗 <b>Mã đối soát:</b> <code>${escapeHtml(fields.externalOrderId)}</code>`,
     `📶 <b>Trạng thái hoa hồng:</b> ${escapeHtml(fields.commissionStatusLabel)}`,
     '⏳ <b>Trạng thái:</b> Chờ duyệt',
@@ -1714,7 +1724,7 @@ async function accesstradeCreateFraudSignal(env, idToken, { userId, orderId, ord
         orderValue: { integerValue: String(Math.round(orderValue)) },
         refundCount: { integerValue: String(refundCount) },
         totalOrders: { integerValue: String(totalOrders) },
-        reason: { stringValue: `Đơn ${orderId} bị ${reason} (lần trả hàng thứ ${refundCount}/${totalOrders} của khách này).${released ? ' Cashback đã giải phóng — cần Admin xem xét thu hồi thủ công.' : ''}` },
+        reason: { stringValue: `Đơn ${displayOrderId(orderId)} bị ${reason} (lần trả hàng thứ ${refundCount}/${totalOrders} của khách này).${released ? ' Cashback đã giải phóng — cần Admin xem xét thu hồi thủ công.' : ''}` },
         status: { stringValue: 'OPEN' },
         createdAt: { timestampValue: new Date().toISOString() },
       },
@@ -2204,7 +2214,7 @@ function renderPayoutEligibleMessage(fields) {
     '🎉 <b>ĐƠN HÀNG ĐỦ ĐIỀU KIỆN HOÀN TIỀN</b>',
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
-    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(displayOrderId(fields.orderId))}</code>`,
     `💰 <b>Hoa hồng thực nhận:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
     `🤑 <b>Khách nhận:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`,
     `🏦 <b>Hệ thống/Admin giữ:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`,

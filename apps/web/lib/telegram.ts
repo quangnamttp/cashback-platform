@@ -17,6 +17,7 @@
 // again — the two directions stay in sync without either side polling.
 
 import { buildVietQrImageUrl } from './bankBin';
+import { displayOrderId } from './orderId';
 
 const BOT_TOKEN = process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
@@ -305,7 +306,7 @@ function cashbackMessageText(fields: CashbackMessageFields, status: CashbackTele
     CASHBACK_STATUS_HEADER[status],
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
-    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(displayOrderId(fields.orderId))}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
     CASHBACK_STATUS_LINE[status],
   ];
@@ -435,7 +436,7 @@ function orderApprovalMessageText(fields: OrderApprovalMessageFields, status: Or
     `💵 <b>Hoa hồng thực tế:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
     ...(fields.customerAmountLabel ? [`🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`] : []),
     ...(fields.platformAmountLabel ? [`🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`] : []),
-    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(displayOrderId(fields.orderId))}</code>`,
     ...(fields.commissionStatusLabel ? [`📌 <b>Trạng thái hoa hồng:</b> <code>${escapeHtml(fields.commissionStatusLabel)}</code>`] : []),
     ORDER_STATUS_LINE[status],
   ];

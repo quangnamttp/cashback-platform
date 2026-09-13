@@ -52,6 +52,14 @@ function escapeHtml(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Mirrors workers/accesstrade-sync's own displayOrderId (2026-09-13) — an
+// AFFILIATE order's Firestore doc id is `accesstrade_<id>`, never shown to a
+// human as-is. Only for message TEXT — callback_data (order_approve:,
+// cb_approve:, etc.) must keep the real id or the button stops working.
+function displayOrderId(id) {
+  return typeof id === 'string' && id.startsWith('accesstrade_') ? id.slice('accesstrade_'.length) : id;
+}
+
 const STATUS_HEADER = {
   paid: `✅ <b>YÊU CẦU RÚT TIỀN</b>`,
   rejected: `❌ <b>YÊU CẦU RÚT TIỀN</b>`,
@@ -127,7 +135,7 @@ function renderCashbackSettledMessage(fields, status) {
     CASHBACK_STATUS_HEADER[status],
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
-    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(displayOrderId(fields.orderId))}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
     CASHBACK_STATUS_LINE[status],
   ].join('\n');
@@ -588,7 +596,7 @@ function renderOrderMessage(fields, status) {
     `💵 <b>Hoa hồng thực tế:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
     `🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`,
     `🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`,
-    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `🆔 <b>Mã đơn:</b> <code>${escapeHtml(displayOrderId(fields.orderId))}</code>`,
     ORDER_STATUS_LINE[status],
   ].join('\n');
 }
@@ -620,7 +628,7 @@ function renderCashbackPendingMessage(fields) {
     CASHBACK_PENDING_HEADER,
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `📧 <b>Email:</b> <code>${escapeHtml(fields.requesterEmail)}</code>`,
-    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(fields.orderId)}</code>`,
+    `🆔 <b>Mã đơn hàng:</b> <code>${escapeHtml(displayOrderId(fields.orderId))}</code>`,
     `💵 <b>Số tiền:</b> <code>${escapeHtml(fields.amountLabel)}</code>`,
     CASHBACK_PENDING_LINE,
   ].join('\n');
