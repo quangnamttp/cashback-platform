@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { AppShell } from '../../components/layout/AppShell';
 import { useLanguage } from '../../lib/i18n';
 import { mockFaq } from '../../lib/mock-data';
-import { RequireAuth } from '../../components/layout/RequireAuth';
 import { usePageTitle } from '../../lib/use-page-title';
 import { useAuth } from '../../lib/auth';
 import { CopyCodeButton } from '../../components/ui/CopyCodeButton';
@@ -22,8 +21,7 @@ export default function SupportPage() {
   )}`;
 
   return (
-    <RequireAuth>
-      <AppShell showRightPanel={false}>
+    <AppShell showRightPanel={false}>
       <div className="page-shell">
         <div className="page-header">
           <div>
@@ -32,7 +30,7 @@ export default function SupportPage() {
           </div>
         </div>
 
-        <section className="two-column-grid">
+        <section id="contact" className="two-column-grid">
           <div className="panel support-contact-card">
             <span className="promo-icon-badge">💬</span>
             <h3>{t('support_contact_title')}</h3>
@@ -59,7 +57,7 @@ export default function SupportPage() {
           </div>
         </section>
 
-        <section className="panel">
+        <section id="faq" className="panel">
           <h3>{t('support_faq_title')}</h3>
           <div className="faq-list">
             {mockFaq.map((item, index) => (
@@ -80,6 +78,5 @@ export default function SupportPage() {
         </section>
       </div>
     </AppShell>
-    </RequireAuth>
   );
 }

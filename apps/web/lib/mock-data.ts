@@ -14,10 +14,23 @@ export const mockHomeEvents = [
 ];
 
 export const mockFaq = [
-  { question: 'Cashback có chắc chắn được trả không?', answer: 'Không. Cashback chỉ được ghi nhận khi commission đã xác nhận từ nền tảng/đơn hàng tương ứng.' },
-  { question: 'Tôi có thể dán link từ sàn nào?', answer: 'Hiện hỗ trợ Shopee, TikTok Shop và Lazada, với flow chuẩn hóa riêng cho từng nền tảng.' },
-  { question: 'Hệ thống có lưu lịch sử không?', answer: 'Có. Mọi đơn hàng, commission và cashback đều có lịch sử theo dõi và trạng thái rõ ràng.' },
-  { question: 'Có thể rút tiền không?', answer: 'Có. Bạn có thể theo dõi phần cashback có sẵn, sau đó điều hướng tới luồng rút tiền trong dashboard.' },
+  {
+    question: 'Cashback có chắc chắn được hoàn không?',
+    answer:
+      'Có, miễn đơn hàng của bạn được sàn (Shopee, TikTok Shop, Lazada) xác nhận thành công, không bị hủy hay trả hàng. Bạn có thể theo dõi trạng thái từng đơn ngay trong mục Đơn hàng.',
+  },
+  {
+    question: 'Trang hỗ trợ những sàn nào?',
+    answer: 'Hiện hỗ trợ Shopee, TikTok Shop và Lazada — chỉ cần dán link sản phẩm từ 1 trong 3 sàn này vào trang Nhận hoàn tiền.',
+  },
+  {
+    question: 'Tôi có xem lại được lịch sử đơn hàng và hoàn tiền không?',
+    answer: 'Có. Mọi đơn hàng, trạng thái duyệt và số tiền hoàn đều được lưu đầy đủ, xem trực tiếp tại mục Đơn hàng và Ví tiền.',
+  },
+  {
+    question: 'Làm sao để rút tiền hoàn về tài khoản?',
+    answer: 'Vào mục Ví tiền, chọn số dư khả dụng và tạo lệnh rút — hệ thống sẽ xử lý và chuyển khoản theo thông tin ngân hàng bạn cung cấp.',
+  },
 ];
 
 export const bankList = [

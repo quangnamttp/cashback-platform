@@ -2957,7 +2957,7 @@ p {
 
 /* Referrals page redesign */
 .referral-hero {
-  background: var(--bg-accent);
+  background: linear-gradient(135deg, var(--bg-accent), var(--surface) 85%);
   border: 1px solid var(--primary-lighter);
   border-radius: var(--radius-lg);
   padding: 24px;
@@ -2975,32 +2975,43 @@ p {
   line-height: 1.6;
 }
 
-.referral-actions {
-  display: flex;
-  gap: 10px;
+/* Code + copy button as one connected card instead of two separate,
+   visually unrelated pieces (a button above, a plain text box below). */
+.referral-code-card {
   margin-top: 18px;
+  background: var(--surface);
+  border: 1px dashed var(--primary-lighter);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
-.referral-rate-box {
-  margin-top: 18px;
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  padding: 14px 18px;
+.referral-code-value {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.referral-rate-box strong {
-  font-size: 1.6rem;
+.referral-code-value span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.referral-code-value strong {
+  font-size: 1.7rem;
   color: var(--primary);
   font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
-.referral-rate-box span {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
+.referral-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .referral-tabs {

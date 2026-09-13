@@ -57,28 +57,33 @@ export default function ReferralsPage() {
           <h1>{t('referral_hero_title')}</h1>
           <p>{t('referral_hero_desc')}</p>
 
-          <div className="referral-actions">
+          <div className="referral-code-card">
+            <div className="referral-code-value">
+              <span>Mã giới thiệu của bạn</span>
+              <strong>{referralCode || '—'}</strong>
+            </div>
             {referralLink ? (
               <CopyCodeButton code={referralLink} label={`📋 ${t('referral_copy_link')}`} className="button-primary" />
             ) : (
               <span className="muted-copy">Đang tải mã giới thiệu...</span>
             )}
           </div>
-
-          <div className="referral-rate-box">
-            <strong>{referralCode || '—'}</strong>
-            <span>Mã giới thiệu của bạn</span>
-          </div>
         </section>
 
         <section className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-label">{t('referred_users')}</div>
-            <div className="stat-value">{invited.length}</div>
+          <div className="stat-card referral-stat-card">
+            <span className="promo-icon-badge">👥</span>
+            <div>
+              <div className="stat-label">{t('referred_users')}</div>
+              <div className="stat-value">{invited.length}</div>
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">{t('referral_rate_label')}</div>
-            <div className="stat-value">5%</div>
+          <div className="stat-card referral-stat-card">
+            <span className="promo-icon-badge">💰</span>
+            <div>
+              <div className="stat-label">{t('referral_rate_label')}</div>
+              <div className="stat-value">5%</div>
+            </div>
           </div>
         </section>
 
@@ -103,9 +108,8 @@ export default function ReferralsPage() {
         </section>
 
         <p className="mock-note">
-          Dữ liệu thật từ Firestore: mã giới thiệu, link, và danh sách người đã đăng ký bằng mã của bạn. Chương trình
-          thưởng hoa hồng theo dõi đơn hàng của người được giới thiệu chưa được kích hoạt tính tiền tự động — báo mình
-          khi bạn muốn triển khai phần đó.
+          Mỗi khi bạn bè bạn mời được xác nhận đơn hàng, bạn tự động nhận 5% hoa hồng vào ví — khoản này được giữ tạm
+          giống như cashback thường, Admin duyệt giải phóng cùng lúc.
         </p>
       </div>
     </AppShell>
