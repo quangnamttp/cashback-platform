@@ -4642,6 +4642,37 @@ p {
 }
 
 /* ==========================================================
+   POLICY PAGE
+   ========================================================== */
+.policy-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.policy-section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.policy-section-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.policy-section-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+/* ==========================================================
    SETTINGS PAGE
    ========================================================== */
 .settings-row {

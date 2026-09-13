@@ -28,7 +28,7 @@ export function SiteFooter() {
           <ul className="footer-links">
             <li><Link href="/support#faq">{t('panel_faq')}</Link></li>
             <li><Link href="/support#contact">{t('footer_contact')}</Link></li>
-            <li><Link href="/support">{t('footer_policy')}</Link></li>
+            <li><Link href="/policy">{t('footer_policy')}</Link></li>
           </ul>
         </div>
       </div>
