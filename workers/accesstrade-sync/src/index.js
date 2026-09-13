@@ -1841,6 +1841,14 @@ function legacyOrderPlaceholderName(externalOrderId) {
 function rowBillingValue(row) {
   return (row?.billing?.pending || 0) + (row?.billing?.approved || 0);
 }
+// order-list's own at_product_link is literally the string "#" for every
+// TikTok Shop order (confirmed live 2026-09-13, order 586027041190479514) —
+// ACCESSTRADE has no real deep-link for TikTok there, but order-products'
+// per-row `_extra.product_url` DOES carry one for TikTok — never true for
+// Shopee/Lazada, whose at_product_link is already a real usable redirect.
+function isUsableProductUrl(url) {
+  return !!url && url !== '#' && /^https?:\/\//i.test(url);
+}
 function extractProductInfoFromRows(rows, externalOrderId) {
   const namedRows = rows.filter((row) => !!row?._extra?.product_name);
   const bestRow = namedRows.length
@@ -1851,6 +1859,7 @@ function extractProductInfoFromRows(rows, externalOrderId) {
     // Same reasoning — pull the image from the SAME row the name came from,
     // never a different (possibly giveaway) row's photo.
     imageUrl: bestRow?._extra?.main_image_url || null,
+    productUrl: bestRow?._extra?.product_url || null,
   };
 }
 
@@ -1887,7 +1896,15 @@ async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant)
     || currentName === orderPlaceholderName(externalOrderId)
     || currentName === legacyOrderPlaceholderName(externalOrderId)
     || KNOWN_WRONG_PRODUCT_NAMES.has(currentName);
-  if (!stillPlaceholder && currentImage) return; // already has real data — nothing to do
+  // Orders created before this fix (2026-09-13) may still have the useless
+  // literal "#" stored as productUrl (every TikTok order — see
+  // isUsableProductUrl's own comment) — must be checked here, BEFORE the
+  // early-return below, or an order whose name/image already resolved
+  // (like 586027041190479514) would never get its productUrl looked at
+  // again at all.
+  const currentProductUrl = fv(existingDoc.fields, 'productUrl');
+  const needsProductUrlFix = !isUsableProductUrl(currentProductUrl);
+  if (!stillPlaceholder && currentImage && !needsProductUrlFix) return; // already has everything — nothing to do
 
   const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-products', { query: { order_id: externalOrderId, merchant } });
   await sleep(ORDER_PRODUCTS_THROTTLE_MS); // same rate-limit guard as every other order-products call
@@ -1896,7 +1913,7 @@ async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant)
     return;
   }
   const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
-  const { productName, imageUrl } = extractProductInfoFromRows(rows, externalOrderId);
+  const { productName, imageUrl, productUrl } = extractProductInfoFromRows(rows, externalOrderId);
   const patch = {};
   if (stillPlaceholder && productName !== orderPlaceholderName(externalOrderId)) {
     patch.productName = { stringValue: productName }; // real name found
@@ -1906,6 +1923,9 @@ async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant)
     // the de-branded one now instead of waiting indefinitely for data
     // ACCESSTRADE may never provide.
     patch.productName = { stringValue: orderPlaceholderName(externalOrderId) };
+  }
+  if (needsProductUrlFix && isUsableProductUrl(productUrl)) {
+    patch.productUrl = { stringValue: productUrl };
   }
   if (!currentImage) {
     // ACCESSTRADE's order-products still has nothing (imageUrl empty) for
@@ -1971,7 +1991,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     // defined one is used.
     const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
     const subId = rows.map((row) => row?._extra?.sub_params?.sub1).find((v) => !!v);
-    const { productName, imageUrl } = extractProductInfoFromRows(rows, externalOrderId);
+    const { productName, imageUrl, productUrl } = extractProductInfoFromRows(rows, externalOrderId);
     console.log(`order ${externalOrderId}: raw order-products data (full, for manual review) =`, JSON.stringify(json?.data));
 
     // --- MAPPING CHECK — read this block, not just the pass/fail, before
@@ -2007,12 +2027,17 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     const finalImageUrl = imageUrl
       || (await resolveFallbackImageFromRedirectCache(env, idToken, subId))
       || (await resolveFallbackImageFromLiveDatafeed(env, platform, order.at_product_link));
+    // order-list's own at_product_link is "#" for every TikTok order (see
+    // isUsableProductUrl's own comment) — order-products' per-row
+    // product_url is the real one there, so prefer at_product_link only
+    // when it's actually usable.
+    const finalProductUrl = isUsableProductUrl(order.at_product_link) ? order.at_product_link : productUrl;
 
     const orderFields = {
       userId: { stringValue: userId },
       platform: { stringValue: platform },
       productName: { stringValue: productName },
-      productUrl: order.at_product_link ? { stringValue: order.at_product_link } : { nullValue: null },
+      productUrl: finalProductUrl ? { stringValue: finalProductUrl } : { nullValue: null },
       imageUrl: finalImageUrl ? { stringValue: finalImageUrl } : { nullValue: null },
       orderValue: { integerValue: String(Math.round(orderValue)) },
       commissionAmount: { integerValue: String(Math.round(commissionAmount)) },
@@ -2706,6 +2731,7 @@ export default {
           customerVisible: fv(f, 'customerVisible'),
           productName: fv(f, 'productName'),
           imageUrl: fv(f, 'imageUrl'),
+          productUrl: fv(f, 'productUrl'),
           payoutNotificationSentAt: fv(f, 'payoutNotificationSentAt'),
           orderNotificationSentAt: fv(f, 'orderNotificationSentAt'),
           telegramChatId: fv(f, 'telegramChatId'),

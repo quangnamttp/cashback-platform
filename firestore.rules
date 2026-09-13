@@ -262,7 +262,11 @@ service cloud.firestore {
                  // only appear from ACCESSTRADE on a later tick (see
                  // backfillProductInfo). Only ever replaces the placeholder
                  // text / a missing image, never touches anything else.
-                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'telegramChatId', 'telegramMessageId', 'orderNotificationSentAt', 'productName', 'imageUrl']))
+                 // productUrl added 2026-09-13 — order-list's own
+                 // at_product_link is literally "#" for every TikTok order;
+                 // backfillProductInfo replaces it with order-products' real
+                 // per-row product_url once fetched.
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'telegramChatId', 'telegramMessageId', 'orderNotificationSentAt', 'productName', 'imageUrl', 'productUrl']))
                 || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'REFUNDED'
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'commissionStatus', 'cashbackClawback']))
                 // NEW 2026-09-12 — closes the gap where commissionStatus
@@ -278,11 +282,11 @@ service cloud.firestore {
                 // needs to be able to set exactly once to avoid a duplicate
                 // Topic 13 message.
                 || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'CONFIRMED'
-                    // productName/imageUrl added 2026-09-13 — see the
-                    // matching PENDING-branch comment above; a CONFIRMED
+                    // productName/imageUrl/productUrl added 2026-09-13 — see
+                    // the matching PENDING-branch comment above; a CONFIRMED
                     // order is the one a customer can actually see, so this
                     // is the branch that matters most for backfillProductInfo.
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'payoutNotificationSentAt', 'productName', 'imageUrl']))));
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'payoutNotificationSentAt', 'productName', 'imageUrl', 'productUrl']))));
     }
 
     // No time gate — admin has full discretion on when to release a
