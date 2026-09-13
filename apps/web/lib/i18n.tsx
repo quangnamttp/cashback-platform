@@ -296,7 +296,6 @@ const dict = {
     bank_field_bank_name: 'Tên ngân hàng',
     bank_field_account_number: 'Số tài khoản',
     bank_field_account_holder: 'Chủ tài khoản',
-    bank_accounts_note: 'Dữ liệu minh họa (mock) — chưa nối API xác thực tài khoản ngân hàng thật.',
     bank_accounts_save: 'Lưu tài khoản',
     wallet_history_title: 'Lịch sử giao dịch ví',
 
@@ -352,7 +351,6 @@ const dict = {
     login_remember: 'Ghi nhớ đăng nhập',
     login_forgot: 'Quên mật khẩu?',
     login_or: 'HOẶC',
-    login_mock_note: 'Đây là giao diện đăng nhập minh họa — chưa nối hệ thống xác thực thật, bấm nút bất kỳ để tiếp tục xem thử giao diện.',
     login_submitting: 'Đang xử lý...',
     login_error_invalid_email: 'Vui lòng nhập đúng định dạng email (chưa hỗ trợ đăng nhập bằng số điện thoại).',
     login_error_fullname_required: 'Vui lòng nhập họ và tên.',
@@ -739,7 +737,6 @@ const dict = {
     bank_field_bank_name: 'Bank name',
     bank_field_account_number: 'Account number',
     bank_field_account_holder: 'Account holder',
-    bank_accounts_note: 'Sample (mock) data — not yet connected to a real bank verification API.',
     bank_accounts_save: 'Save account',
     wallet_history_title: 'Wallet transaction history',
 
@@ -795,7 +792,6 @@ const dict = {
     login_remember: 'Remember me',
     login_forgot: 'Forgot password?',
     login_or: 'OR',
-    login_mock_note: 'This is a demo login screen — not yet connected to real authentication. Click any button to continue and preview the interface.',
     login_submitting: 'Working...',
     login_error_invalid_email: 'Please enter a valid email address (phone number login is not supported yet).',
     login_error_fullname_required: 'Please enter your full name.',

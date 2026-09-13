@@ -121,7 +121,15 @@ async function firestoreSignIn(env) {
 }
 
 function firestoreDocUrl(env, collectionName, docId) {
-  return `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collectionName}/${docId}`;
+  // FIXED 2026-09-13 — docId reaches this raw (no encodeURIComponent) in
+  // some call sites via subId/sub1 (resolveUserIdFromSubId), a value
+  // ACCESSTRADE echoes back from a public tracking-link query string an
+  // attacker could tamper with before ever clicking it. A crafted value
+  // containing "/", "?" or "&" could otherwise alter the REST path/query
+  // instead of being treated as a single opaque document id. Every real
+  // Firestore doc id used in this file (order ids, generated subId codes)
+  // encodes to itself unchanged, so this is a no-op for legitimate values.
+  return `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
 }
 
 async function firestoreGet(env, idToken, collectionName, docId) {
@@ -1048,14 +1056,32 @@ async function rebuildDatafeedIndex(env) {
   const flush = async () => {
     if (pending.length === 0) return;
     const now = Date.now();
+    // FIXED 2026-09-13 — this used to unconditionally rewrite every one of
+    // the ~13K rows every single hourly run: 13K rows x 24 runs/day is
+    // ~312K row-writes/day against D1's free-tier 100K/day cap, which is
+    // exactly what exhausted it on 2026-09-12 (confirmed via the Cloudflare
+    // quota-exceeded email). The WHERE clause on DO UPDATE makes SQLite
+    // skip the write entirely for a row whose name/price/discount/image
+    // haven't actually changed since the last run — `IS NOT` (not `!=`) so
+    // a NULL-vs-NULL comparison correctly counts as "unchanged" instead of
+    // always triggering a write. `updated_at` is deliberately left OUT of
+    // the WHERE (and would otherwise always differ) — a genuinely-new
+    // `now` alone must never force a write. Real-world days only have a
+    // small fraction of ~13K products change price/discount, so this
+    // should keep total daily writes well under quota. `results[i].meta.
+    // changes` (0 when the WHERE skipped it, 1 when it actually wrote) is
+    // summed for `upserted` so the log line reports real writes, not rows
+    // merely considered.
     const stmts = pending.map((row) =>
       env.DATAFEED_DB.prepare(
         'INSERT INTO shopee_products (id, name, price, discount, image, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ' +
-        'ON CONFLICT(id) DO UPDATE SET name=excluded.name, price=excluded.price, discount=excluded.discount, image=excluded.image, updated_at=excluded.updated_at',
+        'ON CONFLICT(id) DO UPDATE SET name=excluded.name, price=excluded.price, discount=excluded.discount, image=excluded.image, updated_at=excluded.updated_at ' +
+        'WHERE shopee_products.name IS NOT excluded.name OR shopee_products.price IS NOT excluded.price ' +
+        'OR shopee_products.discount IS NOT excluded.discount OR shopee_products.image IS NOT excluded.image',
       ).bind(row.id, row.name, row.price, row.discount, row.image, now),
     );
-    await env.DATAFEED_DB.batch(stmts);
-    upserted += pending.length;
+    const results = await env.DATAFEED_DB.batch(stmts);
+    upserted += results.reduce((sum, r) => sum + (r?.meta?.changes || 0), 0);
     pending = [];
   };
 
@@ -2107,6 +2133,23 @@ async function pollOrders(env) {
   }
 }
 
+// Shared gate for every /debug/* route below (except /debug/postback-test,
+// which keeps its own separate key since that one's URL is already
+// configured on ACCESSTRADE's dashboard — changing its key would break
+// that integration). Added 2026-09-13: every /debug/* route was reachable
+// by anyone who found the Worker's URL, with no auth at all — several
+// return real customer data (userId, commissionAmount) by order id, and
+// /debug/rebuild-datafeed lets anyone trigger the same full-table D1
+// rewrite job already responsible for exhausting the daily write quota
+// once. Not a replacement for real auth (a single shared static string),
+// but closes the "wide open to anyone on the internet" gap these were
+// deployed with — every one of these routes is an internal operational
+// tool, never called by any customer-facing code path.
+const DEBUG_ACCESS_KEY = 'dbgkey_7hN3qX9mZp2Lw5Rt';
+function isDebugAuthorized(url) {
+  return url.searchParams.get('key') === DEBUG_ACCESS_KEY;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -2155,6 +2198,7 @@ export default {
     // verify a rate stays sane after ACCESSTRADE reformats their policy
     // text (see fetchCampaignCommissionRate's own comment).
     if (url.pathname === '/debug/campaign') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
       const campaignId = url.searchParams.get('campaign_id');
       const platform = url.searchParams.get('platform');
       const { ok, status, json } = await accesstradeApi(env, 'GET', '/v1/campaigns', {
@@ -2179,6 +2223,7 @@ export default {
     // account real /v1/cashback/campaigns access (tier flips to
     // ACCESSTRADE_CASHBACK_CAMPAIGNS with zero code change).
     if (url.pathname === '/debug/commission') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
       const campaignId = url.searchParams.get('campaign_id');
       const platform = url.searchParams.get('platform');
       const categoryId = url.searchParams.get('category_id') || undefined;
@@ -2194,6 +2239,7 @@ export default {
     // CSV in a way that breaks parsing, without needing a customer to
     // reproduce it through the full UI flow.
     if (url.pathname === '/debug/datafeed-lookup') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
       const platform = url.searchParams.get('platform');
       const productUrl = url.searchParams.get('url');
       const startedAt = Date.now();
@@ -2207,6 +2253,7 @@ export default {
     // ever writes to the D1 index (upsert-only, see that function's own
     // safety comment), never touches anything customer/financial-facing.
     if (url.pathname === '/debug/rebuild-datafeed') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
       const startedAt = Date.now();
       await rebuildDatafeedIndex(env);
       return Response.json({ ok: true, ms: Date.now() - startedAt });
@@ -2219,6 +2266,7 @@ export default {
     // permanently, same operational-tool reasoning as the other /debug/*
     // routes — never called from the customer-facing /create-link path.
     if (url.pathname === '/debug/datafeeds') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
       const domain = url.searchParams.get('domain') || undefined;
       const sku = url.searchParams.get('sku') || undefined;
       const campaign = url.searchParams.get('campaign') || undefined;
@@ -2245,6 +2293,7 @@ export default {
     // Firestore create/update, no interaction with DRY_RUN at all. Never
     // called from pollOrders/scheduled() or from any customer-facing path.
     if (url.pathname === '/debug/order-list') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
       const hours = Number(url.searchParams.get('hours')) || 72;
       // Optional, additive — mirrors processOneOrder's own sub_id1 lookup
       // and redirectCache mapping check EXACTLY, but read-only: calls
@@ -2338,6 +2387,7 @@ export default {
     // no write, no update, not part of processOneOrder/pollOrders, never
     // called from any customer-facing path.
     if (url.pathname === '/debug/order-doc') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
       const id = url.searchParams.get('id');
       if (!id) return Response.json({ error: 'missing id' }, { status: 400 });
       const idToken = await firestoreSignIn(env);

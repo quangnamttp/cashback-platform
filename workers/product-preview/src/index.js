@@ -189,6 +189,25 @@ export default {
         cf: { cacheTtl: 300, cacheEverything: true },
       });
 
+      // FIXED 2026-09-13 — the initial host was checked above, but
+      // `redirect: 'follow'` can land on a DIFFERENT host after chasing
+      // redirects, and that final host was never re-checked before
+      // scraping/returning its content. Low real risk in practice (would
+      // need an open redirect on Shopee/Lazada/TikTok's own domains to
+      // matter), but free to close: if the resolved host somehow isn't one
+      // of the allowed marketplaces, refuse to parse/return whatever body
+      // that unexpected host sent back, exactly like the original request
+      // would have been refused up front.
+      let resolvedHostname;
+      try {
+        resolvedHostname = new URL(upstream.url).hostname;
+      } catch {
+        resolvedHostname = '';
+      }
+      if (!isAllowedHost(resolvedHostname)) {
+        return jsonResponse({ error: 'resolved host not allowed' }, 403);
+      }
+
       const result = { title: null, image: null, price: null, resolvedUrl: upstream.url };
 
       // TikTok Shop's product pages are a client-rendered SPA — the raw

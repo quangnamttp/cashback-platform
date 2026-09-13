@@ -169,7 +169,15 @@ service cloud.firestore {
 
       match /hits/{hitId} {
         allow read: if isAdmin();
-        allow create: if true;
+        // FIXED 2026-09-13 — was `allow create: if true` with zero shape
+        // check, letting anyone write an arbitrarily large/malformed
+        // document here at no cost (still intentionally open to anonymous
+        // visitors, same as the parent doc's own hit-tracking update — see
+        // that match block's own comment — so this stays auth-free, just
+        // shaped). app/go/page.tsx's own write is exactly one field:
+        // `{ timestamp: serverTimestamp() }`.
+        allow create: if request.resource.data.keys().hasOnly(['timestamp'])
+          && request.resource.data.timestamp is timestamp;
         allow update, delete: if false;
       }
     }

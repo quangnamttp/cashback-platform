@@ -260,7 +260,11 @@ export default function CashbackWalletPage() {
     if (!newBank || !newAccNumber || !newAccHolder || !uid) return;
     if (validateAccountNumber(newBank, newAccNumber)) return;
     const acc: BankAccount = {
-      id: `${Date.now()}`,
+      // FIXED 2026-09-13 — pure Date.now() collided if "Thêm tài khoản" was
+      // ever triggered twice in the same millisecond (e.g. a fast double-tap
+      // before the button disabled) — Math.random() suffix matches the same
+      // fallback pattern already used elsewhere (lib/device.ts).
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       bank: newBank,
       accountNumber: newAccNumber,
       accountHolder: newAccHolder.toUpperCase(),
@@ -342,8 +346,14 @@ export default function CashbackWalletPage() {
         // The reservation above already went through — if creating the
         // request doc itself fails partway (network drop, etc.), give the
         // reserved amount back instead of leaving it stuck decremented with
-        // no matching request to ever release it.
-        await creditWalletBalance(uid, amountNum).catch(() => undefined);
+        // no matching request to ever release it. Logged specifically
+        // because a failure HERE (the rollback itself) would otherwise
+        // leave a customer's balance silently short with zero trace to
+        // investigate later — every other best-effort catch in this file
+        // is a pure UX convenience, this one guards real money.
+        await creditWalletBalance(uid, amountNum).catch((rollbackErr) => {
+          console.error('withdrawal rollback (creditWalletBalance) failed — balance may be stuck reserved:', uid, amountNum, rollbackErr);
+        });
         throw err;
       }
 

@@ -156,7 +156,11 @@ async function firestoreSignIn(env) {
 }
 
 function firestoreDocUrl(env, collectionName, docId) {
-  return `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collectionName}/${docId}`;
+  // Defensive — same fix as workers/accesstrade-sync's own copy of this
+  // function (2026-09-13). Lower real exposure here (docId comes from a
+  // Telegram callback_data tap inside a private admin group, not a public
+  // URL), but the fix is free and keeps both copies consistent.
+  return `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}`;
 }
 
 async function getWithdrawalDoc(env, idToken, requestId) {

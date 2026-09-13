@@ -27,6 +27,11 @@ export function getOrCreateDeviceId(): string {
     window.localStorage.setItem(STORAGE_KEY, generated);
     return generated;
   } catch {
-    return `dev-${Date.now()}`;
+    // FIXED 2026-09-13 — was pure Date.now() with zero randomness: two
+    // devices hitting this branch (localStorage blocked/unavailable) in
+    // the same millisecond collided outright, unlike the generated branch
+    // above which already mixes in Math.random(). Same fallback shape here
+    // now, for the same reason.
+    return `dev-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 }
