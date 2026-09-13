@@ -14,7 +14,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { RequireAuth } from '../../components/layout/RequireAuth';
 import { PlatformBadge } from '../../components/ui/PlatformBadge';
 import { SocialPlatformIcon } from '../../components/ui/SocialPlatformIcons';
-import { VoucherTicket, PLATFORM_ACCENT } from '../../components/ui/VoucherTicket';
+import { PLATFORM_ACCENT } from '../../components/ui/VoucherTicket';
 import { ReceiptIcon, UsersIcon, LinkIcon } from '../../components/ui/Icons';
 import { useLanguage } from '../../lib/i18n';
 import { formatCurrency } from '../../lib/currency';
@@ -105,43 +105,6 @@ type Voucher = {
   marketplaces?: Platform[];
 };
 
-const REFRESH_SLOTS = ['00:00', '09:00', '12:00', '15:00', '18:00', '20:00'];
-
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
-function getNextSlotInfo() {
-  const now = new Date();
-  const slotsToday = REFRESH_SLOTS.map((slot) => {
-    const [h, m] = slot.split(':').map(Number);
-    const d = new Date(now);
-    d.setHours(h, m, 0, 0);
-    return { slot, date: d };
-  });
-
-  let next = slotsToday.find((s) => s.date.getTime() > now.getTime());
-  if (!next) {
-    const [h, m] = REFRESH_SLOTS[0].split(':').map(Number);
-    const d = new Date(now);
-    d.setDate(d.getDate() + 1);
-    d.setHours(h, m, 0, 0);
-    next = { slot: REFRESH_SLOTS[0], date: d };
-  }
-
-  const diffMs = next.date.getTime() - now.getTime();
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
-  const seconds = Math.floor((diffMs / 1000) % 60);
-
-  return { nextSlot: next.slot, hours, minutes, seconds };
-}
-
-const platformGroups = [
-  { key: 'fb-ig', label: 'Facebook & Instagram', platforms: ['Facebook', 'Instagram'] },
-  { key: 'yt', label: 'YouTube & TikTok', platforms: ['YouTube', 'TikTok'] },
-];
-
 export default function GetCashbackLinkPage() {
   const { t, lang } = useLanguage();
   usePageTitle(t('get_link_title'));
@@ -153,9 +116,7 @@ export default function GetCashbackLinkPage() {
 
   // Voucher MXH — merged in from the old standalone /social-vouchers page,
   // sharing this same "link" field instead of its own separate input.
-  const [activeGroup, setActiveGroup] = useState('fb-ig');
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
-  const [countdown, setCountdown] = useState<{ nextSlot: string; hours: number; minutes: number; seconds: number } | null>(null);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<ProductPreview | null>(null);
   // Whichever image URL is currently shown (from either source — see
@@ -173,15 +134,6 @@ export default function GetCashbackLinkPage() {
   // tiers and the JSX render below).
   const [productPreviewLoading, setProductPreviewLoading] = useState(false);
   const previewRequestRef = useRef(0);
-
-  useEffect(() => {
-    setCountdown(getNextSlotInfo());
-    // Every 1s (was 60s) now that the display shows live seconds too — a
-    // plain setInterval, not a heavy computation, so this is cheap even
-    // ticking every second for as long as this page stays open.
-    const id = setInterval(() => setCountdown(getNextSlotInfo()), 1_000);
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     const q = query(collection(getFirebaseDb(), 'socialVouchers'), orderBy('createdAt', 'desc'));
@@ -303,11 +255,6 @@ export default function GetCashbackLinkPage() {
       updatedAt: product?.updatedAt,
     };
   }, [result, productPreview, productPreviewLoading, imageLoadFailed]);
-
-  const filteredVouchers = useMemo(() => {
-    const group = platformGroups.find((g) => g.key === activeGroup) ?? platformGroups[0];
-    return vouchers.filter((v) => group.platforms.includes(v.platform));
-  }, [activeGroup, vouchers]);
 
   // The compact side panel next to the product card draws from the WHOLE
   // vault (not just the active social tab below) — eligible-for-this-
@@ -530,31 +477,6 @@ export default function GetCashbackLinkPage() {
       // clipboard access may be blocked — selection still records below
     }
     setSelectedVoucherId(voucher.id);
-  };
-
-  // Browsing-mode voucher list further down the page still redirects
-  // immediately on apply (no product card there to attach the selection
-  // to) — same reuse-or-create cache as the main flow above.
-  const handleApplyVoucherStandalone = async () => {
-    if (!uid || !link.trim()) return;
-    try {
-      const trimmed = ensureUrlScheme(link);
-      const targetLink = isShortlink(trimmed) ? (await resolveShortlink(trimmed))?.resolvedUrl || trimmed : trimmed;
-      const r = await createOrReuseRedirect(uid, targetLink);
-      if (r.status === 'supported') {
-        // Open the marketplace URL directly rather than the intermediate
-        // /go?code= redirector — installed as a PWA in standalone mode, an
-        // in-app *script-driven* navigation (what /go's window.location.
-        // replace() does) tends to stay trapped inside the PWA's own webview
-        // instead of escaping to the system browser/native app the way a
-        // direct, real user-gesture click on an external URL does. /go
-        // itself stays in place for links copied/shared outside the app.
-        window.open(r.destinationUrl, '_blank', 'noopener,noreferrer');
-        recordRedirectHit(r.code);
-      }
-    } catch (err) {
-      console.error('apply voucher redirect failed', err);
-    }
   };
 
   return (
@@ -876,77 +798,6 @@ export default function GetCashbackLinkPage() {
               {t('sidebar_referrals')}
             </Link>
           </div>
-
-          {/* Voucher MXH — merged here from the old standalone page */}
-          <section className="panel" id="voucher-section" style={{ marginTop: 4, scrollMarginTop: 90 }}>
-            <div className="sv-slot-header">
-              <span>⏱ {t('sv_slot_title')}</span>
-              {countdown && (
-                <span className="sv-countdown">
-                  {t('sv_next_in')}
-                  <span className="sv-countdown-clock">
-                    <span className="sv-countdown-digit">{pad2(countdown.hours)}</span>:
-                    <span className="sv-countdown-digit">{pad2(countdown.minutes)}</span>:
-                    <span className="sv-countdown-digit">{pad2(countdown.seconds)}</span>
-                  </span>
-                </span>
-              )}
-            </div>
-            <div className="sv-slot-grid">
-              {REFRESH_SLOTS.map((slot) => (
-                <div key={slot} className={`sv-slot-item${countdown?.nextSlot === slot ? ' next' : ''}`}>
-                  <span className="sv-slot-icon">{countdown?.nextSlot === slot ? '🔥' : '🕓'}</span>
-                  <strong>{slot}</strong>
-                  <span>{countdown?.nextSlot === slot ? t('sv_slot_next_tag') : t('sv_slot_refresh_tag')}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="sv-platform-tabs">
-            {platformGroups.map((group) => (
-              <button
-                key={group.key}
-                className={activeGroup === group.key ? 'active' : ''}
-                onClick={() => setActiveGroup(group.key)}
-              >
-                <span className="sv-platform-tab-icons">
-                  {group.platforms.map((p) => <SocialPlatformIcon key={p} name={p} size={16} />)}
-                </span>
-                {group.label}
-              </button>
-            ))}
-          </section>
-
-          <section>
-            <div className="section-header">
-              <h2>{t('sv_title')}</h2>
-              <p className="muted-copy">
-                {detectedPlatform
-                  ? `Voucher sáng rõ là những mã dùng được cho ${PLATFORM_LABEL[detectedPlatform]} — voucher mờ là mã không áp dụng cho sàn này.`
-                  : t('sv_desc')}
-              </p>
-            </div>
-            <div className="voucher-ticket-stack">
-              {filteredVouchers.map((voucher, index) => {
-                const eligible = voucherMatchesMarketplace(voucher.marketplaces, detectedPlatform);
-                return (
-                  <VoucherTicket
-                    key={voucher.code}
-                    voucher={voucher}
-                    applyLabel={link.trim() && eligible ? t('sv_use_now') : t('offer_get_code')}
-                    featured={index === 0 && eligible}
-                    disabled={!eligible}
-                    disabledReason={!eligible ? 'Không áp dụng cho sàn vừa nhận diện' : undefined}
-                    onApply={link.trim() && eligible ? handleApplyVoucherStandalone : undefined}
-                  />
-                );
-              })}
-              {filteredVouchers.length === 0 && (
-                <p className="muted-copy">{t('sv_empty')}</p>
-              )}
-            </div>
-          </section>
 
           <section className="two-column-grid">
             <div className="panel">

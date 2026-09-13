@@ -3344,97 +3344,6 @@ p {
   max-width: 480px;
 }
 
-.sv-slot-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.sv-countdown {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 0.78rem;
-}
-
-/* Digital-clock look (dark pill, monospaced digits) instead of plain
-   "2h48p" text — reads as a live, ticking timer rather than a static
-   label, matching it now actually updating every second. */
-.sv-countdown-clock {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  background: #142440;
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 8px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
-
-.sv-countdown-digit {
-  display: inline-block;
-  min-width: 1.4em;
-  text-align: center;
-  font-weight: 800;
-  font-size: 0.85rem;
-}
-
-.sv-slot-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.sv-slot-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 12px 6px;
-  text-align: center;
-  background: var(--bg-secondary);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.sv-slot-icon {
-  font-size: 1.1rem;
-  margin-bottom: 2px;
-}
-
-.sv-slot-item strong {
-  display: block;
-  font-size: 0.95rem;
-  color: var(--text);
-}
-
-.sv-slot-item span {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-}
-
-.sv-slot-item.next {
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  border-color: var(--primary);
-  box-shadow: 0 6px 16px rgba(0, 150, 255, 0.25);
-  transform: translateY(-2px);
-}
-
-.sv-slot-item.next strong,
-.sv-slot-item.next span {
-  color: #fff;
-}
-
 .sv-platform-tabs {
   display: flex;
   gap: 8px;
@@ -4775,15 +4684,6 @@ p {
 /* ==========================================================
    VOUCHER TICKET v2 — full-width, spacious, professional
    ========================================================== */
-.voucher-ticket-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-height: 720px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
 .voucher-ticket-v2 {
   position: relative;
   display: flex;
