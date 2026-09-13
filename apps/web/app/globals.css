@@ -3600,11 +3600,23 @@ p {
   min-width: 220px;
 }
 
+.order-card-info {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Single line, ellipsis-truncated instead of wrapping — a long product name
+   must never grow this card's height (that used to push the thumbnail image
+   down since the row centers its items vertically). */
 .order-card-info h3 {
   font-size: 0.85rem;
   margin: 3px 0 3px;
   color: var(--text);
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .order-card-tags {

@@ -6,11 +6,16 @@ type StageDef = {
   labelKey: string;
 };
 
+// Tracks the CASHBACK approval pipeline (order.status + cashbackLedger's own
+// status — see cashback/page.tsx's deriveCashbackStage), not real shipping —
+// this site has no logistics API integration, so it must never claim to
+// know the courier's real status (renamed 2026-09-13, was ordered/preparing/
+// shipping/delivered with truck/mailbox icons implying real tracking).
 const STAGES: StageDef[] = [
-  { key: 'ordered', icon: '🛒', labelKey: 'ship_stage_ordered' },
-  { key: 'preparing', icon: '🏪', labelKey: 'ship_stage_preparing' },
-  { key: 'shipping', icon: '🚚', labelKey: 'ship_stage_shipping' },
-  { key: 'delivered', icon: '📬', labelKey: 'ship_stage_delivered' },
+  { key: 'recorded', icon: '🛒', labelKey: 'ship_stage_ordered' },
+  { key: 'pending', icon: '⏳', labelKey: 'ship_stage_preparing' },
+  { key: 'confirmed', icon: '✅', labelKey: 'ship_stage_shipping' },
+  { key: 'released', icon: '💰', labelKey: 'ship_stage_delivered' },
 ];
 
 export function ShipmentTracker({ stage, t }: { stage: number; t: (key: any) => string }) {

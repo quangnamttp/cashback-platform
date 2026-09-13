@@ -24,20 +24,25 @@ type OrderDoc = {
   orderDate?: { toDate: () => Date };
 };
 
-// Real orders only carry a cashback-approval status (PENDING/CONFIRMED),
-// not an actual marketplace shipping status — there's no logistics API
-// integration here. CONFIRMED reasonably maps to "fully done" from this
-// site's point of view; PENDING maps to "still being prepared/checked" by
-// admin. CANCELLED (admin rejected before ever confirming) isn't shown
-// here since there's no honest progress to depict for it — it still shows
-// up in full on the Đơn hàng history page. REFUNDED (a confirmed order the
-// customer later returned) IS shown, as its own distinct stopped state —
-// it must never simply vanish from this page, since the customer needs to
-// see it reflects a real returned order, not a disappeared one.
-const STAGE_BY_STATUS: Record<'PENDING' | 'CONFIRMED', number> = {
-  PENDING: 1,
-  CONFIRMED: 3,
-};
+// This site has no real shipping/logistics API integration — it only ever
+// knows the CASHBACK approval pipeline (order.status, then cashbackLedger's
+// own status once Admin confirms). The 4 stages below track exactly that,
+// nothing about the courier (fixed 2026-09-13: the old version mapped
+// CONFIRMED straight to "Đã giao hàng"/Delivered, which is a claim about
+// real-world shipping this site cannot verify and was confirmed live to be
+// wrong — an order can be CONFIRMED the moment Admin approves it, well
+// before the courier has even picked it up).
+// CANCELLED (admin rejected before ever confirming) isn't shown here since
+// there's no honest progress to depict for it — it still shows up in full
+// on the Đơn hàng history page. REFUNDED (a confirmed order the customer
+// later returned) IS shown, as its own distinct stopped state — it must
+// never simply vanish from this page, since the customer needs to see it
+// reflects a real returned order, not a disappeared one.
+function deriveCashbackStage(status: OrderStatus, ledgerStatus: string | undefined): number {
+  if (status === 'PENDING') return 1; // đang chờ Admin duyệt
+  if (status === 'CONFIRMED') return ledgerStatus === 'RELEASED' ? 3 : 2; // đã duyệt, tới khi thực sự hoàn tiền mới lên bước cuối
+  return 0;
+}
 
 const shippingStatusKeyMap: Record<number, string> = {
   0: 'ship_stage_ordered',
@@ -59,6 +64,7 @@ export default function CashbackPage() {
   usePageTitle(t('sidebar_order_status'));
   const [orders, setOrders] = useState<OrderDoc[]>([]);
   const [ledgerByOrder, setLedgerByOrder] = useState<Record<string, number>>({});
+  const [ledgerStatusByOrder, setLedgerStatusByOrder] = useState<Record<string, string>>({});
   const [hasReferrer, setHasReferrer] = useState(false);
   const [query_, setQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
@@ -91,6 +97,7 @@ export default function CashbackPage() {
   useEffect(() => {
     if (!uid) {
       setLedgerByOrder({});
+      setLedgerStatusByOrder({});
       setHasReferrer(false);
       return;
     }
@@ -99,11 +106,14 @@ export default function CashbackPage() {
       query(collection(db, 'cashbackLedger'), where('userId', '==', uid), where('type', '==', 'CUSTOMER_CASHBACK')),
       (snap) => {
         const map: Record<string, number> = {};
+        const statusMap: Record<string, string> = {};
         snap.docs.forEach((d) => {
-          const data = d.data() as { orderId: string; amount: number };
+          const data = d.data() as { orderId: string; amount: number; status: string };
           map[data.orderId] = (map[data.orderId] ?? 0) + data.amount;
+          statusMap[data.orderId] = data.status;
         });
         setLedgerByOrder(map);
+        setLedgerStatusByOrder(statusMap);
       },
     );
     const unsubUser = onSnapshot(doc(db, 'users', uid), (snap) => {
@@ -161,7 +171,7 @@ export default function CashbackPage() {
             {filteredOrders.map((item) => {
               const platformName = PLATFORM_LABEL[item.platform] ?? item.platform;
               const isRefunded = item.status === 'REFUNDED';
-              const stage = STAGE_BY_STATUS[item.status as 'PENDING' | 'CONFIRMED'] ?? 0;
+              const stage = deriveCashbackStage(item.status, ledgerStatusByOrder[item.id]);
               const date = item.orderDate?.toDate();
               return (
                 <div key={item.id} className="ship-order-card">

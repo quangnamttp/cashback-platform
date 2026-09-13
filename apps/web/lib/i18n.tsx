@@ -285,10 +285,18 @@ const dict = {
     guide_desktop_step3_title: 'Dán vào đây và mua như bình thường',
     guide_desktop_step3_desc: 'Dán link vào ô nhận link hoàn tiền trên trang này rồi tiến hành đặt mua.',
 
-    ship_stage_ordered: 'Đã đặt hàng',
-    ship_stage_preparing: 'Người bán chuẩn bị',
-    ship_stage_shipping: 'Đang vận chuyển',
-    ship_stage_delivered: 'Đã giao hàng',
+    // Renamed 2026-09-13 — this tracker was never wired to a real shipping/
+    // logistics API (no such integration exists), so its old wording
+    // ("Đang vận chuyển"/"Đã giao hàng") claimed things about the courier
+    // this site cannot actually know and can be flat-out wrong (confirmed
+    // live: order marked "Đã giao hàng" the moment it was picked up, not
+    // delivered). Relabeled to what these 4 steps actually track — the
+    // CASHBACK approval pipeline (order.status + cashbackLedger.status) —
+    // which is honest and independently verified below in cashback/page.tsx.
+    ship_stage_ordered: 'Đã ghi nhận đơn',
+    ship_stage_preparing: 'Đang chờ duyệt',
+    ship_stage_shipping: 'Đã duyệt đơn',
+    ship_stage_delivered: 'Đã hoàn tiền',
 
     bank_accounts_title: 'Tài khoản ngân hàng',
     bank_accounts_empty: 'Bạn chưa liên kết tài khoản ngân hàng nào. Thêm tài khoản để rút tiền nhanh hơn.',
@@ -726,10 +734,10 @@ const dict = {
     guide_desktop_step3_title: 'Paste it here and shop as usual',
     guide_desktop_step3_desc: 'Paste the link into the cashback link box on this page, then place your order.',
 
-    ship_stage_ordered: 'Ordered',
-    ship_stage_preparing: 'Seller preparing',
-    ship_stage_shipping: 'In transit',
-    ship_stage_delivered: 'Delivered',
+    ship_stage_ordered: 'Order recorded',
+    ship_stage_preparing: 'Pending approval',
+    ship_stage_shipping: 'Order confirmed',
+    ship_stage_delivered: 'Cashback paid',
 
     bank_accounts_title: 'Bank accounts',
     bank_accounts_empty: 'You have no linked bank accounts yet. Add one for faster withdrawals.',
