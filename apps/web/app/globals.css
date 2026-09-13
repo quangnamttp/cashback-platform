@@ -1107,6 +1107,35 @@ p {
   }
 }
 
+/* Table-only panels (.order-table-panel / .admin-table-panel, and any
+   .panel used purely as a table wrapper) had the card's own padding
+   wrapping the table too, leaving a plain blank gutter around it with
+   nothing in it. Bleed .table-scroll to the panel's edges instead so the
+   table (and its sticky header bar) fills the card exactly. Horizontal
+   bleed always applies; top/bottom bleed only when nothing else (a
+   title, filter row, etc.) sits before/after the table inside the same
+   panel, so panels with their own heading above the table keep that
+   heading's normal padding. Scales with --card-pad-24's own clamp(), so
+   this applies identically on mobile. */
+.panel > .table-scroll {
+  margin-left: calc(var(--card-pad-24) * -1);
+  margin-right: calc(var(--card-pad-24) * -1);
+}
+
+.panel > .table-scroll:first-child {
+  margin-top: calc(var(--card-pad-24) * -1);
+}
+
+.panel > .table-scroll:last-child {
+  margin-bottom: calc(var(--card-pad-24) * -1);
+}
+
+/* Clips the table's straight corners so they never poke out past the
+   panel's own rounded corners once the table bleeds flush against them. */
+.panel:has(> .table-scroll) {
+  overflow: hidden;
+}
+
 .data-table thead th {
   position: sticky;
   top: 0;
@@ -6228,22 +6257,52 @@ p {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* Caps at roughly 2 rows tall — a 3rd voucher (or a longer title
+  /* Caps at roughly 3 rows tall — a 4th voucher (or a longer title
      wrapping to 2 lines) now scrolls internally instead of growing the
-     whole panel taller than the product card next to it. */
-  max-height: 180px;
+     whole panel taller than the product card next to it. Small top
+     padding leaves room for the "best pick" ribbon (see
+     .quick-voucher-row-ribbon) to peek above the first row without
+     being clipped by this list's own scroll edge. */
+  max-height: 280px;
   overflow-y: auto;
+  padding-top: 8px;
   padding-right: 4px;
 }
 
 .quick-voucher-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Distinct from both this panel's own background (--surface) and the
+     page background (--bg) in both themes, so each voucher reads as its
+     own card instead of blending into the panel — same token already
+     used for that purpose elsewhere (e.g. .quick-product-cashback-row). */
+  background: var(--bg-accent);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   padding: 6px 8px;
   transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+/* Small pill tag marking the top-ranked eligible voucher — same visual
+   language as .voucher-ticket-v2-ribbon elsewhere in the app, scaled
+   down to fit this compact row. Sits ABOVE the row's own border (never
+   overlapping the title/discount text inside it, on any screen width)
+   rather than inside it, so it can never cover the voucher's own text. */
+.quick-voucher-row-ribbon {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  z-index: 1;
 }
 
 .quick-voucher-row.selected {

@@ -711,12 +711,14 @@ export default function GetCashbackLinkPage() {
                     {vouchers.length === 0 ? (
                       <p className="quick-voucher-empty">Hiện tại không có voucher nào.</p>
                     ) : (
-                      sortedVouchersForPanel.map((voucher) => {
+                      sortedVouchersForPanel.map((voucher, index) => {
                         const eligible = voucherMatchesMarketplace(voucher.marketplaces, detectedPlatform);
                         const isSelected = selectedVoucherId === voucher.id;
+                        const isBest = index === 0 && eligible;
                         const accent = PLATFORM_ACCENT[voucher.platform] ?? 'var(--primary)';
                         return (
                           <div key={voucher.id} className={`quick-voucher-row${isSelected ? ' selected' : ''}${!eligible ? ' ineligible' : ''}`}>
+                            {isBest && <span className="quick-voucher-row-ribbon">⭐ Tốt nhất</span>}
                             <span className="quick-voucher-row-icon" style={{ background: accent }}>
                               <SocialPlatformIcon name={voucher.platform} size={15} />
                             </span>
