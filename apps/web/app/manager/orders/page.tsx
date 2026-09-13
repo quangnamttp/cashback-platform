@@ -619,13 +619,13 @@ export default function AdminOrdersPage() {
                 <tr key={item.id}>
                   <td><CopyIdChip value={item.id} /></td>
                   <td>{userLabel(users, item.userId)}</td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <td className="order-table-product-cell">
+                    <div className="order-table-product">
                       {item.imageUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={item.imageUrl} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
                       )}
-                      <span>{item.productName}</span>
+                      <span className="order-table-product-name" style={{ minWidth: 0 }}>{item.productName}</span>
                     </div>
                   </td>
                   <td>
