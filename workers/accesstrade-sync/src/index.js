@@ -201,6 +201,24 @@ async function resolveUserIdFromSubId(env, idToken, subId) {
   return fv(doc.fields, 'userId') ?? null;
 }
 
+// Fallback image source for when ACCESSTRADE's own order-products response
+// has none for this order (confirmed live 2026-09-13, order 260912TWVCDF10
+// — genuinely no main_image_url in any row) — the SAME redirectCache doc
+// (keyed by this order's own subId) that apps/web/lib/redirectLink.ts wrote
+// at link-creation time, which is exactly what /link-history already shows
+// for this same product. Prefers `product.image` (real ACCESSTRADE
+// datafeed photo, set by createOrReuseRedirect) over the top-level `image`
+// (a page-scraped preview, set later/async by savePreviewToRedirect) — the
+// datafeed one is the more authoritative of the two. fv() only reads flat
+// scalar fields, so `product.image` (a nested map) is read manually here.
+async function resolveFallbackImageFromRedirectCache(env, idToken, subId) {
+  if (!subId) return null;
+  const doc = await firestoreGet(env, idToken, 'redirectCache', subId).catch(() => null);
+  if (!doc) return null;
+  const productImage = doc.fields?.product?.mapValue?.fields?.image?.stringValue;
+  return productImage || fv(doc.fields, 'image') || null;
+}
+
 // --- 1. Link creation endpoint (POST /create-link) ---
 
 // Verifies the caller is a real signed-in Firebase user without needing
@@ -1857,7 +1875,15 @@ async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant)
     // ACCESSTRADE may never provide.
     patch.productName = { stringValue: orderPlaceholderName(externalOrderId) };
   }
-  if (!currentImage && imageUrl) patch.imageUrl = { stringValue: imageUrl };
+  if (!currentImage) {
+    // ACCESSTRADE's order-products still has nothing (imageUrl empty) for
+    // a lot of real orders — fall back to the same redirectCache photo
+    // /link-history already shows for this product (see
+    // resolveFallbackImageFromRedirectCache's own comment) rather than
+    // leaving the customer with no photo at all.
+    const fallbackImage = imageUrl || (await resolveFallbackImageFromRedirectCache(env, idToken, fv(existingDoc.fields, 'subId')));
+    if (fallbackImage) patch.imageUrl = { stringValue: fallbackImage };
+  }
   if (Object.keys(patch).length === 0) {
     console.log(`order ${orderId}: product-info backfill — ACCESSTRADE still has no better name/image, will retry next cycle`);
     return;
@@ -1938,12 +1964,19 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       return;
     }
 
+    // ACCESSTRADE often has no main_image_url at all for this order yet
+    // (confirmed live 2026-09-13) — fall back to the SAME redirectCache doc
+    // just used for the mapping check above, which already has a real
+    // product photo from link-creation time (see
+    // resolveFallbackImageFromRedirectCache's own comment).
+    const finalImageUrl = imageUrl || await resolveFallbackImageFromRedirectCache(env, idToken, subId);
+
     const orderFields = {
       userId: { stringValue: userId },
       platform: { stringValue: platform },
       productName: { stringValue: productName },
       productUrl: order.at_product_link ? { stringValue: order.at_product_link } : { nullValue: null },
-      imageUrl: imageUrl ? { stringValue: imageUrl } : { nullValue: null },
+      imageUrl: finalImageUrl ? { stringValue: finalImageUrl } : { nullValue: null },
       orderValue: { integerValue: String(Math.round(orderValue)) },
       commissionAmount: { integerValue: String(Math.round(commissionAmount)) },
       status: { stringValue: 'PENDING' },
