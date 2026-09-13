@@ -1744,6 +1744,64 @@ function deriveOrderStatus(order) {
   return 'PENDING';
 }
 
+// CONFIRMED live against a real order-products response (order_id
+// 260911RD0KW95Q): each row's real product title lives at
+// `_extra.product_name` (image at `_extra.main_image_url`), not any
+// documented field — a "bonus"/reward line item carries an empty string
+// there, so this skips blanks and takes the first row with a real value.
+// Falls back to the old ACCESSTRADE-id placeholder / no image when no row
+// has one at all (never an empty string written to Firestore). Shared by
+// both the initial create (below) and backfillProductInfo (see that
+// function's own comment on why a SECOND, later attempt is often needed —
+// confirmed live 2026-09-13: this data can arrive on ACCESSTRADE's side
+// well after the order itself is first seen, not always available at the
+// very first order-products call).
+function extractProductInfoFromRows(rows, externalOrderId) {
+  return {
+    productName: rows.map((row) => row?._extra?.product_name).find((v) => !!v) || `Đơn hàng ACCESSTRADE #${externalOrderId}`,
+    imageUrl: rows.map((row) => row?._extra?.main_image_url).find((v) => !!v) || null,
+  };
+}
+
+// Retries fetching order-products for an existing order whose name/image
+// are still missing/placeholder — mirrors backfillOrderNotification's own
+// "self-heal on a later tick" pattern exactly, for the same real reason:
+// ACCESSTRADE's order-products response for a given order can start out
+// with no product_name/main_image_url in ANY row (confirmed live
+// 2026-09-13, order_id 260912TWVCDF10 — genuinely absent, not just
+// unmatched) and only gain them later. Never called for an order whose
+// name has already resolved to something real — cheap to check first,
+// avoids burning the order-products rate limit on orders that don't need
+// it. Runs regardless of order.status (PENDING or CONFIRMED) since a
+// CONFIRMED order is the one a customer can actually SEE the placeholder
+// on (see firestore.rules' customerVisible gate) — unlike the Topic 33
+// backfill, which only matters while still PENDING.
+async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant) {
+  const externalOrderId = fv(existingDoc.fields, 'externalOrderId') || orderId;
+  const currentName = fv(existingDoc.fields, 'productName');
+  const currentImage = fv(existingDoc.fields, 'imageUrl');
+  const stillPlaceholder = !currentName || currentName === `Đơn hàng ACCESSTRADE #${externalOrderId}`;
+  if (!stillPlaceholder && currentImage) return; // already has real data — nothing to do
+
+  const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-products', { query: { order_id: externalOrderId, merchant } });
+  await sleep(ORDER_PRODUCTS_THROTTLE_MS); // same rate-limit guard as every other order-products call
+  if (!ok) {
+    console.error(`order ${orderId}: product-info backfill order-products fetch failed, will retry next cycle`);
+    return;
+  }
+  const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
+  const { productName, imageUrl } = extractProductInfoFromRows(rows, externalOrderId);
+  const patch = {};
+  if (stillPlaceholder && productName !== `Đơn hàng ACCESSTRADE #${externalOrderId}`) patch.productName = { stringValue: productName };
+  if (!currentImage && imageUrl) patch.imageUrl = { stringValue: imageUrl };
+  if (Object.keys(patch).length === 0) {
+    console.log(`order ${orderId}: product-info backfill — ACCESSTRADE still has no better name/image, will retry next cycle`);
+    return;
+  }
+  await firestorePatch(env, idToken, 'orders', orderId, patch);
+  console.log(`order ${orderId}: product-info backfill applied:`, JSON.stringify(patch));
+}
+
 async function processOneOrder(env, idToken, platform, merchant, order) {
   const externalOrderId = String(order.order_id);
   const orderId = `accesstrade_${externalOrderId}`;
@@ -1788,14 +1846,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     // defined one is used.
     const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
     const subId = rows.map((row) => row?._extra?.sub_params?.sub1).find((v) => !!v);
-    // CONFIRMED live against the same real response (order_id
-    // 260911RD0KW95Q): each row's real product title lives at
-    // `_extra.product_name`, not any documented field — a "bonus"/reward
-    // line item carries an empty string there, so this skips blanks and
-    // takes the first row with a real name. Falls back to the old
-    // ACCESSTRADE-id placeholder only when no row has one at all (never an
-    // empty product name written to Firestore).
-    const productName = rows.map((row) => row?._extra?.product_name).find((v) => !!v) || `Đơn hàng ACCESSTRADE #${externalOrderId}`;
+    const { productName, imageUrl } = extractProductInfoFromRows(rows, externalOrderId);
     console.log(`order ${externalOrderId}: raw order-products data (full, for manual review) =`, JSON.stringify(json?.data));
 
     // --- MAPPING CHECK — read this block, not just the pass/fail, before
@@ -1828,7 +1879,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       platform: { stringValue: platform },
       productName: { stringValue: productName },
       productUrl: order.at_product_link ? { stringValue: order.at_product_link } : { nullValue: null },
-      imageUrl: { nullValue: null },
+      imageUrl: imageUrl ? { stringValue: imageUrl } : { nullValue: null },
       orderValue: { integerValue: String(Math.round(orderValue)) },
       commissionAmount: { integerValue: String(Math.round(commissionAmount)) },
       status: { stringValue: 'PENDING' },
@@ -1924,6 +1975,14 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     if (env.DRY_RUN === 'false' && !fv(existing.fields, 'orderNotificationSentAt')) {
       await backfillOrderNotification(env, idToken, orderId, existing, platform, status, commissionAmount);
     }
+    // Same product-info self-heal as the CONFIRMED branch below — see
+    // backfillProductInfo's own comment. A PENDING order is already
+    // customer-invisible either way, but Admin still sees it in Topic 33/
+    // "Duyệt đơn hàng", so it's worth fixing here too, not just after
+    // CONFIRMED.
+    if (env.DRY_RUN === 'false') {
+      await backfillProductInfo(env, idToken, orderId, existing, merchant);
+    }
     return;
   }
 
@@ -1948,6 +2007,9 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
     // Topic 13. Never touches order.status here (that's the REFUNDED
     // clawback branch above, or Admin/Telegram's own CONFIRMED write).
     await syncConfirmedOrderCommission(env, idToken, orderId, existing, status, commissionAmount, platform);
+    if (env.DRY_RUN === 'false') {
+      await backfillProductInfo(env, idToken, orderId, existing, merchant);
+    }
     return;
   }
 
@@ -2508,6 +2570,8 @@ export default {
           affiliateConversionId: fv(f, 'affiliateConversionId'),
           commissionStatus: fv(f, 'commissionStatus'),
           customerVisible: fv(f, 'customerVisible'),
+          productName: fv(f, 'productName'),
+          imageUrl: fv(f, 'imageUrl'),
           payoutNotificationSentAt: fv(f, 'payoutNotificationSentAt'),
           orderNotificationSentAt: fv(f, 'orderNotificationSentAt'),
           telegramChatId: fv(f, 'telegramChatId'),
