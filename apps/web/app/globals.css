@@ -4891,6 +4891,17 @@ p {
 }
 
 .ship-tracker-label {
+  /* display:block (a bare <span> otherwise) is required for max-width to
+     have any effect at all — on an inline box it's simply ignored. Without
+     both, a label sizes to its own content's natural single-line width and
+     ignores its 25%-wide column entirely — invisible on desktop (plenty of
+     room), but on a narrow phone screen two neighboring labels each render
+     past their column's edge and visually run into each other with no
+     gap. This forces it back inside its column so it wraps onto a second
+     line instead. */
+  display: block;
+  max-width: 100%;
+  padding: 0 2px;
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 8px;
