@@ -149,31 +149,31 @@ export default function HomePage() {
             Lazada
           </Link>
           <Link href="/get-cashback-link" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0096ff' }}><LinkIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: 'linear-gradient(135deg, #0096ff, #2563eb)' }}><LinkIcon size={20} /></span></span>
             {t('sidebar_get_link')}
           </Link>
           <Link href="/orders" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#f59e0b' }}><BoxIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: 'linear-gradient(135deg, #f59e0b, #f97316)' }}><BoxIcon size={20} /></span></span>
             {t('sidebar_orders')}
           </Link>
           <Link href="/cashback-wallet" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#16a34a' }}><WalletIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}><WalletIcon size={20} /></span></span>
             {t('sidebar_wallet')}
           </Link>
           <Link href="/referrals" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#8b5cf6' }}><UsersIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: 'linear-gradient(135deg, #a78bfa, #8b5cf6)' }}><UsersIcon size={20} /></span></span>
             {t('sidebar_referrals')}
           </Link>
           <Link href="/support" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#0ea5e9' }}><HeadsetIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: 'linear-gradient(135deg, #38bdf8, #0ea5e9)' }}><HeadsetIcon size={20} /></span></span>
             {t('sidebar_support')}
           </Link>
           <Link href="/#guide" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#ef4444' }}><BookIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: 'linear-gradient(135deg, #fb7185, #ef4444)' }}><BookIcon size={20} /></span></span>
             {t('guide_title').split(' ').slice(0, 2).join(' ')}
           </Link>
           <Link href="/settings" className="quick-utility-item">
-            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: '#64748b' }}><GearIcon size={20} /></span></span>
+            <span className="quick-utility-icon-frame"><span className="quick-utility-icon" style={{ background: 'linear-gradient(135deg, #94a3b8, #64748b)' }}><GearIcon size={20} /></span></span>
             {t('sidebar_settings')}
           </Link>
         </div>

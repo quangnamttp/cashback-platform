@@ -2734,6 +2734,12 @@ p {
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.quick-utility-item:hover .quick-utility-icon-frame {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
 }
 
 .quick-utility-icon {
@@ -2766,8 +2772,15 @@ p {
 }
 
 /* Process timeline */
+/* Soft tinted band instead of sitting directly on the page's own plain
+   background like every other section — visually separates "Quy trình
+   nhận hoàn tiền" from its neighbors instead of everything blending into
+   one long, undifferentiated stack of white cards. */
 .process-section {
   margin-top: 32px;
+  padding: 28px 24px;
+  background: linear-gradient(180deg, var(--bg-secondary), transparent);
+  border-radius: var(--radius-lg);
 }
 
 .process-timeline {
@@ -4081,6 +4094,7 @@ p {
 }
 
 .guide-step {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4099,20 +4113,53 @@ p {
   transform: translateY(-3px);
 }
 
+/* Same short-segment connector .process-step-card already uses between its
+   3 cards — ties these 3 into one visual "journey" too instead of looking
+   like 3 unrelated boxes sitting next to each other. */
+.guide-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 52px;
+  right: -16px;
+  width: 16px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--border), var(--primary-light));
+  border-radius: 999px;
+  z-index: 0;
+}
+
+@media (max-width: 720px) {
+  .guide-step:not(:last-child)::after {
+    content: none;
+  }
+}
+
 .guide-step-icon-frame {
   position: relative;
+  z-index: 1;
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background: var(--bg-accent);
+  background: linear-gradient(135deg, var(--primary), #7c3aed);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 4px;
+  box-shadow: 0 0 0 5px var(--primary-lighter), var(--shadow-md);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.guide-step:hover .guide-step-icon-frame {
+  box-shadow: 0 0 0 6px var(--primary-lighter), var(--shadow-md);
+  transform: translateY(-3px);
 }
 
 .guide-step-icon {
   font-size: 1.7rem;
+  /* Emoji keep their own native colors regardless of the frame's gradient
+     background — filter:brightness/contrast nudges them to read clearly
+     against the darker gradient instead of looking washed out. */
+  filter: brightness(1.05) contrast(1.05);
 }
 
 .guide-step-number {
