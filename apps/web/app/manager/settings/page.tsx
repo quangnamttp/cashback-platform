@@ -12,11 +12,17 @@ import { backfillWalletBalances } from '../../../lib/backfillWalletBalances';
 import { subscribeSystemRates, saveSystemRates, DEFAULT_RATES, type SystemRates } from '../../../lib/systemConfig';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
+import { useTheme } from '../../../lib/theme';
 
 export default function AdminSettingsPage() {
   usePageTitle('Cấu hình hệ thống');
   const { userEmail, logout } = useAuth();
   const { lang } = useLanguage();
+  // Same site-wide toggle the customer header already uses (lib/theme.tsx)
+  // — stored per-browser via localStorage, never shared across users or
+  // synced anywhere, so switching it here only ever affects whoever is
+  // sitting at this browser right now.
+  const { theme, toggleTheme } = useTheme();
 
   const [showAutoReplyForm, setShowAutoReplyForm] = useState(false);
   const [autoReply, setAutoReply] = useState(DEFAULT_AUTO_REPLY);
@@ -123,6 +129,18 @@ export default function AdminSettingsPage() {
           <h1>Cấu hình hệ thống</h1>
         </div>
       </div>
+
+      <section className="panel">
+        <div className="panel-header">
+          <h3>🌙 Giao diện</h3>
+        </div>
+        <p className="muted-copy" style={{ marginTop: -4 }}>
+          Chỉ áp dụng cho trình duyệt này — mỗi người quản trị tự chọn riêng, không ảnh hưởng người khác.
+        </p>
+        <button type="button" className="button button-secondary" onClick={toggleTheme}>
+          {theme === 'light' ? '🌙 Chuyển sang nền tối' : '☀️ Chuyển sang nền sáng'}
+        </button>
+      </section>
 
       <section className="panel">
         <div className="panel-header">

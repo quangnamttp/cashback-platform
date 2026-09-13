@@ -2,11 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { getFirebaseDb } from '../../lib/firebase';
+import { useAuth } from '../../lib/auth';
+import { usePwaInstall } from '../../lib/pwaInstall';
 import { ChartIcon, UsersIcon, BoxIcon, WalletIcon, StoreIcon, CashIcon, HeadsetIcon, WarningIcon, GearIcon, ScrollIcon, ReceiptIcon, DevicesIcon } from '../ui/Icons';
 import { BrandMark } from '../ui/BrandMark';
+import { Modal } from '../ui/Modal';
 
 const adminNavTop = { icon: <ChartIcon size={16} />, color: '#0096ff', label: 'Tổng quan', href: '/manager' };
 
@@ -71,12 +74,30 @@ function isActive(pathname: string, href: string) {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  const { userName, userEmail, avatarUrl, logout } = useAuth();
+  const { canInstall, promptInstall } = usePwaInstall();
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
+  const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
 
   useEffect(() => {
     const q = query(collection(getFirebaseDb(), 'supportChats'), where('hasUnreadForAdmin', '==', true));
     const unsubscribe = onSnapshot(q, (snap) => setUnreadCount(snap.size), () => setUnreadCount(0));
     return unsubscribe;
   }, []);
+
+  // Same "Tải về" logic as the customer header (lib/pwaInstall.tsx) —
+  // Chrome/Edge get the native install prompt, everything else (mainly
+  // iOS Safari, which has no such prompt at all) falls back to the same
+  // manual-steps modal.
+  const handleInstallClick = async () => {
+    setIsAccountMenuOpen(false);
+    if (canInstall) {
+      await promptInstall();
+    } else {
+      setShowInstallHelp(true);
+    }
+  };
 
   return (
     <div className="admin-page-shell container">
@@ -120,7 +141,75 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <section className="admin-content">{children}</section>
+      <section className="admin-content">
+        <div className="admin-topbar">
+          <div className="account-menu-container">
+            <button
+              className="account-menu-button"
+              onClick={() => setIsAccountMenuOpen((open) => !open)}
+              aria-expanded={isAccountMenuOpen}
+              aria-haspopup="menu"
+              title="Tài khoản"
+            >
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarUrl} alt={userName} className="account-menu-button-avatar" />
+              ) : (
+                '👤'
+              )}
+            </button>
+
+            {isAccountMenuOpen && (
+              <div className="account-menu-dropdown active account-dropdown-v2" role="menu">
+                <div className="account-dropdown-user">
+                  <span className="account-dropdown-avatar">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl} alt={userName} />
+                    ) : (
+                      '👤'
+                    )}
+                  </span>
+                  <div>
+                    <strong>{userName}</strong>
+                    <span>{userEmail}</span>
+                  </div>
+                </div>
+                <button role="menuitem" onClick={handleInstallClick}>
+                  📲 Tải về
+                </button>
+                <button
+                  role="menuitem"
+                  className="account-dropdown-logout"
+                  onClick={() => {
+                    logout();
+                    setIsAccountMenuOpen(false);
+                  }}
+                >
+                  🚪 Đăng xuất
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        {children}
+      </section>
+
+      <Modal open={showInstallHelp} onClose={() => setShowInstallHelp(false)}>
+        <h3 style={{ marginTop: 0 }}>Cài đặt web app</h3>
+        {isIOS ? (
+          <ol className="ordered-list download-steps">
+            <li>Mở menu Chia sẻ (Share) trên Safari.</li>
+            <li>Chọn &quot;Thêm vào Màn hình chính&quot; (Add to Home Screen).</li>
+            <li>Bấm &quot;Thêm&quot; ở góc trên bên phải.</li>
+            <li>Mở lại từ màn hình chính như một app bình thường.</li>
+          </ol>
+        ) : (
+          <p className="muted-copy">
+            Trình duyệt này chưa hỗ trợ cài đặt trực tiếp — bạn vẫn có thể dùng web bình thường qua trình duyệt.
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

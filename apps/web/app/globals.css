@@ -1088,6 +1088,12 @@ p {
   overflow-y: auto;
   max-height: 520px;
   -webkit-overflow-scrolling: touch;
+  /* Keeps drag/scroll gestures contained to exactly this box — without it,
+     a phone's elastic overscroll bounce can happen INSIDE this scroll box
+     independently of the html/body-level fix (2026-09-13), briefly
+     revealing blank space past the table's real content on a drag past its
+     own edge. Doesn't change normal horizontal/vertical scrolling at all. */
+  overscroll-behavior: contain;
 }
 
 /* On a phone-height viewport, a 520px-tall scroll box eats most of the
@@ -1941,6 +1947,16 @@ p {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* AdminShell had no top-right area at all before — reuses the exact same
+   .account-menu-* classes/behavior the customer header already has (see
+   SiteHeader.tsx), just with only Tải về + Đăng xuất inside instead of
+   the full customer menu. */
+.admin-topbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -8px;
 }
 
 .admin-grid {
@@ -3080,6 +3096,7 @@ p {
   max-height: 420px;
   overflow-y: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .referral-list-row {
@@ -4607,6 +4624,7 @@ p {
   max-height: 480px;
   overflow-y: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .faq-item {
@@ -4974,6 +4992,7 @@ p {
   max-height: 720px;
   overflow-y: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .ship-order-card {
@@ -5890,6 +5909,7 @@ p {
   max-height: 420px;
   overflow-y: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .bank-manage-list {
@@ -6734,6 +6754,7 @@ p {
   overflow-y: auto;
   padding: 14px 14px 6px;
   background: var(--bg-secondary);
+  overscroll-behavior: contain;
 }
 
 .support-chat-bubble-image {
@@ -6866,6 +6887,7 @@ p {
   max-height: 380px;
   overflow-y: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .support-chat-inbox-row {
