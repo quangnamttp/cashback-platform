@@ -107,6 +107,10 @@ type Voucher = {
 
 const REFRESH_SLOTS = ['00:00', '09:00', '12:00', '15:00', '18:00', '20:00'];
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 function getNextSlotInfo() {
   const now = new Date();
   const slotsToday = REFRESH_SLOTS.map((slot) => {
@@ -128,8 +132,9 @@ function getNextSlotInfo() {
   const diffMs = next.date.getTime() - now.getTime();
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
+  const seconds = Math.floor((diffMs / 1000) % 60);
 
-  return { nextSlot: next.slot, hours, minutes };
+  return { nextSlot: next.slot, hours, minutes, seconds };
 }
 
 const platformGroups = [
@@ -150,7 +155,7 @@ export default function GetCashbackLinkPage() {
   // sharing this same "link" field instead of its own separate input.
   const [activeGroup, setActiveGroup] = useState('fb-ig');
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
-  const [countdown, setCountdown] = useState<{ nextSlot: string; hours: number; minutes: number } | null>(null);
+  const [countdown, setCountdown] = useState<{ nextSlot: string; hours: number; minutes: number; seconds: number } | null>(null);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
   const [productPreview, setProductPreview] = useState<ProductPreview | null>(null);
   // Whichever image URL is currently shown (from either source — see
@@ -171,7 +176,10 @@ export default function GetCashbackLinkPage() {
 
   useEffect(() => {
     setCountdown(getNextSlotInfo());
-    const id = setInterval(() => setCountdown(getNextSlotInfo()), 60_000);
+    // Every 1s (was 60s) now that the display shows live seconds too — a
+    // plain setInterval, not a heavy computation, so this is cheap even
+    // ticking every second for as long as this page stays open.
+    const id = setInterval(() => setCountdown(getNextSlotInfo()), 1_000);
     return () => clearInterval(id);
   }, []);
 
@@ -875,13 +883,19 @@ export default function GetCashbackLinkPage() {
               <span>⏱ {t('sv_slot_title')}</span>
               {countdown && (
                 <span className="sv-countdown">
-                  {t('sv_next_in')} {countdown.hours}{t('sv_hours')}{countdown.minutes}{t('sv_minutes')}
+                  {t('sv_next_in')}
+                  <span className="sv-countdown-clock">
+                    <span className="sv-countdown-digit">{pad2(countdown.hours)}</span>:
+                    <span className="sv-countdown-digit">{pad2(countdown.minutes)}</span>:
+                    <span className="sv-countdown-digit">{pad2(countdown.seconds)}</span>
+                  </span>
                 </span>
               )}
             </div>
             <div className="sv-slot-grid">
               {REFRESH_SLOTS.map((slot) => (
                 <div key={slot} className={`sv-slot-item${countdown?.nextSlot === slot ? ' next' : ''}`}>
+                  <span className="sv-slot-icon">{countdown?.nextSlot === slot ? '🔥' : '🕓'}</span>
                   <strong>{slot}</strong>
                   <span>{countdown?.nextSlot === slot ? t('sv_slot_next_tag') : t('sv_slot_refresh_tag')}</span>
                 </div>

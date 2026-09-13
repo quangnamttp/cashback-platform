@@ -29,6 +29,15 @@
 html, body {
   overflow-x: hidden;
   max-width: 100%;
+  /* overflow-x:hidden above stops actual horizontal SCROLLING, but mobile
+     browsers can still show an elastic "rubber-band" bounce at the left/
+     right edges on a swipe/drag gesture regardless — briefly revealing
+     blank space past the real content even though nothing is actually
+     scrollable there (reported live 2026-09-13: dragging sideways on
+     /get-cashback-link exposed empty white space on both edges). This is
+     the standard fix — disables that specific horizontal bounce only,
+     vertical scroll/bounce (pull-to-refresh etc.) is untouched. */
+  overscroll-behavior-x: none;
 }
 
 img, video, canvas, iframe {
@@ -177,6 +186,15 @@ p {
    sees the exact same 16px it always has, byte-for-byte unchanged. */
 :root {
   --edge-gutter: clamp(8px, 2.4vw - 2.2px, 16px);
+  /* Same fluid idea, for the many "card" components that each hardcode
+     their OWN padding (get-link-card, welcome-card-v2, referral-hero,
+     summary-card, login-card, etc.) instead of sharing .panel — .panel
+     alone (2026-09-13's earlier fix) didn't reach these, so a phone still
+     saw the exact old fixed padding on any page using one of them. Three
+     tiers matching the 3 padding values already in use around the site. */
+  --card-pad-20: clamp(12px, 2.4vw + 1.8px, 20px);
+  --card-pad-24: clamp(14px, 3vw + 1px, 24px);
+  --card-pad-28: clamp(16px, 3.5vw + 1px, 28px);
 }
 
 .container {
@@ -593,7 +611,7 @@ p {
 }
 
 .summary-card {
-  padding: 28px;
+  padding: var(--card-pad-28);
   border-radius: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -755,7 +773,7 @@ p {
 
 .feature-card,
 .platform-card {
-  padding: 28px;
+  padding: var(--card-pad-28);
 }
 
 .coupon-card,
@@ -763,16 +781,18 @@ p {
 .flash-card,
 .social-card,
 .stat-card {
-  padding: 20px;
+  padding: var(--card-pad-20);
 }
 
-.panel,
-.info-block {
+/* .info-block is declared again later (its actual real padding, 28px, per
+   that later rule winning the cascade) — kept separate on purpose now, not
+   grouped here, to stop implying that one 24px value ever applied to it. */
+.panel {
   /* Same continuous scaling as .container's --edge-gutter (see its own
      comment) — 14px across the whole common phone-width range (~360-430px),
      ramping smoothly up to the original fixed 24px by ~768px (tablet) and
      staying exactly 24px above that, so desktop is unaffected. */
-  padding: clamp(14px, 3vw + 1px, 24px);
+  padding: var(--card-pad-24);
 }
 
 .panel-header {
@@ -930,8 +950,12 @@ p {
   align-items: center;
 }
 
+/* This later declaration is the one that actually wins (same specificity
+   as the earlier .panel, .info-block rule above, later in source order) —
+   fixed to scale fluidly here too, at its real 28px value, rather than
+   the 24px the earlier rule implies but never actually applies. */
 .info-block {
-  padding: 28px;
+  padding: var(--card-pad-28);
 }
 
 .bullet-list {
@@ -943,7 +967,7 @@ p {
 }
 
 .stats-panel {
-  padding: 20px;
+  padding: var(--card-pad-20);
 }
 
 .stat-stack {
@@ -1134,7 +1158,7 @@ p {
 }
 
 .form-panel {
-  padding: 24px;
+  padding: var(--card-pad-24);
 }
 
 .compact-cta {
@@ -2564,7 +2588,7 @@ p {
 .promo-banner {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: var(--card-pad-24);
   color: #fff;
   margin-top: 20px;
 }
@@ -2973,7 +2997,7 @@ p {
   background: linear-gradient(135deg, var(--bg-accent), var(--surface) 85%);
   border: 1px solid var(--primary-lighter);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: var(--card-pad-24);
 }
 
 .referral-hero h1 {
@@ -3108,7 +3132,7 @@ p {
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: var(--card-pad-24);
   margin-top: 8px;
 }
 
@@ -3315,9 +3339,35 @@ p {
 }
 
 .sv-countdown {
-  color: var(--danger);
-  font-weight: 700;
-  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+/* Digital-clock look (dark pill, monospaced digits) instead of plain
+   "2h48p" text — reads as a live, ticking timer rather than a static
+   label, matching it now actually updating every second. */
+.sv-countdown-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: #142440;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.sv-countdown-digit {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.85rem;
 }
 
 .sv-slot-grid {
@@ -3328,11 +3378,21 @@ p {
 }
 
 .sv-slot-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 10px 6px;
+  padding: 12px 6px;
   text-align: center;
   background: var(--bg-secondary);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sv-slot-icon {
+  font-size: 1.1rem;
+  margin-bottom: 2px;
 }
 
 .sv-slot-item strong {
@@ -3347,8 +3407,10 @@ p {
 }
 
 .sv-slot-item.next {
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   border-color: var(--primary);
+  box-shadow: 0 6px 16px rgba(0, 150, 255, 0.25);
+  transform: translateY(-2px);
 }
 
 .sv-slot-item.next strong,
@@ -3952,7 +4014,7 @@ p {
   overflow: hidden;
   background: linear-gradient(160deg, var(--primary) 0%, var(--primary-dark) 100%);
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: var(--card-pad-24);
   margin-top: 8px;
   color: #fff;
   box-shadow: var(--shadow-lg);
@@ -4051,10 +4113,15 @@ p {
   background: #fff;
   color: var(--primary-dark);
   font-weight: 700;
+  /* A flat white button with no shadow reads as cheap/flat sitting
+     directly on a rich gradient card — this depth is what the base
+     .button class's OWN hover-only shadow doesn't provide at rest. */
+  box-shadow: 0 6px 16px rgba(8, 27, 66, 0.22);
 }
 
 .welcome-card-v2 .button-primary:hover {
   background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 20px rgba(8, 27, 66, 0.28);
 }
 
 .welcome-card-v2 .button-secondary {
@@ -5227,7 +5294,7 @@ p {
   width: 100%;
   max-height: 88vh;
   overflow-y: auto;
-  padding: 24px;
+  padding: var(--card-pad-24);
   box-shadow: var(--shadow-lg);
 }
 
@@ -5551,7 +5618,7 @@ p {
   width: min(420px, 100%);
   background: var(--surface);
   border-radius: var(--radius-lg);
-  padding: 28px;
+  padding: var(--card-pad-28);
   box-shadow: var(--shadow-lg);
 }
 
