@@ -249,7 +249,14 @@ service cloud.firestore {
             && (request.resource.data.status == 'CANCELLED' || request.resource.data.customerVisible == true))
         || (isConversionBot() && resource.data.source == 'AFFILIATE'
             && ((resource.data.status == 'PENDING' && request.resource.data.status == 'PENDING'
-                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount']))
+                 // telegramChatId/telegramMessageId/orderNotificationSentAt
+                 // added 2026-09-12 — lets a still-PENDING order's Topic 33
+                 // send be retried (and its success recorded) on a LATER
+                 // cron tick if the first attempt's Telegram call failed
+                 // after the order itself was already created — see
+                 // backfillOrderNotification/sendTopic33AndMark. Never
+                 // touches status/commissionStatus/commissionAmount here.
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'telegramChatId', 'telegramMessageId', 'orderNotificationSentAt']))
                 || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'REFUNDED'
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'commissionStatus', 'cashbackClawback']))
                 // NEW 2026-09-12 — closes the gap where commissionStatus

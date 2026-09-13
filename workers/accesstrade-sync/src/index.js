@@ -159,7 +159,11 @@ async function firestoreCreate(env, idToken, collectionName, docId, fields) {
   if (res.status === 409 || res.status === 400) return { created: false };
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`firestore create ${collectionName}/${docId} failed: ${json.error?.message || res.status}`);
-  return { created: true };
+  // updateTime is needed by sendTopic33AndMark's own atomic precondition
+  // when patching telegramChatId/telegramMessageId/orderNotificationSentAt
+  // right after this create — existing callers destructuring just
+  // {created} are unaffected.
+  return { created: true, updateTime: json.updateTime };
 }
 
 async function firestorePatch(env, idToken, collectionName, docId, fields) {
@@ -1485,6 +1489,89 @@ async function sendTelegramNewOrder(env, fields) {
   return { chatId: String(res.result.chat.id), messageId: res.result.message_id };
 }
 
+// FIXED 2026-09-12 — a real order (260912VUDW3U) was created successfully
+// but Topic 33 was never sent: the old code sent the message and, whether
+// or not it actually succeeded, moved on with no way to notice or retry a
+// failure later (the PENDING branch below only ever refreshed
+// commissionStatus, never re-checked whether Topic 33 had gone out).
+// SENDS FIRST, marks orderNotificationSentAt only once Telegram actually
+// confirms delivery — the opposite order from payoutNotificationSentAt's
+// own claim-before-send pattern (Topic 13), deliberately: Topic 13 guards
+// against ever double-triggering something release-adjacent, while a
+// missed Topic 33 means an order silently never gets Admin's attention at
+// all, which is the worse failure mode here. The realistic cost of this
+// ordering — an extremely rare duplicate message if two ticks somehow
+// overlap on the exact same order — is a harmless Telegram duplicate, not
+// a money-moving event. Returns true once a message has been sent,
+// regardless of whether the metadata patch that follows it succeeds (a
+// lost patch race just means another cycle already recorded the same
+// real send moments ago).
+async function sendTopic33AndMark(env, idToken, orderId, currentUpdateTime, messageFields) {
+  const telegramRef = await sendTelegramNewOrder(env, messageFields);
+  if (!telegramRef) {
+    console.error(`order ${orderId}: Topic 33 send failed — orderNotificationSentAt NOT set, will retry on a later cron tick`);
+    return false;
+  }
+  const precondition = currentUpdateTime
+    ? `&currentDocument.updateTime=${encodeURIComponent(currentUpdateTime)}`
+    : '&currentDocument.exists=true';
+  const res = await fetch(
+    `${firestoreDocUrl(env, 'orders', orderId)}?updateMask.fieldPaths=telegramChatId&updateMask.fieldPaths=telegramMessageId&updateMask.fieldPaths=orderNotificationSentAt${precondition}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          telegramChatId: { stringValue: telegramRef.chatId },
+          telegramMessageId: { integerValue: String(telegramRef.messageId) },
+          orderNotificationSentAt: { timestampValue: new Date().toISOString() },
+        },
+      }),
+    },
+  ).catch((err) => {
+    console.error(`order ${orderId}: Topic 33 metadata patch threw:`, err.message);
+    return null;
+  });
+  if (res && (res.status === 409 || res.status === 400)) {
+    console.log(`order ${orderId}: another cycle already recorded a Topic 33 send — this send's own message stays sent regardless`);
+  } else if (!res || !res.ok) {
+    console.error(`order ${orderId}: Topic 33 metadata patch failed (message WAS sent — orderNotificationSentAt may retry-resend next cycle)`);
+  }
+  return true;
+}
+
+// Backfill for a still-PENDING order whose Topic 33 was never confirmed
+// sent — checked on every cron tick a PENDING order is seen again (see the
+// PENDING branch below), so a one-off Telegram failure self-heals within
+// one cycle instead of leaving Admin permanently unaware of a real order.
+async function backfillOrderNotification(env, idToken, orderId, existingDoc, platform, commissionStatusLabel, commissionAmount) {
+  const userId = fv(existingDoc.fields, 'userId');
+  const externalOrderId = fv(existingDoc.fields, 'externalOrderId') || orderId;
+  const orderValue = fv(existingDoc.fields, 'orderValue') || 0;
+  const productName = fv(existingDoc.fields, 'productName') || `Đơn hàng ACCESSTRADE #${externalOrderId}`;
+  const userDoc = await firestoreGet(env, idToken, 'users', userId).catch(() => null);
+  const requesterLabel = (userDoc && (fv(userDoc.fields, 'fullName') || fv(userDoc.fields, 'email'))) || userId;
+  const referredByCode = userDoc ? fv(userDoc.fields, 'referredBy') : undefined;
+  const referrerUid = await resolveReferrerUid(env, idToken, userId, referredByCode).catch((err) => {
+    console.error(`order ${orderId}: referrer lookup for Topic 33 backfill threw:`, err.message);
+    return null;
+  });
+  const split = computeCommissionSplit(commissionAmount, !!referrerUid);
+  const notified = await sendTopic33AndMark(env, idToken, orderId, existingDoc.updateTime, {
+    requesterLabel,
+    productName,
+    platformLabel: PLATFORM_LABEL[platform] ?? platform,
+    orderValue,
+    commissionAmount: Math.round(commissionAmount),
+    customerAmount: split.customerAmount,
+    platformAmount: split.platformAmount,
+    commissionStatusLabel,
+    orderId,
+    externalOrderId,
+  });
+  console.log(`order ${orderId}: Topic 33 backfill attempt, notified=${notified}`);
+}
+
 // --- Commission split preview (Topic 33) + payout-eligibility detection ---
 // Mirrors computeCommissionSplit()/COMMISSION_SPLIT in apps/web/lib/
 // orderEntry.ts and workers/telegram-bot/src/index.js exactly (same
@@ -1763,6 +1850,12 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       customerVisible: { booleanValue: false },
       telegramChatId: { nullValue: null },
       telegramMessageId: { nullValue: null },
+      // Set only once sendTopic33AndMark's own send actually succeeds —
+      // stays null (not this order's fault) if the very first Topic 33
+      // attempt fails right after creation, so the PENDING branch below
+      // retries it on a later tick instead of the order silently sitting
+      // with no alert ever sent. See that function's own comment.
+      orderNotificationSentAt: { nullValue: null },
     };
 
     if (env.DRY_RUN !== 'false') {
@@ -1770,7 +1863,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       return;
     }
 
-    const { created } = await firestoreCreate(env, idToken, 'orders', orderId, orderFields);
+    const { created, updateTime } = await firestoreCreate(env, idToken, 'orders', orderId, orderFields);
     if (!created) {
       console.log(`order ${orderId}: create raced/lost (already exists) — no-op, no duplicate`);
       return;
@@ -1787,7 +1880,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       return null;
     });
     const split = computeCommissionSplit(commissionAmount, !!referrerUid);
-    const telegramRef = await sendTelegramNewOrder(env, {
+    const notified = await sendTopic33AndMark(env, idToken, orderId, updateTime, {
       requesterLabel,
       productName,
       platformLabel: PLATFORM_LABEL[platform] ?? platform,
@@ -1799,13 +1892,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       orderId,
       externalOrderId,
     });
-    if (telegramRef) {
-      await firestorePatch(env, idToken, 'orders', orderId, {
-        telegramChatId: { stringValue: telegramRef.chatId },
-        telegramMessageId: { integerValue: String(telegramRef.messageId) },
-      });
-    }
-    console.log(`order ${orderId}: created (PENDING), Telegram notified: ${!!telegramRef}`);
+    console.log(`order ${orderId}: created (PENDING), Telegram notified: ${notified}`);
     return;
   }
 
@@ -1816,16 +1903,26 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
   const existingCommissionStatus = fv(existing.fields, 'commissionStatus');
 
   if (existingStatus === 'PENDING') {
-    if (existingCommissionStatus !== status || fv(existing.fields, 'commissionAmount') !== Math.round(commissionAmount)) {
+    const commissionChanged = existingCommissionStatus !== status || fv(existing.fields, 'commissionAmount') !== Math.round(commissionAmount);
+    if (commissionChanged) {
       if (env.DRY_RUN !== 'false') {
         console.log(`[DRY_RUN] would UPDATE ${orderId} commissionStatus ${existingCommissionStatus} -> ${status}`);
-        return;
+      } else {
+        await firestorePatch(env, idToken, 'orders', orderId, {
+          commissionStatus: { stringValue: status },
+          commissionAmount: { integerValue: String(Math.round(commissionAmount)) },
+        });
+        console.log(`order ${orderId}: PENDING, commissionStatus refreshed to ${status}`);
       }
-      await firestorePatch(env, idToken, 'orders', orderId, {
-        commissionStatus: { stringValue: status },
-        commissionAmount: { integerValue: String(Math.round(commissionAmount)) },
-      });
-      console.log(`order ${orderId}: PENDING, commissionStatus refreshed to ${status}`);
+    }
+    // FIXED 2026-09-12 — see sendTopic33AndMark/backfillOrderNotification's
+    // own comments: retries Topic 33 for as long as orderNotificationSentAt
+    // is still missing on a real, existing PENDING order, so one Telegram
+    // hiccup right after creation never leaves an order permanently
+    // un-alerted. Never runs under DRY_RUN (this Worker must not write
+    // anything at all in that mode, matching every other branch here).
+    if (env.DRY_RUN === 'false' && !fv(existing.fields, 'orderNotificationSentAt')) {
+      await backfillOrderNotification(env, idToken, orderId, existing, platform, status, commissionAmount);
     }
     return;
   }
@@ -2411,8 +2508,42 @@ export default {
           affiliateConversionId: fv(f, 'affiliateConversionId'),
           commissionStatus: fv(f, 'commissionStatus'),
           customerVisible: fv(f, 'customerVisible'),
+          payoutNotificationSentAt: fv(f, 'payoutNotificationSentAt'),
+          orderNotificationSentAt: fv(f, 'orderNotificationSentAt'),
+          telegramChatId: fv(f, 'telegramChatId'),
+          telegramMessageId: fv(f, 'telegramMessageId'),
         },
       });
+    }
+    // TEMPORARY read-only diagnostic (added 2026-09-12, per explicit
+    // request) — independently confirms what cashbackLedger entries exist
+    // for a given orderId (created by lib/orderEntry.ts or workers/
+    // telegram-bot's handleOrderDecision, never by this Worker directly),
+    // to verify the FROZEN->eligible->RELEASED flow end to end without
+    // trusting only log lines. Read-only: no write, not part of
+    // processOneOrder/pollOrders.
+    if (url.pathname === '/debug/ledger-for-order') {
+      if (!isDebugAuthorized(url)) return new Response('forbidden', { status: 403 });
+      const orderId = url.searchParams.get('orderId');
+      if (!orderId) return Response.json({ error: 'missing orderId' }, { status: 400 });
+      const idToken = await firestoreSignIn(env);
+      const rows = await firestoreRunQuery(env, idToken, {
+        from: [{ collectionId: 'cashbackLedger' }],
+        where: { fieldFilter: { field: { fieldPath: 'orderId' }, op: 'EQUAL', value: { stringValue: orderId } } },
+      });
+      const entries = rows.map((row) => {
+        const f = row.document.fields;
+        return {
+          ledgerId: row.document.name.split('/').pop(),
+          userId: fv(f, 'userId'),
+          type: fv(f, 'type'),
+          amount: fv(f, 'amount'),
+          status: fv(f, 'status'),
+          telegramChatId: fv(f, 'telegramChatId'),
+          telegramMessageId: fv(f, 'telegramMessageId'),
+        };
+      });
+      return Response.json({ orderId, count: entries.length, entries });
     }
     return new Response('OK', { status: 200 });
   },
