@@ -164,8 +164,23 @@ p {
   margin: 0;
 }
 
+/* Scales continuously with the actual viewport instead of jumping at one
+   fixed breakpoint — a phone at 479px and one at 481px would otherwise get
+   very different gutters despite being nearly identical, and every real
+   phone (small Android ~360px up through large iPhones ~430px) would
+   otherwise land on different, arbitrary values depending on exactly where
+   a single cutoff was drawn. This ramps from 8px at 360px-and-below,
+   through the ENTIRE common phone width range (so a 360px phone and a
+   430px phone both land at essentially 8px, not two different values),
+   up to today's 16px by ~768px (tablet territory) — and simply stays 16px
+   above that, so desktop (already capped at 1200px by the min() below)
+   sees the exact same 16px it always has, byte-for-byte unchanged. */
+:root {
+  --edge-gutter: clamp(8px, 2.4vw - 2.2px, 16px);
+}
+
 .container {
-  width: min(1200px, calc(100% - 32px));
+  width: min(1200px, calc(100% - (2 * var(--edge-gutter))));
   margin: 0 auto;
 }
 
@@ -753,7 +768,11 @@ p {
 
 .panel,
 .info-block {
-  padding: 24px;
+  /* Same continuous scaling as .container's --edge-gutter (see its own
+     comment) — 14px across the whole common phone-width range (~360-430px),
+     ramping smoothly up to the original fixed 24px by ~768px (tablet) and
+     staying exactly 24px above that, so desktop is unaffected. */
+  padding: clamp(14px, 3vw + 1px, 24px);
 }
 
 .panel-header {
