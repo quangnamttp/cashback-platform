@@ -308,7 +308,7 @@ export default function AdminSettingsPage() {
             <div className="settings-maintenance-item">
               <h4>🔄 Cập nhật hiển thị đơn hàng cho khách (chạy 1 lần)</h4>
               <p className="muted-copy">
-                Đơn hàng tạo từ ACCESSTRADE (khi kích hoạt thật) sẽ ẩn khỏi khách hàng cho tới khi Admin duyệt — đơn thủ
+                Đơn hàng tạo tự động (khi kích hoạt thật) sẽ ẩn khỏi khách hàng cho tới khi Admin duyệt — đơn thủ
                 công không đổi gì, vẫn hiển thị như trước. Để lịch sử đơn hàng của khách không bị trống, các đơn cũ tạo
                 trước khi có cơ chế này cần được đánh dấu &quot;hiển thị&quot; một lần. An toàn khi bấm nhiều lần (lần
                 sau không làm gì nếu đã chạy rồi).

@@ -348,11 +348,11 @@ export default function AdminPayoutsPage() {
       {awaitingCommissionEntries.length > 0 && (
         <div className="panel admin-table-panel" style={{ marginTop: 16 }}>
           <div className="panel-header">
-            <h3>Đang chờ ACCESSTRADE xác nhận hoa hồng</h3>
+            <h3>Đang chờ sàn xác nhận hoa hồng</h3>
             <span className="badge">{awaitingCommissionEntries.length} khoản</span>
           </div>
           <p className="muted-copy" style={{ marginBottom: 10 }}>
-            Các khoản dưới đây thuộc đơn hàng ACCESSTRADE mà Admin đã duyệt, nhưng sàn chưa xác nhận hoa hồng
+            Các khoản dưới đây thuộc đơn hàng tự động mà Admin đã duyệt, nhưng sàn chưa xác nhận hoa hồng
             (APPROVED) — chưa thể duyệt/giải phóng từ đây để tránh giải phóng nhầm một mức hoa hồng còn tạm tính.
             Tiền vẫn đang được giữ (FROZEN) bình thường, không mất.
           </p>

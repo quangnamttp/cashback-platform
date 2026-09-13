@@ -1447,7 +1447,7 @@ function formatVnd(amount) {
 // Admin never mistakes "Đã duyệt đơn" for "ACCESSTRADE đã APPROVED".
 function renderNewOrderMessage(fields) {
   return [
-    '🆕 <b>ĐƠN HÀNG MỚI (ACCESSTRADE)</b>',
+    '🆕 <b>ĐƠN HÀNG MỚI</b>',
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterLabel)}</code>`,
     `🛍️ <b>Sản phẩm:</b> <code>${escapeHtml(fields.productName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
@@ -1456,7 +1456,7 @@ function renderNewOrderMessage(fields) {
     `🤑 <b>Khách được hoàn:</b> <code>${escapeHtml(formatVnd(fields.customerAmount))}</code>`,
     `🏦 <b>Hệ thống/Admin:</b> <code>${escapeHtml(formatVnd(fields.platformAmount))}</code>`,
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
-    `🔗 <b>ACCESSTRADE order_id:</b> <code>${escapeHtml(fields.externalOrderId)}</code>`,
+    `🔗 <b>Mã đối soát:</b> <code>${escapeHtml(fields.externalOrderId)}</code>`,
     `📶 <b>Trạng thái hoa hồng:</b> ${escapeHtml(fields.commissionStatusLabel)}`,
     '⏳ <b>Trạng thái:</b> Chờ duyệt',
   ].join('\n');
@@ -1548,7 +1548,7 @@ async function backfillOrderNotification(env, idToken, orderId, existingDoc, pla
   const userId = fv(existingDoc.fields, 'userId');
   const externalOrderId = fv(existingDoc.fields, 'externalOrderId') || orderId;
   const orderValue = fv(existingDoc.fields, 'orderValue') || 0;
-  const productName = fv(existingDoc.fields, 'productName') || `Đơn hàng ACCESSTRADE #${externalOrderId}`;
+  const productName = fv(existingDoc.fields, 'productName') || orderPlaceholderName(externalOrderId);
   const userDoc = await firestoreGet(env, idToken, 'users', userId).catch(() => null);
   const requesterLabel = (userDoc && (fv(userDoc.fields, 'fullName') || fv(userDoc.fields, 'email'))) || userId;
   const referredByCode = userDoc ? fv(userDoc.fields, 'referredBy') : undefined;
@@ -1714,7 +1714,7 @@ async function accesstradeCreateFraudSignal(env, idToken, { userId, orderId, ord
         orderValue: { integerValue: String(Math.round(orderValue)) },
         refundCount: { integerValue: String(refundCount) },
         totalOrders: { integerValue: String(totalOrders) },
-        reason: { stringValue: `[ACCESSTRADE] Đơn ${orderId} bị ${reason} (lần trả hàng thứ ${refundCount}/${totalOrders} của khách này).${released ? ' Cashback đã giải phóng — cần Admin xem xét thu hồi thủ công.' : ''}` },
+        reason: { stringValue: `Đơn ${orderId} bị ${reason} (lần trả hàng thứ ${refundCount}/${totalOrders} của khách này).${released ? ' Cashback đã giải phóng — cần Admin xem xét thu hồi thủ công.' : ''}` },
         status: { stringValue: 'OPEN' },
         createdAt: { timestampValue: new Date().toISOString() },
       },
@@ -1744,21 +1744,34 @@ function deriveOrderStatus(order) {
   return 'PENDING';
 }
 
+// Never expose the affiliate network's name to the customer/admin/Telegram
+// — see this file's other ACCESSTRADE-wording removals (2026-09-13). Orders
+// created before that date may still have the OLD `Đơn hàng ACCESSTRADE
+// #<id>` string stored — recognized by backfillProductInfo below too, so
+// those orders keep self-healing correctly instead of being mistaken for
+// already having a real name.
+function orderPlaceholderName(externalOrderId) {
+  return `Đơn hàng #${externalOrderId}`;
+}
+function legacyOrderPlaceholderName(externalOrderId) {
+  return `Đơn hàng ACCESSTRADE #${externalOrderId}`;
+}
+
 // CONFIRMED live against a real order-products response (order_id
 // 260911RD0KW95Q): each row's real product title lives at
 // `_extra.product_name` (image at `_extra.main_image_url`), not any
 // documented field — a "bonus"/reward line item carries an empty string
 // there, so this skips blanks and takes the first row with a real value.
-// Falls back to the old ACCESSTRADE-id placeholder / no image when no row
-// has one at all (never an empty string written to Firestore). Shared by
-// both the initial create (below) and backfillProductInfo (see that
-// function's own comment on why a SECOND, later attempt is often needed —
-// confirmed live 2026-09-13: this data can arrive on ACCESSTRADE's side
-// well after the order itself is first seen, not always available at the
-// very first order-products call).
+// Falls back to the placeholder / no image when no row has one at all
+// (never an empty string written to Firestore). Shared by both the initial
+// create (below) and backfillProductInfo (see that function's own comment
+// on why a SECOND, later attempt is often needed — confirmed live
+// 2026-09-13: this data can arrive on ACCESSTRADE's side well after the
+// order itself is first seen, not always available at the very first
+// order-products call).
 function extractProductInfoFromRows(rows, externalOrderId) {
   return {
-    productName: rows.map((row) => row?._extra?.product_name).find((v) => !!v) || `Đơn hàng ACCESSTRADE #${externalOrderId}`,
+    productName: rows.map((row) => row?._extra?.product_name).find((v) => !!v) || orderPlaceholderName(externalOrderId),
     imageUrl: rows.map((row) => row?._extra?.main_image_url).find((v) => !!v) || null,
   };
 }
@@ -1780,7 +1793,7 @@ async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant)
   const externalOrderId = fv(existingDoc.fields, 'externalOrderId') || orderId;
   const currentName = fv(existingDoc.fields, 'productName');
   const currentImage = fv(existingDoc.fields, 'imageUrl');
-  const stillPlaceholder = !currentName || currentName === `Đơn hàng ACCESSTRADE #${externalOrderId}`;
+  const stillPlaceholder = !currentName || currentName === orderPlaceholderName(externalOrderId) || currentName === legacyOrderPlaceholderName(externalOrderId);
   if (!stillPlaceholder && currentImage) return; // already has real data — nothing to do
 
   const { ok, json } = await accesstradeApi(env, 'GET', '/v1/order-products', { query: { order_id: externalOrderId, merchant } });
@@ -1792,7 +1805,15 @@ async function backfillProductInfo(env, idToken, orderId, existingDoc, merchant)
   const rows = Array.isArray(json?.data) ? json.data : (json?.data ? [json.data] : []);
   const { productName, imageUrl } = extractProductInfoFromRows(rows, externalOrderId);
   const patch = {};
-  if (stillPlaceholder && productName !== `Đơn hàng ACCESSTRADE #${externalOrderId}`) patch.productName = { stringValue: productName };
+  if (stillPlaceholder && productName !== orderPlaceholderName(externalOrderId)) {
+    patch.productName = { stringValue: productName }; // real name found
+  } else if (currentName === legacyOrderPlaceholderName(externalOrderId)) {
+    // No real name yet, but this order predates the 2026-09-13 wording
+    // change and still carries the OLD branded placeholder — migrate it to
+    // the de-branded one now instead of waiting indefinitely for data
+    // ACCESSTRADE may never provide.
+    patch.productName = { stringValue: orderPlaceholderName(externalOrderId) };
+  }
   if (!currentImage && imageUrl) patch.imageUrl = { stringValue: imageUrl };
   if (Object.keys(patch).length === 0) {
     console.log(`order ${orderId}: product-info backfill — ACCESSTRADE still has no better name/image, will retry next cycle`);
@@ -1991,7 +2012,7 @@ async function processOneOrder(env, idToken, platform, merchant, order) {
       console.log(`[DRY_RUN] would CLAW BACK ${orderId} (ACCESSTRADE reported rejected/cancelled after CONFIRMED)`);
       return;
     }
-    await handleClawback(env, idToken, existing, orderId, existing.fields, 'bị ACCESSTRADE báo hủy/từ chối');
+    await handleClawback(env, idToken, existing, orderId, existing.fields, 'sàn báo hủy/từ chối');
     console.log(`order ${orderId}: clawback processed`);
     return;
   }
@@ -2184,10 +2205,10 @@ function renderPayoutEligibleMessage(fields) {
     `👤 <b>Khách hàng:</b> <code>${escapeHtml(fields.requesterName)}</code>`,
     `🏬 <b>Sàn:</b> <code>${escapeHtml(fields.platformLabel)}</code>`,
     `🆔 <b>Mã đơn:</b> <code>${escapeHtml(fields.orderId)}</code>`,
-    `💰 <b>Hoa hồng ACCESSTRADE:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
+    `💰 <b>Hoa hồng thực nhận:</b> <code>${escapeHtml(fields.commissionAmountLabel)}</code>`,
     `🤑 <b>Khách nhận:</b> <code>${escapeHtml(fields.customerAmountLabel)}</code>`,
     `🏦 <b>Hệ thống/Admin giữ:</b> <code>${escapeHtml(fields.platformAmountLabel)}</code>`,
-    '✅ <b>ACCESSTRADE:</b> APPROVED',
+    '✅ <b>Trạng thái hoa hồng:</b> Đã duyệt',
     '🔒 <b>Cashback hiện tại:</b> FROZEN',
     '⏳ <b>Trạng thái:</b> Chờ Admin duyệt hoàn',
   ].join('\n');

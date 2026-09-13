@@ -812,7 +812,7 @@ async function handleCashbackDecision(env, callbackQuery, ledgerId, targetStatus
         if (!orderReady) {
           const reason = relatedOrder.status !== 'CONFIRMED'
             ? `đơn hàng chưa ở trạng thái CONFIRMED (hiện tại: ${relatedOrder.status ?? 'không rõ'})`
-            : `ACCESSTRADE chưa APPROVED hoa hồng (hiện tại: ${relatedOrder.commissionStatus ?? 'không rõ'})`;
+            : `sàn chưa duyệt hoa hồng (hiện tại: ${relatedOrder.commissionStatus ?? 'không rõ'})`;
           await answerCallback(env, callbackQuery.id, `⚠️ Chưa thể duyệt hoàn tiền — ${reason}.`, true);
           return;
         }

@@ -404,8 +404,8 @@ export default function AdminOrdersPage() {
                     <td>
                       <CopyIdChip value={order.id} />
                       {order.source === 'AFFILIATE' && (
-                        <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title={`Tự động từ ${order.affiliateProvider ?? 'affiliate provider'} — chưa qua kiểm tra thủ công`}>
-                          🤖 {order.affiliateProvider ?? 'AUTO'}
+                        <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title="Đơn hàng đồng bộ tự động — chưa qua kiểm tra thủ công">
+                          🤖 Tự động
                         </span>
                       )}
                     </td>
@@ -631,8 +631,8 @@ export default function AdminOrdersPage() {
                   <td>
                     {PLATFORM_LABEL[item.platform] ?? item.platform}
                     {item.source === 'AFFILIATE' && (
-                      <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title={`Tự động từ ${item.affiliateProvider ?? 'affiliate provider'}`}>
-                        🤖 {item.affiliateProvider ?? 'AUTO'}
+                      <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title="Đơn hàng được đồng bộ tự động từ sàn liên kết">
+                        🤖 Tự động
                       </span>
                     )}
                   </td>
@@ -690,8 +690,8 @@ export default function AdminOrdersPage() {
                 <span>
                   {PLATFORM_LABEL[detailOrder.platform] ?? detailOrder.platform}
                   {detailOrder.source === 'AFFILIATE' && (
-                    <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title={`Tự động từ ${detailOrder.affiliateProvider ?? 'affiliate provider'}`}>
-                      🤖 {detailOrder.affiliateProvider ?? 'AUTO'}
+                    <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title="Đơn hàng được đồng bộ tự động từ sàn liên kết">
+                      🤖 Tự động
                     </span>
                   )}
                 </span>
