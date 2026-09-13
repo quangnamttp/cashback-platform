@@ -3600,9 +3600,15 @@ p {
   min-width: 220px;
 }
 
+/* Fixed cap instead of flex:1 — with flex:1 the title's available width
+   depended on whatever else happened to share the row (e.g. it grew larger
+   when the amount/status block wrapped to its own line for a card with a
+   tall product image), so the same product name could truncate at a
+   different length on different cards. A fixed max-width makes the cutoff
+   point consistent regardless of what else is on the row. */
 .order-card-info {
   min-width: 0;
-  flex: 1;
+  max-width: 420px;
 }
 
 /* Single line, ellipsis-truncated instead of wrapping — a long product name
@@ -4819,11 +4825,12 @@ p {
   align-items: center;
   text-align: center;
   min-width: 0;
+  position: relative;
 }
 
 .ship-tracker-node-wrap {
   display: flex;
-  align-items: center;
+  justify-content: center;
   width: 100%;
 }
 
@@ -4838,7 +4845,8 @@ p {
   justify-content: center;
   font-size: 1rem;
   flex-shrink: 0;
-  margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .ship-tracker-node.done {
@@ -4852,11 +4860,20 @@ p {
   box-shadow: 0 0 0 4px var(--primary-lighter);
 }
 
+/* Runs from THIS step's icon center to the NEXT step's icon center: since
+   every .ship-tracker-step is an equal-width flex:1 column, left:50% +
+   width:100% (both relative to this step's own box) lands exactly on the
+   next column's center — fixes the old version, where the line lived
+   inside .ship-tracker-node-wrap and ate the icon's remaining flex space,
+   pushing the icon to the column's left edge while its label (centered
+   independently) stayed in the middle — the "icon vs label offset" bug. */
 .ship-tracker-line {
-  flex: 1;
+  position: absolute;
+  top: 17px;
+  left: 50%;
+  width: 100%;
   height: 2px;
   background: var(--border);
-  margin: 0 -4px;
 }
 
 .ship-tracker-line.done {
@@ -4880,6 +4897,9 @@ p {
     width: 28px;
     height: 28px;
     font-size: 0.82rem;
+  }
+  .ship-tracker-line {
+    top: 13px;
   }
   .ship-tracker-label {
     font-size: 0.6rem;

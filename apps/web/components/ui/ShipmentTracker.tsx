@@ -26,13 +26,13 @@ export function ShipmentTracker({ stage, t }: { stage: number; t: (key: any) => 
         const isCurrent = index === stage;
         return (
           <div key={s.key} className="ship-tracker-step">
+            {index < STAGES.length - 1 && (
+              <div className={`ship-tracker-line${index < stage ? ' done' : ''}`} />
+            )}
             <div className="ship-tracker-node-wrap">
               <div className={`ship-tracker-node${isDone ? ' done' : ''}${isCurrent ? ' current' : ''}`}>
                 {s.icon}
               </div>
-              {index < STAGES.length - 1 && (
-                <div className={`ship-tracker-line${index < stage ? ' done' : ''}`} />
-              )}
             </div>
             <span className={isDone ? 'ship-tracker-label done' : 'ship-tracker-label'}>{t(s.labelKey)}</span>
           </div>
