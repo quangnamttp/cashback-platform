@@ -256,7 +256,13 @@ service cloud.firestore {
                  // after the order itself was already created — see
                  // backfillOrderNotification/sendTopic33AndMark. Never
                  // touches status/commissionStatus/commissionAmount here.
-                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'telegramChatId', 'telegramMessageId', 'orderNotificationSentAt']))
+                 // productName/imageUrl added 2026-09-13 — same backfill
+                 // idea applied to product-info: order-products' real name/
+                 // image can still be missing at order-creation time and
+                 // only appear from ACCESSTRADE on a later tick (see
+                 // backfillProductInfo). Only ever replaces the placeholder
+                 // text / a missing image, never touches anything else.
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'telegramChatId', 'telegramMessageId', 'orderNotificationSentAt', 'productName', 'imageUrl']))
                 || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'REFUNDED'
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'commissionStatus', 'cashbackClawback']))
                 // NEW 2026-09-12 — closes the gap where commissionStatus
@@ -272,7 +278,11 @@ service cloud.firestore {
                 // needs to be able to set exactly once to avoid a duplicate
                 // Topic 13 message.
                 || (resource.data.status == 'CONFIRMED' && request.resource.data.status == 'CONFIRMED'
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'payoutNotificationSentAt']))));
+                    // productName/imageUrl added 2026-09-13 — see the
+                    // matching PENDING-branch comment above; a CONFIRMED
+                    // order is the one a customer can actually see, so this
+                    // is the branch that matters most for backfillProductInfo.
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commissionStatus', 'commissionAmount', 'payoutNotificationSentAt', 'productName', 'imageUrl']))));
     }
 
     // No time gate — admin has full discretion on when to release a
