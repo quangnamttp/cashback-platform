@@ -11,10 +11,14 @@ type StageDef = {
 // this site has no logistics API integration, so it must never claim to
 // know the courier's real status (renamed 2026-09-13, was ordered/preparing/
 // shipping/delivered with truck/mailbox icons implying real tracking).
+// pending's 🕐 and confirmed's 👍 (2026-09-13, was ⏳/✅) — the checkmark
+// shape ✅ looked identical to isPast's own '✓' glyph below (the "already
+// done" steps), reading as a confusing repeat instead of a distinct
+// current-step icon.
 const STAGES: StageDef[] = [
   { key: 'recorded', icon: '🛒', labelKey: 'ship_stage_ordered' },
-  { key: 'pending', icon: '⏳', labelKey: 'ship_stage_preparing' },
-  { key: 'confirmed', icon: '✅', labelKey: 'ship_stage_shipping' },
+  { key: 'pending', icon: '🕐', labelKey: 'ship_stage_preparing' },
+  { key: 'confirmed', icon: '👍', labelKey: 'ship_stage_shipping' },
   { key: 'released', icon: '💰', labelKey: 'ship_stage_delivered' },
 ];
 

@@ -3629,6 +3629,7 @@ p {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .order-card-platform {
@@ -3638,6 +3639,13 @@ p {
   background: var(--primary);
   padding: 2px 8px;
   border-radius: 999px;
+  /* "TikTok Shop" (the longest of the 3 platform names) could wrap onto 2
+     lines on a narrow phone screen — the fully round border-radius then
+     applies to a much taller box, warping the pill into a lopsided oval.
+     Keep it one line always; the surrounding row wraps the whole badge to
+     its own line instead if it doesn't fit, never breaks the text inside it. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .order-card-id {
