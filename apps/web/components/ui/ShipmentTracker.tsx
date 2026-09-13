@@ -24,6 +24,12 @@ export function ShipmentTracker({ stage, t }: { stage: number; t: (key: any) => 
       {STAGES.map((s, index) => {
         const isDone = index <= stage;
         const isCurrent = index === stage;
+        // A completed PAST step (done but no longer current) shows a plain
+        // checkmark instead of repeating its own icon — the common
+        // "checked off" convention, and it reads more clearly than e.g. an
+        // hourglass ⏳ still showing once that step is actually finished.
+        const isPast = isDone && !isCurrent;
+        const labelClass = isCurrent ? 'ship-tracker-label current' : isDone ? 'ship-tracker-label done' : 'ship-tracker-label';
         return (
           <div key={s.key} className="ship-tracker-step">
             {index < STAGES.length - 1 && (
@@ -31,10 +37,10 @@ export function ShipmentTracker({ stage, t }: { stage: number; t: (key: any) => 
             )}
             <div className="ship-tracker-node-wrap">
               <div className={`ship-tracker-node${isDone ? ' done' : ''}${isCurrent ? ' current' : ''}`}>
-                {s.icon}
+                {isPast ? '✓' : s.icon}
               </div>
             </div>
-            <span className={isDone ? 'ship-tracker-label done' : 'ship-tracker-label'}>{t(s.labelKey)}</span>
+            <span className={labelClass}>{t(s.labelKey)}</span>
           </div>
         );
       })}
