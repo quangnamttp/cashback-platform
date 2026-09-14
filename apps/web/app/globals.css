@@ -3865,6 +3865,27 @@ p {
   .event-carousel {
     height: 180px;
   }
+
+  /* On mobile the image now fills the frame edge-to-edge (object-fit:
+     cover, no side padding) instead of sitting inset over a blurred copy
+     of itself — the source banners are close to this frame's own aspect
+     ratio at phone widths, so cover crops only a sliver off the sides,
+     and the result reads as one crisp, full-width banner instead of a
+     smaller image floating in a soft blurred border. Desktop keeps the
+     original inset/blur-backdrop treatment untouched. */
+  .event-carousel-slide {
+    padding: 0;
+  }
+
+  .event-carousel-img {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    object-fit: cover;
+    border-radius: 0;
+    box-shadow: none;
+  }
 }
 
 .event-carousel-backdrop {
@@ -3910,11 +3931,6 @@ p {
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
 }
 
-@media (max-width: 560px) {
-  .event-carousel-slide {
-    padding: 0 44px;
-  }
-}
 
 @keyframes eventFadeIn {
   from { opacity: 0; transform: scale(1.01); }
@@ -3955,9 +3971,6 @@ p {
 }
 
 @media (max-width: 560px) {
-  .event-carousel-slide {
-    padding: 6px 40px;
-  }
   .event-carousel-nav {
     width: 28px;
     height: 28px;
