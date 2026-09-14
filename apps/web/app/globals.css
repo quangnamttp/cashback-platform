@@ -1361,14 +1361,25 @@ p {
   box-shadow: var(--shadow-sm);
 }
 
+/* Matches the other header icon buttons' resting-state look (.icon-btn:
+   a visible bordered square, not just a bare glyph) — previously
+   transparent with no border, so on mobile (where this is the only
+   header icon shown alongside the bell/theme-toggle/avatar, all of
+   which DO have a button background) it read as the odd one out with
+   no visible tap target boundary at all, on top of its :hover fill
+   being barely distinguishable from the header's own background. */
 .mobile-menu-btn {
   display: none;
-  background: transparent;
-  border: none;
-  font-size: 1.3rem;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  font-size: 1.2rem;
   color: var(--text);
-  padding: 4px 8px;
-  border-radius: 10px;
+  padding: 0;
+  border-radius: 12px;
 }
 
 .mobile-menu-btn:hover {
@@ -6217,6 +6228,12 @@ p {
   height: 84px;
   border-radius: var(--radius-md);
   background: var(--bg-accent);
+  /* --bg-accent sits inside a --bg-secondary card (.quick-product-card)
+     — both pale blue, close enough in value that the thumb had no
+     visible edge of its own when no product image loads yet (fallback
+     icon state). A thin border gives it a defined boundary either way,
+     and doubles as a light frame around the real photo once one loads. */
+  border: 1px solid var(--border-light);
   display: flex;
   align-items: center;
   justify-content: center;
