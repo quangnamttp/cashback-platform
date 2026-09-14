@@ -13,18 +13,17 @@ import { Modal } from '../ui/Modal';
 
 const adminNavTop = { icon: <ChartIcon size={16} />, color: '#0096ff', label: 'Tổng quan', href: '/manager' };
 
-// Same 14 destinations as before (every href unchanged) — only grouped
-// under section headers for a shorter scan, matching how the pages
-// themselves are already grouped by concern (order approval vs cashback
-// release vs money-out vs marketing vs risk vs system config).
+// Same 14 destinations as before (every href unchanged) — regrouped from
+// 7 small (mostly 1-2 item) sections down to 5 more substantial ones, each
+// still with a clear name for what it's for — the old finer split (order
+// approval / cashback release / money-out / marketing / users / risk /
+// system, each its own header) added more header-row overhead than it saved
+// in scan time for only ~2 items per group.
 const adminNavGroups: { label: string; items: { icon: React.ReactNode; color: string; label: string; href: string }[] }[] = [
   {
-    label: '📦 Đơn hàng',
-    items: [{ icon: <BoxIcon size={16} />, color: '#f59e0b', label: 'Đơn hàng', href: '/manager/orders' }],
-  },
-  {
-    label: '💰 Cashback & hoa hồng',
+    label: '📦 Đơn hàng & Cashback',
     items: [
+      { icon: <BoxIcon size={16} />, color: '#f59e0b', label: 'Đơn hàng', href: '/manager/orders' },
       { icon: <WalletIcon size={16} />, color: '#16a34a', label: 'Cashback / Hoa hồng', href: '/manager/cashback' },
       { icon: <ReceiptIcon size={16} />, color: '#0d9488', label: 'Duyệt hoàn tiền', href: '/manager/payouts' },
     ],
@@ -37,29 +36,19 @@ const adminNavGroups: { label: string; items: { icon: React.ReactNode; color: st
     ],
   },
   {
-    label: '🎁 Marketing',
+    label: '🎁 Marketing & người dùng',
     items: [
       { icon: <StoreIcon size={16} />, color: '#ee4d2d', label: 'Tiếp thị liên kết & Voucher', href: '/manager/affiliate' },
       { icon: <UsersIcon size={16} />, color: '#8b5cf6', label: 'Giới thiệu', href: '/manager/referrals' },
-    ],
-  },
-  {
-    label: '👥 Người dùng',
-    items: [
       { icon: <UsersIcon size={16} />, color: '#6366f1', label: 'Người dùng', href: '/manager/users' },
       { icon: <HeadsetIcon size={16} />, color: '#0ea5e9', label: 'Hỗ trợ khách hàng', href: '/manager/support-chat' },
     ],
   },
   {
-    label: '🛡️ Kiểm soát',
+    label: '🛡️ Kiểm soát & hệ thống',
     items: [
       { icon: <WarningIcon size={16} />, color: '#dc2626', label: 'Chống gian lận', href: '/manager/fraud' },
       { icon: <DevicesIcon size={16} />, color: '#2563eb', label: 'Phiên đăng nhập', href: '/manager/devices' },
-    ],
-  },
-  {
-    label: '⚙️ Hệ thống',
-    items: [
       { icon: <GearIcon size={16} />, color: '#64748b', label: 'Cấu hình', href: '/manager/settings' },
       { icon: <ScrollIcon size={16} />, color: '#78716c', label: 'Nhật ký', href: '/manager/logs' },
     ],

@@ -1992,14 +1992,16 @@ p {
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 24px;
   padding: 24px 0 48px;
-  /* Default (stretch), not align-items:start — a long content column (a
-     tall order/user table) is routinely taller than the sidebar's own
-     nav items, and with :start the sidebar's white panel stopped at its
-     own content height, leaving the page's plain background exposed
-     below it instead of continuing the panel down the full column.
-     .admin-sidebar's own max-height below still caps how tall it can
-     actually grow, so this only fills in that background — it doesn't
-     make the sidebar itself taller than the viewport. */
+  /* align-items:start — .admin-sidebar below now sets a real `height`
+     (not max-height), so it's always exactly one consistent size on its
+     own, independent of how tall the content column next to it gets.
+     :start keeps it pinned to the top of the grid row instead of trying
+     to stretch/center it against that (often much taller) column — the
+     two earlier attempts both tied the sidebar's size to the content
+     column's height (either leaving the page's own background exposed
+     below a too-short sidebar, or leaving a large blank stretch inside
+     an over-tall one) — this stops comparing the two at all. */
+  align-items: start;
 }
 
 .admin-sidebar {
@@ -2009,7 +2011,14 @@ p {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: calc(100vh - 48px);
+  /* A real height, not max-height — always exactly this tall regardless
+     of the nav's own content or the content column's length, so any
+     leftover space at the bottom is small and constant (normal — every
+     sidebar in Slack/Notion/etc. looks like this) instead of scaling
+     into a large gap for a long table. overflow-y:auto is a safety net
+     for a short viewport where 14 nav items genuinely don't fit, not
+     the normal case. */
+  height: calc(100vh - 48px);
   overflow-y: auto;
 }
 
@@ -2363,6 +2372,11 @@ p {
   }
   .admin-sidebar {
     position: static;
+    /* Stacked above the content on mobile (single column), not beside
+       it — the viewport-height fix above only makes sense side-by-side
+       on desktop; here it would force the nav to eat the whole screen
+       before any page content even starts. */
+    height: auto;
   }
   .admin-nav {
     flex-direction: row;
