@@ -8,6 +8,7 @@ import { logAdminAction } from '../../../lib/adminAudit';
 import { AdminShell } from '../../../components/layout/AdminShell';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
+import { Modal } from '../../../components/ui/Modal';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { usePageTitle } from '../../../lib/use-page-title';
@@ -79,6 +80,7 @@ export default function AdminFraudPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [reasonSignalId, setReasonSignalId] = useState<string | null>(null);
 
   useEffect(() => {
     const db = getFirebaseDb();
@@ -148,6 +150,8 @@ export default function AdminFraudPage() {
     });
   }, [signals, users, searchQuery, statusFilter]);
 
+  const reasonSignal = signals.find((s) => s.id === reasonSignalId) ?? null;
+
   return (
     <AdminShell>
       <div className="page-header">
@@ -192,7 +196,11 @@ export default function AdminFraudPage() {
                   <td>{typeof signal.orderValue === 'number' ? formatCurrency(signal.orderValue, lang) : '—'}</td>
                   <td>{typeof signal.cashbackAmount === 'number' ? formatCurrency(signal.cashbackAmount, lang) : '—'}</td>
                   <td>{typeof signal.refundCount === 'number' ? `${signal.refundCount}/${signal.totalOrders} đơn` : '—'}</td>
-                  <td className="data-table-reason-cell">{signal.reason}</td>
+                  <td className="data-table-reason-cell">
+                    <button type="button" className="reason-cell-trigger" onClick={() => setReasonSignalId(signal.id)} title="Xem đầy đủ lý do">
+                      {signal.reason}
+                    </button>
+                  </td>
                   <td>
                     <span
                       className={`badge badge-${signal.riskLevel === 'HIGH' ? 'danger' : signal.riskLevel === 'MEDIUM' ? 'warning' : 'neutral'}`}
@@ -236,6 +244,26 @@ export default function AdminFraudPage() {
         xác nhận chuyển sang trạng thái trả hàng (trang Đơn hàng). Hệ thống không bao giờ tự khóa/đóng băng tài khoản —
         mọi quyết định ở đây đều do Admin bấm thủ công.
       </p>
+
+      <Modal open={!!reasonSignal} onClose={() => setReasonSignalId(null)}>
+        {reasonSignal && (
+          <>
+            <div className="modal-header-row">
+              <span
+                className={`badge badge-${reasonSignal.riskLevel === 'HIGH' ? 'danger' : reasonSignal.riskLevel === 'MEDIUM' ? 'warning' : 'neutral'}`}
+              >
+                {RISK_LABEL[reasonSignal.riskLevel] ?? reasonSignal.riskLevel}
+              </span>
+              <span className="modal-code-row-small">
+                {userLabel(users, reasonSignal.userId)}
+                {reasonSignal.orderId ? ` • #${reasonSignal.orderId}` : ''}
+              </span>
+            </div>
+            <h3 style={{ marginTop: 8, marginBottom: 4 }}>Lý do cảnh báo</h3>
+            <p className="muted-copy" style={{ marginTop: 0 }}>{reasonSignal.reason}</p>
+          </>
+        )}
+      </Modal>
     </AdminShell>
   );
 }

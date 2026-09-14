@@ -246,7 +246,11 @@ export default function AdminWithdrawalsPage() {
   };
 
   const detailRow = rows.find((r) => r.id === detailId) ?? null;
-  const detailQrUrl = detailRow && detailRow.accountNumber && detailRow.accountHolder
+  // Hidden once PAID — re-showing a still-scannable transfer QR after the
+  // money has already gone out risks someone scanning it again and
+  // sending a duplicate transfer. Not shown for REJECTED either (nothing
+  // to pay for that request anymore).
+  const detailQrUrl = detailRow && detailRow.status !== 'PAID' && detailRow.status !== 'REJECTED' && detailRow.accountNumber && detailRow.accountHolder
     ? buildVietQrImageUrl({
         bankLabel: detailRow.bank ?? detailRow.method,
         accountNumber: detailRow.accountNumber,
@@ -474,6 +478,14 @@ export default function AdminWithdrawalsPage() {
                 <img src={detailQrUrl} alt="Mã QR chuyển khoản" style={{ width: 220, height: 220, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }} />
                 <p className="muted-copy" style={{ marginTop: 6, fontSize: '0.78rem' }}>Quét mã bằng app ngân hàng bất kỳ để chuyển đúng số tiền + nội dung</p>
               </div>
+            ) : detailRow.status === 'PAID' ? (
+              <p className="muted-copy" style={{ marginTop: 14 }}>
+                ✅ Đã chuyển khoản xong — mã QR đã ẩn để tránh quét nhầm chuyển lại lần nữa.
+              </p>
+            ) : detailRow.status === 'REJECTED' ? (
+              <p className="muted-copy" style={{ marginTop: 14 }}>
+                Lệnh này đã bị từ chối — không cần chuyển khoản.
+              </p>
             ) : (
               <p className="muted-copy" style={{ marginTop: 14 }}>
                 Không tạo được mã QR tự động cho phương thức này (ví điện tử hoặc ngân hàng chưa hỗ trợ) — chuyển khoản thủ công theo thông tin ở trên.
