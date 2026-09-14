@@ -92,7 +92,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="admin-page-shell container">
       <aside className="admin-sidebar panel">
         <Link href="/manager" className="brand-block compact">
-          <div className="brand-mark"><BrandMark size={36} /></div>
+          <div className="brand-mark"><BrandMark size={32} /></div>
           <div>
             <div className="brand-name">Hoàn Tiền DV</div>
             <div className="brand-subtitle">Bảng điều khiển quản trị</div>

@@ -265,9 +265,9 @@ p {
 }
 
 .brand-block.compact .brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
 }
 
 .brand-block.compact .brand-name {
@@ -2010,7 +2010,7 @@ p {
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   /* A real height, not max-height — always exactly this tall regardless
      of the nav's own content or the content column's length, so any
      leftover space at the bottom is small and constant (normal — every
@@ -2027,7 +2027,7 @@ p {
   align-items: center;
   gap: 10px;
   text-decoration: none;
-  padding-bottom: 12px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border-light);
 }
 
