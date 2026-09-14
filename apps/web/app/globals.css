@@ -1392,19 +1392,7 @@ p {
   border-color: #bbf7d0;
 }
 
-.icon-btn.theme-toggle-btn {
-  background: #fef3c7;
-  border-color: #fde68a;
-}
-
-.icon-btn.notif-btn {
-  background: #fef3c7;
-  border-color: #fde68a;
-}
-
-[data-theme='dark'] .icon-btn.mobile-wallet-btn,
-[data-theme='dark'] .icon-btn.theme-toggle-btn,
-[data-theme='dark'] .icon-btn.notif-btn {
+[data-theme='dark'] .icon-btn.mobile-wallet-btn {
   background: var(--bg-secondary);
   border-color: var(--border);
 }
@@ -2793,9 +2781,10 @@ p {
 }
 
 /* Replaces the old raw-emoji icon (rendered inconsistently across
-   devices/fonts) with the same drawn-icon-in-colored-badge language the
-   utility grid below already uses, so this row reads as one consistent
-   design system instead of a plain emoji dropped on a card. */
+   devices/fonts) with a soft tinted badge — pale background, icon drawn
+   in the same hue rather than solid-color-fill-plus-white-icon — same
+   "soft UI" presentation as the rest of this design system's pastel
+   badges (e.g. .promo-icon-badge) instead of a plain emoji on a card. */
 .mini-stat-icon-badge {
   width: 38px;
   height: 38px;
@@ -2803,12 +2792,15 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
 }
 
-.mini-stat-icon-badge.purple { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
-.mini-stat-icon-badge.amber { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
-.mini-stat-icon-badge.green { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.mini-stat-icon-badge.purple { background: #ede9fe; color: #7c3aed; }
+.mini-stat-icon-badge.amber { background: #fef3c7; color: #d97706; }
+.mini-stat-icon-badge.green { background: #dcfce7; color: #16a34a; }
+
+[data-theme='dark'] .mini-stat-icon-badge.purple { background: rgba(167, 139, 250, 0.18); color: #c4b5fd; }
+[data-theme='dark'] .mini-stat-icon-badge.amber { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
+[data-theme='dark'] .mini-stat-icon-badge.green { background: rgba(34, 197, 94, 0.18); color: #86efac; }
 
 .mini-stat-value {
   font-size: 1.05rem;
