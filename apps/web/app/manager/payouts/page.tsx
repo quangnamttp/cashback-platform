@@ -15,6 +15,7 @@ import { CopyIdChip } from '../../../components/ui/CopyIdChip';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { ClockIcon, GearIcon } from '../../../components/ui/Icons';
 
 const PAYOUT_TYPE_FILTERS = [
   { value: 'all', label: 'Tất cả loại khoản' },
@@ -94,6 +95,7 @@ export default function AdminPayoutsPage() {
   const [rejectReasonInput, setRejectReasonInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [tab, setTab] = useState<'ready' | 'awaiting'>('ready');
 
   useEffect(() => {
     const db = getFirebaseDb();
@@ -262,6 +264,16 @@ export default function AdminPayoutsPage() {
         </div>
       </div>
 
+      <div className="sv-platform-tabs" style={{ marginBottom: 16 }}>
+        <button className={tab === 'ready' ? 'active' : ''} onClick={() => setTab('ready')}>
+          <ClockIcon size={16} /> Chờ Admin quyết định{payoutReadyEntries.length > 0 ? ` (${payoutReadyEntries.length})` : ''}
+        </button>
+        <button className={tab === 'awaiting' ? 'active' : ''} onClick={() => setTab('awaiting')}>
+          <GearIcon size={16} /> Chờ sàn xác nhận{awaitingCommissionEntries.length > 0 ? ` (${awaitingCommissionEntries.length})` : ''}
+        </button>
+      </div>
+
+      {tab === 'ready' && (
       <div className="panel admin-table-panel">
         <div className="panel-header">
           <h3>Đang giữ, chờ Admin quyết định</h3>
@@ -271,7 +283,7 @@ export default function AdminPayoutsPage() {
         <AdminSearchToolbar
           query={searchQuery}
           onQueryChange={setSearchQuery}
-          placeholder="Tìm theo mã khoản, mã đơn, tên người dùng..."
+          placeholder="Tìm theo mã đơn, tên người dùng..."
           filterValue={typeFilter}
           onFilterChange={setTypeFilter}
           filterOptions={PAYOUT_TYPE_FILTERS}
@@ -306,7 +318,6 @@ export default function AdminPayoutsPage() {
                 <th style={{ width: 32 }}>
                   <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Chọn tất cả" disabled={payoutReadyEntries.length === 0} />
                 </th>
-                <th>Mã khoản</th>
                 <th>Người dùng</th>
                 <th>Loại khoản</th>
                 <th>Đơn hàng</th>
@@ -325,7 +336,6 @@ export default function AdminPayoutsPage() {
                       aria-label={`Chọn khoản ${entry.id}`}
                     />
                   </td>
-                  <td><CopyIdChip value={entry.id} /></td>
                   <td>{ownerLabel(users, entry.userId)}</td>
                   <td>{entry.type ? TYPE_LABEL[entry.type] : '—'}</td>
                   <td>{entry.orderId ? <CopyIdChip value={entry.orderId} /> : '—'}</td>
@@ -335,7 +345,7 @@ export default function AdminPayoutsPage() {
               ))}
               {payoutReadyEntries.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted-copy">
+                  <td colSpan={6} className="muted-copy">
                     {entries.length === 0 ? 'Không có khoản nào đang chờ duyệt.' : 'Không có khoản nào đủ điều kiện duyệt.'}
                   </td>
                 </tr>
@@ -344,9 +354,10 @@ export default function AdminPayoutsPage() {
           </table>
         </div>
       </div>
+      )}
 
-      {awaitingCommissionEntries.length > 0 && (
-        <div className="panel admin-table-panel" style={{ marginTop: 16 }}>
+      {tab === 'awaiting' && (
+        <div className="panel admin-table-panel">
           <div className="panel-header">
             <h3>Đang chờ sàn xác nhận hoa hồng</h3>
             <span className="badge">{awaitingCommissionEntries.length} khoản</span>
@@ -360,7 +371,6 @@ export default function AdminPayoutsPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Mã khoản</th>
                   <th>Người dùng</th>
                   <th>Loại khoản</th>
                   <th>Đơn hàng</th>
@@ -371,7 +381,6 @@ export default function AdminPayoutsPage() {
               <tbody>
                 {awaitingCommissionEntries.map((entry) => (
                   <tr key={entry.id}>
-                    <td><CopyIdChip value={entry.id} /></td>
                     <td>{ownerLabel(users, entry.userId)}</td>
                     <td>{entry.type ? TYPE_LABEL[entry.type] : '—'}</td>
                     <td>{entry.orderId ? <CopyIdChip value={entry.orderId} /> : '—'}</td>
@@ -379,6 +388,11 @@ export default function AdminPayoutsPage() {
                     <td>{entry.confirmedAt ? entry.confirmedAt.toDate().toLocaleString('vi-VN') : '—'}</td>
                   </tr>
                 ))}
+                {awaitingCommissionEntries.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="muted-copy">Không có khoản nào đang chờ sàn xác nhận.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

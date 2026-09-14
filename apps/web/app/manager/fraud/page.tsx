@@ -173,7 +173,6 @@ export default function AdminFraudPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Mã cảnh báo</th>
                 <th>Người dùng</th>
                 <th>Đơn hàng</th>
                 <th>Giá trị đơn</th>
@@ -188,7 +187,6 @@ export default function AdminFraudPage() {
             <tbody>
               {filteredSignals.map((signal) => (
                 <tr key={signal.id}>
-                  <td><CopyIdChip value={signal.id} /></td>
                   <td>{userLabel(users, signal.userId)}</td>
                   <td>{signal.orderId ? <CopyIdChip value={signal.orderId} /> : '—'}</td>
                   <td>{typeof signal.orderValue === 'number' ? formatCurrency(signal.orderValue, lang) : '—'}</td>
@@ -223,7 +221,7 @@ export default function AdminFraudPage() {
               ))}
               {!loading && filteredSignals.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="muted-copy">
+                  <td colSpan={9} className="muted-copy">
                     {signals.length === 0 ? 'Chưa có cảnh báo gian lận nào.' : 'Không tìm thấy cảnh báo nào phù hợp.'}
                   </td>
                 </tr>

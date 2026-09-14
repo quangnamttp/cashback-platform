@@ -15,7 +15,8 @@ import { CopyIdChip } from '../../../components/ui/CopyIdChip';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { usePageTitle } from '../../../lib/use-page-title';
-import { TrashIcon } from '../../../components/ui/Icons';
+import { TrashIcon, EyeIcon } from '../../../components/ui/Icons';
+import { buildVietQrImageUrl } from '../../../lib/bankBin';
 
 const FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả' },
@@ -85,6 +86,7 @@ export default function AdminWithdrawalsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<WithdrawalRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -243,6 +245,17 @@ export default function AdminWithdrawalsPage() {
     }
   };
 
+  const detailRow = rows.find((r) => r.id === detailId) ?? null;
+  const detailQrUrl = detailRow && detailRow.accountNumber && detailRow.accountHolder
+    ? buildVietQrImageUrl({
+        bankLabel: detailRow.bank ?? detailRow.method,
+        accountNumber: detailRow.accountNumber,
+        accountHolder: detailRow.accountHolder,
+        amount: detailRow.amount,
+        note: `Hoan tien ${detailRow.id}`,
+      })
+    : null;
+
   const openReject = (row: WithdrawalRequest) => {
     setRejectTarget(row);
     setRejectReason('');
@@ -324,28 +337,32 @@ export default function AdminWithdrawalsPage() {
                     )}
                   </td>
                   <td>
-                    {row.status === 'PENDING_ADMIN' && (
-                      <div className="admin-action-row">
-                        <button className="btn-approve" disabled={busyId === row.id} onClick={() => decide(row.id, 'APPROVE')}>Đã duyệt</button>
-                        <button className="btn-reject" disabled={busyId === row.id} onClick={() => openReject(row)}>Từ chối</button>
-                      </div>
-                    )}
-                    {row.status === 'APPROVED' && (
-                      <div className="admin-action-row">
-                        <button className="btn-approve" disabled={busyId === row.id} onClick={() => decide(row.id, 'MARK_PAID')}>Đã thanh toán</button>
-                        <button className="btn-reject" disabled={busyId === row.id} onClick={() => openReject(row)}>Từ chối</button>
-                      </div>
-                    )}
-                    {row.status === 'PAID' && <span className="muted-copy">Đã xử lý</span>}
-                    {row.status === 'REJECTED' && (
-                      <button
-                        className="btn-reject"
-                        disabled={deletingId === row.id}
-                        onClick={() => deleteRejected(row.id)}
-                      >
-                        {deletingId === row.id ? 'Đang xoá...' : <><TrashIcon size={15} /> Xoá</>}
+                    <div className="admin-action-row">
+                      <button className="button button-secondary" onClick={() => setDetailId(row.id)} title="Xem chi tiết & mã QR chuyển khoản">
+                        <EyeIcon size={16} /> Chi tiết
                       </button>
-                    )}
+                      {row.status === 'PENDING_ADMIN' && (
+                        <>
+                          <button className="btn-approve" disabled={busyId === row.id} onClick={() => decide(row.id, 'APPROVE')}>Đã duyệt</button>
+                          <button className="btn-reject" disabled={busyId === row.id} onClick={() => openReject(row)}>Từ chối</button>
+                        </>
+                      )}
+                      {row.status === 'APPROVED' && (
+                        <>
+                          <button className="btn-approve" disabled={busyId === row.id} onClick={() => decide(row.id, 'MARK_PAID')}>Đã thanh toán</button>
+                          <button className="btn-reject" disabled={busyId === row.id} onClick={() => openReject(row)}>Từ chối</button>
+                        </>
+                      )}
+                      {row.status === 'REJECTED' && (
+                        <button
+                          className="btn-reject"
+                          disabled={deletingId === row.id}
+                          onClick={() => deleteRejected(row.id)}
+                        >
+                          {deletingId === row.id ? 'Đang xoá...' : <><TrashIcon size={15} /> Xoá</>}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -397,6 +414,105 @@ export default function AdminWithdrawalsPage() {
             <button className="button button-primary modal-cta" style={{ background: '#dc2626' }} onClick={confirmReject}>
               ✕ Xác nhận từ chối
             </button>
+          </>
+        )}
+      </Modal>
+
+      <Modal open={!!detailRow} onClose={() => setDetailId(null)}>
+        {detailRow && (
+          <>
+            <div className="modal-header-row">
+              <span className="badge">{statusLabel[detailRow.status] ?? detailRow.status}</span>
+              <span className="modal-code-row">
+                {detailRow.id}
+                <button className="modal-copy-icon-btn" onClick={() => navigator.clipboard.writeText(detailRow.id)} title="Copy mã lệnh">📋</button>
+              </span>
+            </div>
+
+            <h3 style={{ marginTop: 8, marginBottom: 4 }}>
+              {requesterLabel(users, detailRow.userId, detailRow.requesterName)}
+            </h3>
+
+            <div className="modal-amount-box">
+              <div>
+                <div className="amount-label">Số tiền rút</div>
+                <div className="amount-value">{formatCurrency(detailRow.amount, lang)}</div>
+              </div>
+              <span style={{ fontSize: '1.6rem' }}>💸</span>
+            </div>
+
+            <div className="modal-field-list">
+              <div className="modal-field-row">
+                <span>Email</span>
+                <span>{detailRow.requesterEmail || users.find((u) => u.id === detailRow.userId)?.email || '—'}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Ngân hàng</span>
+                <span>{detailRow.bank ?? detailRow.method}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Số tài khoản</span>
+                <span>{detailRow.accountNumber ?? '—'}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Chủ tài khoản</span>
+                <span>{detailRow.accountHolder ?? '—'}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Nội dung chuyển khoản</span>
+                <span>{`Hoan tien ${detailRow.id}`}</span>
+              </div>
+              <div className="modal-field-row">
+                <span>Ngày yêu cầu</span>
+                <span>{detailRow.requestedAt ? detailRow.requestedAt.toDate().toLocaleString('vi-VN') : '—'}</span>
+              </div>
+            </div>
+
+            {detailQrUrl ? (
+              <div style={{ textAlign: 'center', marginTop: 14 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={detailQrUrl} alt="Mã QR chuyển khoản" style={{ width: 220, height: 220, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }} />
+                <p className="muted-copy" style={{ marginTop: 6, fontSize: '0.78rem' }}>Quét mã bằng app ngân hàng bất kỳ để chuyển đúng số tiền + nội dung</p>
+              </div>
+            ) : (
+              <p className="muted-copy" style={{ marginTop: 14 }}>
+                Không tạo được mã QR tự động cho phương thức này (ví điện tử hoặc ngân hàng chưa hỗ trợ) — chuyển khoản thủ công theo thông tin ở trên.
+              </p>
+            )}
+
+            {detailRow.status === 'REJECTED' && detailRow.rejectionReason && (
+              <p className="admin-gate-error" style={{ marginTop: 10 }}>Lý do từ chối: {detailRow.rejectionReason}</p>
+            )}
+
+            {(detailRow.status === 'PENDING_ADMIN' || detailRow.status === 'APPROVED') && (
+              <div className="admin-action-row" style={{ marginTop: 14 }}>
+                {detailRow.status === 'PENDING_ADMIN' && (
+                  <button
+                    className="btn-approve"
+                    disabled={busyId === detailRow.id}
+                    onClick={async () => { await decide(detailRow.id, 'APPROVE'); }}
+                  >
+                    Đã duyệt
+                  </button>
+                )}
+                {detailRow.status === 'APPROVED' && (
+                  <button
+                    className="btn-approve"
+                    disabled={busyId === detailRow.id}
+                    onClick={async () => { await decide(detailRow.id, 'MARK_PAID'); setDetailId(null); }}
+                  >
+                    ✅ Xác nhận đã chuyển khoản
+                  </button>
+                )}
+                <button
+                  className="btn-reject"
+                  disabled={busyId === detailRow.id}
+                  onClick={() => { setDetailId(null); openReject(detailRow); }}
+                >
+                  Từ chối
+                </button>
+              </div>
+            )}
           </>
         )}
       </Modal>
