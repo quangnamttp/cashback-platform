@@ -124,6 +124,11 @@ export default function GetCashbackLinkPage() {
   // sharing this same "link" field instead of its own separate input.
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
+  // True only when the LAST apply attempt had a claimUrl and window.open
+  // for it came back blocked (see applyVoucherToProduct) — lets the
+  // confirmation message offer a manual link instead of falsely claiming
+  // a tab opened.
+  const [claimTabBlocked, setClaimTabBlocked] = useState(false);
   const [productPreview, setProductPreview] = useState<ProductPreview | null>(null);
   // Whichever image URL is currently shown (from either source — see
   // productInfo) failed to load — forces the platform-icon
@@ -483,14 +488,25 @@ export default function GetCashbackLinkPage() {
   // rather than relying on them pasting the code later. Still copies
   // `code` too (every voucher has one), so a claim-link voucher keeps
   // working the old way as a fallback if the claim tab doesn't go through.
+  //
+  // window.open is called FIRST and synchronously (before the clipboard
+  // await) — calling it after an await breaks the direct user-gesture
+  // chain most browsers require to allow a popup, so Safari/iOS and
+  // in-app webviews (Zalo/Facebook, a large share of real traffic here)
+  // would silently block it. Its return value is checked so the
+  // confirmation message can tell a genuinely opened tab apart from a
+  // blocked one instead of always claiming success either way.
   const applyVoucherToProduct = async (voucher: Voucher) => {
+    let claimTabOpened = false;
+    if (voucher.claimUrl) {
+      const win = window.open(voucher.claimUrl, '_blank', 'noopener,noreferrer');
+      claimTabOpened = !!win;
+    }
+    setClaimTabBlocked(!!voucher.claimUrl && !claimTabOpened);
     try {
       await navigator.clipboard.writeText(voucher.code);
     } catch {
       // clipboard access may be blocked — selection still records below
-    }
-    if (voucher.claimUrl) {
-      window.open(voucher.claimUrl, '_blank', 'noopener,noreferrer');
     }
     setSelectedVoucherId(voucher.id);
   };
@@ -711,6 +727,15 @@ export default function GetCashbackLinkPage() {
 
                   {selectedVoucherId && (() => {
                     const applied = vouchers.find((v) => v.id === selectedVoucherId);
+                    if (applied?.claimUrl && claimTabBlocked) {
+                      return (
+                        <p className="quick-product-note applied">
+                          ⚠️ Trình duyệt đã chặn tự mở trang nhận mã — bấm{' '}
+                          <a href={applied.claimUrl} target="_blank" rel="noreferrer">vào đây</a> để nhận mã{' '}
+                          <strong>{applied.code}</strong> thủ công (mã cũng đã được sao chép để dự phòng)
+                        </p>
+                      );
+                    }
                     return (
                       <p className="quick-product-note applied">
                         {applied?.claimUrl
