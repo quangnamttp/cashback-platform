@@ -33,6 +33,16 @@ type Voucher = {
    * universal (applies everywhere), which also keeps every voucher created
    * before this field existed working unchanged. */
   marketplaces?: Platform[];
+  /** A real Shopee/TikTok/Lazada voucher CLAIM link (not a generic product
+   * link) — the marketplace's own "add this voucher to my account" URL, for
+   * a voucher that's genuinely registered in that platform's own promotion
+   * system (unlike `code`, which is just a plain string every voucher has
+   * regardless of origin). When present, the customer gets sent here first
+   * so the marketplace itself attaches the voucher to their account (no
+   * manual code entry needed at checkout) — see get-cashback-link's
+   * applyVoucherToProduct. Optional and blank for the common case (a plain
+   * discount code with nothing to claim). */
+  claimUrl?: string;
 };
 
 const emptyForm: Omit<Voucher, 'id'> = {
@@ -46,6 +56,7 @@ const emptyForm: Omit<Voucher, 'id'> = {
   status: 'Valid',
   usedPercent: 0,
   marketplaces: [],
+  claimUrl: '',
 };
 
 const MARKETPLACE_CODE_TO_LABEL: Record<Platform, string> = {
@@ -55,7 +66,7 @@ const MARKETPLACE_CODE_TO_LABEL: Record<Platform, string> = {
 };
 
 const QUICK_ADD_PLACEHOLDER = `Facebook | Săn sale cuối tuần | SALE50K | Giảm 50K | Đơn từ 300K | 30/09/2026 | | SHOPEE,LAZADA
-Instagram | Mã giảm giá mỹ phẩm | BEAUTY10 | Giảm 10% | Đơn từ 200K | 15/09/2026`;
+Instagram | Mã giảm giá mỹ phẩm | BEAUTY10 | Giảm 10% | Đơn từ 200K | 15/09/2026 | | | https://shopee.vn/voucher/...`;
 
 function parseQuickAddLine(line: string, index: number): { voucher: Omit<Voucher, 'id'> | null; error: string | null } {
   const raw = line.trim();
@@ -64,7 +75,7 @@ function parseQuickAddLine(line: string, index: number): { voucher: Omit<Voucher
   if (parts.length < 4) {
     return { voucher: null, error: `Dòng ${index + 1}: thiếu cột (cần tối thiểu Nền tảng | Tiêu đề | Mã | Giảm giá).` };
   }
-  const [platformRaw, title, code, discount, condition = '', expiry = '', source = '', marketplacesRaw = ''] = parts;
+  const [platformRaw, title, code, discount, condition = '', expiry = '', source = '', marketplacesRaw = '', claimUrl = ''] = parts;
   const platform = SOCIAL_PLATFORMS.find((p) => p.toLowerCase() === platformRaw.toLowerCase());
   if (!platform) {
     return { voucher: null, error: `Dòng ${index + 1}: nền tảng "${platformRaw}" không hợp lệ (chỉ nhận ${SOCIAL_PLATFORMS.join('/')}).` };
@@ -82,7 +93,7 @@ function parseQuickAddLine(line: string, index: number): { voucher: Omit<Voucher
     marketplaces.push(match.value);
   }
   return {
-    voucher: { platform, title, code: code.toUpperCase(), discount, condition, expiry, source, status: 'Valid', usedPercent: 0, marketplaces },
+    voucher: { platform, title, code: code.toUpperCase(), discount, condition, expiry, source, status: 'Valid', usedPercent: 0, marketplaces, claimUrl: claimUrl || undefined },
     error: null,
   };
 }
@@ -269,9 +280,11 @@ export default function AdminAffiliatePage() {
               <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 7 }}><ZapIcon size={17} /> Nhập nhanh nhiều voucher cùng lúc</h3>
               <p className="muted-copy">
                 Mỗi dòng một voucher, các cột cách nhau bằng dấu <code>|</code>: <br />
-                <code>Nền tảng | Tiêu đề | Mã | Giảm giá | Điều kiện | HSD | Nguồn | Sàn áp dụng</code> (Điều kiện/HSD/Nguồn/Sàn
-                áp dụng có thể để trống — để trống Sàn áp dụng nghĩa là dùng được cho mọi sàn). Cột Sàn áp dụng nhận
-                <code>SHOPEE</code>, <code>TIKTOK_SHOP</code>, <code>LAZADA</code>, cách nhau bằng dấu phẩy nếu nhiều sàn.
+                <code>Nền tảng | Tiêu đề | Mã | Giảm giá | Điều kiện | HSD | Nguồn | Sàn áp dụng | Link claim</code> (Điều
+                kiện/HSD/Nguồn/Sàn áp dụng/Link claim có thể để trống — để trống Sàn áp dụng nghĩa là dùng được cho mọi
+                sàn). Cột Sàn áp dụng nhận <code>SHOPEE</code>, <code>TIKTOK_SHOP</code>, <code>LAZADA</code>, cách nhau
+                bằng dấu phẩy nếu nhiều sàn. Cột Link claim chỉ điền nếu đây là voucher thật của sàn có link tự thêm vào
+                tài khoản khách (không phải link sản phẩm thường).
                 Dùng để dán nhanh từ group săn sale hoặc trang tổng hợp mã bạn đã tổng hợp sẵn.
               </p>
               <textarea
@@ -424,6 +437,14 @@ export default function AdminAffiliatePage() {
           <label>
             <span className="field-label">Nguồn (tuỳ chọn — group/trang bạn lấy mã)</span>
             <input value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} placeholder="VD: Group Săn Sale Mỗi Ngày" />
+          </label>
+          <label>
+            <span className="field-label">Link claim voucher (tuỳ chọn — chỉ điền nếu đây là voucher thật của sàn, có link tự thêm vào tài khoản khách trên Shopee/TikTok/Lazada)</span>
+            <input
+              value={form.claimUrl ?? ''}
+              onChange={(e) => setForm({ ...form, claimUrl: e.target.value })}
+              placeholder="https://shopee.vn/voucher/..."
+            />
           </label>
           <div>
             <span className="field-label">Sàn áp dụng (bỏ trống = dùng được cho mọi sàn)</span>

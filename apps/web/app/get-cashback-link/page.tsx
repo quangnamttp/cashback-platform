@@ -103,6 +103,12 @@ type Voucher = {
   status: string;
   usedPercent?: number;
   marketplaces?: Platform[];
+  /** A real marketplace voucher-claim link (see manager/affiliate's own
+   * Voucher type for the full explanation) — when set, applying this
+   * voucher opens it in a new tab so the marketplace itself attaches the
+   * voucher to the customer's account, instead of (well, in addition to)
+   * just copying `code` to the clipboard. */
+  claimUrl?: string;
 };
 
 export default function GetCashbackLinkPage() {
@@ -470,11 +476,21 @@ export default function GetCashbackLinkPage() {
   // marketplace redirect only happens afterwards when they hit "Mua ngay",
   // so the code is already sitting in their clipboard by the time they
   // reach checkout to paste it in.
+  //
+  // A voucher with a real claimUrl (see the Voucher type's own comment)
+  // ALSO opens that link in a new tab right here — the marketplace itself
+  // then attaches the voucher to the customer's account on the spot,
+  // rather than relying on them pasting the code later. Still copies
+  // `code` too (every voucher has one), so a claim-link voucher keeps
+  // working the old way as a fallback if the claim tab doesn't go through.
   const applyVoucherToProduct = async (voucher: Voucher) => {
     try {
       await navigator.clipboard.writeText(voucher.code);
     } catch {
       // clipboard access may be blocked — selection still records below
+    }
+    if (voucher.claimUrl) {
+      window.open(voucher.claimUrl, '_blank', 'noopener,noreferrer');
     }
     setSelectedVoucherId(voucher.id);
   };
@@ -693,11 +709,16 @@ export default function GetCashbackLinkPage() {
 
                   {result.cacheHit && <p className="quick-product-note">♻️ {t('get_link_cache_hit')}</p>}
 
-                  {selectedVoucherId && (
-                    <p className="quick-product-note applied">
-                      ✓ Đã áp mã <strong>{vouchers.find((v) => v.id === selectedVoucherId)?.code}</strong> (đã sao chép — dán ở bước thanh toán trên sàn)
-                    </p>
-                  )}
+                  {selectedVoucherId && (() => {
+                    const applied = vouchers.find((v) => v.id === selectedVoucherId);
+                    return (
+                      <p className="quick-product-note applied">
+                        {applied?.claimUrl
+                          ? <>✓ Đã mở trang nhận mã <strong>{applied.code}</strong> ở tab mới — đăng nhập sàn để nhận, mã sẽ tự áp dụng lúc thanh toán (mã cũng đã được sao chép để dự phòng)</>
+                          : <>✓ Đã áp mã <strong>{applied?.code}</strong> (đã sao chép — dán ở bước thanh toán trên sàn)</>}
+                      </p>
+                    );
+                  })()}
 
                   <div className="get-link-input-row">
                     <span className="get-link-input-icon">🔗</span>
