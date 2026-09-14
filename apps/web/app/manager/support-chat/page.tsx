@@ -22,6 +22,7 @@ import { ImageLightbox } from '../../../components/ui/ImageLightbox';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { usePageTitle } from '../../../lib/use-page-title';
 import { compressImageForChat } from '../../../lib/imageCompress';
+import { UserIcon, TrashIcon } from '../../../components/ui/Icons';
 
 const CHAT_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả' },
@@ -228,7 +229,7 @@ export default function AdminSupportChatPage() {
             {filteredThreads.map((thread) => (
               <div key={thread.id} className={`support-chat-inbox-row${thread.hasUnreadForAdmin ? ' unread' : ''}`}>
                 <button type="button" className="support-chat-inbox-open" onClick={() => openThread(thread)}>
-                  <div className="support-chat-inbox-avatar">👤</div>
+                  <div className="support-chat-inbox-avatar"><UserIcon size={17} /></div>
                   <div className="support-chat-inbox-body">
                     <div className="support-chat-inbox-top">
                       <strong>{thread.userName || 'Người dùng'}</strong>
@@ -248,7 +249,7 @@ export default function AdminSupportChatPage() {
                   aria-label="Xóa cuộc trò chuyện này"
                   title="Xóa cuộc trò chuyện này"
                 >
-                  🗑️
+                  <TrashIcon size={15} />
                 </button>
               </div>
             ))}
@@ -266,7 +267,7 @@ export default function AdminSupportChatPage() {
           <>
             <div className="support-chat-header">
               <div className="support-chat-header-info">
-                <span className="support-chat-header-avatar">👤</span>
+                <span className="support-chat-header-avatar"><UserIcon size={17} /></span>
                 <div>
                   <strong>{activeThread.userName || 'Người dùng'}</strong>
                   <span className="support-chat-header-email">{activeThread.userEmail}</span>
@@ -306,7 +307,7 @@ export default function AdminSupportChatPage() {
                       aria-label="Xóa tin nhắn này"
                       title="Xóa tin nhắn này"
                     >
-                      🗑️
+                      <TrashIcon size={14} />
                     </button>
                   </div>
                 );

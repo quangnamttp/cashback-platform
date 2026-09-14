@@ -11,6 +11,7 @@ import { formatCurrency } from '../../../lib/currency';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { ADMIN_WALLET_ID, type LedgerEntryType } from '../../../lib/orderEntry';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { ClockIcon, CheckIcon, UserIcon, ClipboardIcon, EyeIcon } from '../../../components/ui/Icons';
 
 type LedgerEntry = {
   id: string;
@@ -145,10 +146,12 @@ export default function AdminCashbackPage() {
 
       <div className="stats-grid admin-grid" style={{ marginBottom: 16 }}>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge amber"><ClockIcon size={19} /></span>
           <div className="stat-label">Đang giữ (chưa giải phóng)</div>
           <div className="stat-value">{formatCurrency(totals.frozen, lang)}</div>
         </div>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge green"><CheckIcon size={19} /></span>
           <div className="stat-label">Đã giải phóng (toàn hệ thống)</div>
           <div className="stat-value">{formatCurrency(totals.released, lang)}</div>
         </div>
@@ -156,10 +159,10 @@ export default function AdminCashbackPage() {
 
       <div className="sv-platform-tabs" style={{ marginBottom: 16 }}>
         <button className={view === 'byCustomer' ? 'active' : ''} onClick={() => setView('byCustomer')}>
-          👤 Theo khách hàng
+          <UserIcon size={16} /> Theo khách hàng
         </button>
         <button className={view === 'flat' ? 'active' : ''} onClick={() => setView('flat')}>
-          📋 Theo khoản
+          <ClipboardIcon size={16} /> Theo khoản
         </button>
       </div>
 
@@ -197,7 +200,7 @@ export default function AdminCashbackPage() {
                       <td>{formatCurrency(row.rejected, lang)}</td>
                       <td>
                         <button className="button button-secondary" onClick={() => setDrilldownUserId(row.userId)}>
-                          👁 Chi tiết
+                          <EyeIcon size={16} /> Chi tiết
                         </button>
                       </td>
                     </tr>

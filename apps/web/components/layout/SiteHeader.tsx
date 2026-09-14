@@ -11,6 +11,7 @@ import { getFirebaseDb } from '../../lib/firebase';
 import { formatCurrency } from '../../lib/currency';
 import { BrandMark } from '../ui/BrandMark';
 import { Modal } from '../ui/Modal';
+import { UserIcon, DownloadIcon, LogoutIcon, LoginIcon, UserPlusIcon } from '../ui/Icons';
 
 type LedgerRow = {
   id: string;
@@ -321,7 +322,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={avatarUrl} alt={userName} className="account-menu-button-avatar" />
                 ) : (
-                  '👤'
+                  <UserIcon size={18} />
                 )}
               </button>
 
@@ -333,7 +334,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={avatarUrl} alt={userName} />
                       ) : (
-                        '👤'
+                        <UserIcon size={18} />
                       )}
                     </span>
                     <div>
@@ -342,10 +343,10 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                     </div>
                   </div>
                   <Link href="/account" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
-                    👤 {t('account_profile')}
+                    <UserIcon size={16} /> {t('account_profile')}
                   </Link>
                   <button role="menuitem" onClick={handleInstallClick}>
-                    📲 {t('account_download_app')}
+                    <DownloadIcon size={16} /> {t('account_download_app')}
                   </button>
                   <button
                     role="menuitem"
@@ -355,7 +356,7 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                       setIsAccountMenuOpen(false);
                     }}
                   >
-                    🚪 {t('account_sign_out')}
+                    <LogoutIcon size={16} /> {t('account_sign_out')}
                   </button>
                 </div>
               )}
@@ -372,16 +373,16 @@ export function SiteHeader({ onMenuToggle }: { onMenuToggle?: () => void }) {
                 aria-haspopup="menu"
                 title={t('header_login')}
               >
-                👤
+                <UserIcon size={18} />
               </button>
 
               {isAccountMenuOpen && (
                 <div className="account-menu-dropdown active account-dropdown-v2" role="menu">
                   <Link href="/login" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
-                    ➡️ {t('header_login')}
+                    <LoginIcon size={16} /> {t('header_login')}
                   </Link>
                   <Link href="/login" role="menuitem" onClick={() => setIsAccountMenuOpen(false)}>
-                    👤➕ {t('login_register')}
+                    <UserPlusIcon size={16} /> {t('login_register')}
                   </Link>
                 </div>
               )}

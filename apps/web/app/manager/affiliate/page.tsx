@@ -11,6 +11,7 @@ import { CopyIdChip } from '../../../components/ui/CopyIdChip';
 import { SOCIAL_PLATFORMS, SocialPlatformIcon, type SocialPlatform } from '../../../components/ui/SocialPlatformIcons';
 import { MARKETPLACE_OPTIONS, type Platform } from '../../../lib/redirectLink';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { ZapIcon, TicketIcon, StoreIcon } from '../../../components/ui/Icons';
 
 const VOUCHER_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả nền tảng' },
@@ -220,7 +221,7 @@ export default function AdminAffiliatePage() {
         </div>
         {tab === 'vouchers' && (
           <div className="admin-action-row">
-            <button className="button button-secondary" onClick={() => setShowQuickAdd((v) => !v)}>⚡ Nhập nhanh</button>
+            <button className="button button-secondary" onClick={() => setShowQuickAdd((v) => !v)}><ZapIcon size={16} /> Nhập nhanh</button>
             <button className="button button-primary" onClick={openAdd}>+ Thêm voucher</button>
           </div>
         )}
@@ -228,8 +229,8 @@ export default function AdminAffiliatePage() {
 
       <div className="admin-toolbar" style={{ marginBottom: 4 }}>
         <div className="sv-platform-tabs" style={{ margin: 0 }}>
-          <button className={tab === 'vouchers' ? 'active' : ''} onClick={() => setTab('vouchers')}>🎟️ Voucher / Deal</button>
-          <button className={tab === 'platforms' ? 'active' : ''} onClick={() => setTab('platforms')}>🛍️ Nền tảng affiliate</button>
+          <button className={tab === 'vouchers' ? 'active' : ''} onClick={() => setTab('vouchers')}><TicketIcon size={16} /> Voucher / Deal</button>
+          <button className={tab === 'platforms' ? 'active' : ''} onClick={() => setTab('platforms')}><StoreIcon size={16} /> Nền tảng affiliate</button>
         </div>
       </div>
 
@@ -265,7 +266,7 @@ export default function AdminAffiliatePage() {
         <>
           {showQuickAdd && (
             <div className="panel" style={{ marginBottom: 16 }}>
-              <h3 style={{ marginTop: 0 }}>⚡ Nhập nhanh nhiều voucher cùng lúc</h3>
+              <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: 7 }}><ZapIcon size={17} /> Nhập nhanh nhiều voucher cùng lúc</h3>
               <p className="muted-copy">
                 Mỗi dòng một voucher, các cột cách nhau bằng dấu <code>|</code>: <br />
                 <code>Nền tảng | Tiêu đề | Mã | Giảm giá | Điều kiện | HSD | Nguồn | Sàn áp dụng</code> (Điều kiện/HSD/Nguồn/Sàn
@@ -296,7 +297,7 @@ export default function AdminAffiliatePage() {
                 onClick={handleQuickAdd}
                 disabled={quickAddSaving || !quickAddText.trim()}
               >
-                {quickAddSaving ? 'Đang nhập...' : '⚡ Nhập hàng loạt'}
+                {quickAddSaving ? 'Đang nhập...' : <><ZapIcon size={16} /> Nhập hàng loạt</>}
               </button>
             </div>
           )}

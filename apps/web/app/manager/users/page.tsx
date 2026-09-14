@@ -12,6 +12,7 @@ import { getFirebaseDb } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/adminAudit';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { EyeIcon } from '../../../components/ui/Icons';
 
 const USER_STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả' },
@@ -181,7 +182,7 @@ export default function AdminUsersPage() {
                   <td><span className={`badge ${statusBadge[user.status ?? 'ACTIVE']}`}>{STATUS_LABEL[user.status ?? 'ACTIVE']}</span></td>
                   <td>
                     <div className="admin-action-row">
-                      <button className="button button-secondary" onClick={() => setDetailUserId(user.id)}>👁 Chi tiết</button>
+                      <button className="button button-secondary" onClick={() => setDetailUserId(user.id)}><EyeIcon size={16} /> Chi tiết</button>
                       {(user.status ?? 'ACTIVE') !== 'ACTIVE' ? (
                         <button className="btn-approve" disabled={busyId === user.id} onClick={() => setStatus(user.id, 'ACTIVE')}>Mở khóa</button>
                       ) : (

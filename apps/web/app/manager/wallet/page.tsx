@@ -8,6 +8,7 @@ import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { getFirebaseDb } from '../../../lib/firebase';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { CheckIcon, ClockIcon, ChartIcon, CashIcon, UsersIcon, WarningIcon, WalletIcon } from '../../../components/ui/Icons';
 
 type LedgerEntry = {
   id: string;
@@ -116,22 +117,27 @@ export default function AdminWalletPage() {
 
       <div className="stats-grid admin-grid">
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge green"><CheckIcon size={19} /></span>
           <div className="stat-label">Doanh thu đã giải phóng</div>
           <div className="stat-value">{formatCurrency(stats.released, lang)}</div>
         </div>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge amber"><ClockIcon size={19} /></span>
           <div className="stat-label">Đang chờ giải phóng</div>
           <div className="stat-value">{formatCurrency(stats.frozen, lang)}</div>
         </div>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge purple"><ChartIcon size={19} /></span>
           <div className="stat-label">Doanh thu 20% lũy kế</div>
           <div className="stat-value">{formatCurrency(stats.lifetimeRevenue, lang)}</div>
         </div>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge green"><CashIcon size={19} /></span>
           <div className="stat-label">Đã trả khách hàng (cashback)</div>
           <div className="stat-value">{formatCurrency(stats.customerReleased, lang)}</div>
         </div>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge purple"><UsersIcon size={19} /></span>
           <div className="stat-label">Đã trả người giới thiệu</div>
           <div className="stat-value">{formatCurrency(stats.referralReleased, lang)}</div>
         </div>
@@ -140,14 +146,17 @@ export default function AdminWalletPage() {
       <h3 style={{ marginTop: 24, marginBottom: 8, fontSize: '0.95rem' }}>Tổng quan tài chính toàn hệ thống</h3>
       <div className="stats-grid admin-grid">
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge red"><WarningIcon size={19} /></span>
           <div className="stat-label">Cashback khách hàng bị từ chối</div>
           <div className="stat-value">{formatCurrency(stats.customerRejected, lang)}</div>
         </div>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge teal"><WalletIcon size={19} /></span>
           <div className="stat-label">Khách hàng đã rút (đã chuyển khoản)</div>
           <div className="stat-value">{formatCurrency(stats.customerWithdrawn, lang)}</div>
         </div>
         <div className="stat-card compact">
+          <span className="mini-stat-icon-badge blue"><ChartIcon size={19} /></span>
           <div className="stat-label">Số dư hệ thống (khách chưa rút)</div>
           <div className="stat-value">{formatCurrency(stats.systemLiability, lang)}</div>
         </div>

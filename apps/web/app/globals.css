@@ -813,6 +813,25 @@ p {
   margin-bottom: 20px;
 }
 
+/* Lets a small drawn icon sit inline before the heading text (instead of
+   an emoji prefix) without any vertical-alignment fuss — a plain-text
+   heading with no icon renders identically either way, so this is safe
+   to apply broadly. */
+.panel-header h3,
+.settings-collapsible-header h3,
+.settings-maintenance-item h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.panel-header h3 svg,
+.settings-collapsible-header h3 svg,
+.settings-maintenance-item h4 svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
 /* Title block on the left, primary action on the right, same row — was
    missing a base (desktop) rule entirely, so every admin page's header
    fell back to default block stacking (title, then button, on separate
@@ -1270,8 +1289,17 @@ p {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Was bare label/value text with no visual separation from the page —
+   a light tinted card per field (same treatment already used for
+   .quick-product-cashback-row) reads as a proper data grid instead of
+   plain floating text. Only usage today is the settings page's rates
+   summary (app/manager/settings/page.tsx). */
 .profile-grid > div {
   min-width: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
 }
 
 .profile-grid strong {
@@ -1893,6 +1921,7 @@ p {
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   min-height: 24px;
   padding: 0 10px;
   border-radius: 10px;
@@ -2377,13 +2406,6 @@ p {
   text-decoration: underline;
 }
 
-.profile-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 16px;
-}
-
 .wide-button {
   width: 100%;
   margin-top: 14px;
@@ -2808,10 +2830,23 @@ p {
 .mini-stat-icon-badge.purple { background: #ede9fe; color: #7c3aed; }
 .mini-stat-icon-badge.amber { background: #fef3c7; color: #d97706; }
 .mini-stat-icon-badge.green { background: #dcfce7; color: #16a34a; }
+.mini-stat-icon-badge.blue { background: #dbeafe; color: #2563eb; }
+.mini-stat-icon-badge.red { background: #fee2e2; color: #dc2626; }
+.mini-stat-icon-badge.teal { background: #ccfbf1; color: #0d9488; }
 
 [data-theme='dark'] .mini-stat-icon-badge.purple { background: rgba(167, 139, 250, 0.18); color: #c4b5fd; }
 [data-theme='dark'] .mini-stat-icon-badge.amber { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
 [data-theme='dark'] .mini-stat-icon-badge.green { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+[data-theme='dark'] .mini-stat-icon-badge.blue { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+[data-theme='dark'] .mini-stat-icon-badge.red { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
+[data-theme='dark'] .mini-stat-icon-badge.teal { background: rgba(20, 184, 166, 0.18); color: #5eead4; }
+
+/* .stat-card (admin dashboard/wallet/cashback stat rows) reuses the same
+   badge look — icon sits above the label/value instead of beside it, to
+   match .stat-card's existing top-to-bottom layout. */
+.stat-card .mini-stat-icon-badge {
+  margin-bottom: 10px;
+}
 
 .mini-stat-value {
   font-size: 1.05rem;
@@ -3610,6 +3645,9 @@ p {
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .order-form-divider {
@@ -5299,7 +5337,9 @@ p {
 
 .account-dropdown-v2 a,
 .account-dropdown-v2 button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   padding: 10px 8px;
@@ -6982,6 +7022,8 @@ p {
   height: 38px;
   border-radius: 50%;
   background: var(--bg-accent);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;

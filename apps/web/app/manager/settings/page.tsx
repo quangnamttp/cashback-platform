@@ -13,6 +13,7 @@ import { subscribeSystemRates, saveSystemRates, DEFAULT_RATES, type SystemRates 
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { useTheme } from '../../../lib/theme';
+import { MoonIcon, SunIcon, CashIcon, ChatIcon, LockIcon, ToolIcon, SaveIcon, RefreshIcon, LogoutIcon } from '../../../components/ui/Icons';
 
 export default function AdminSettingsPage() {
   usePageTitle('Cấu hình hệ thống');
@@ -132,19 +133,19 @@ export default function AdminSettingsPage() {
 
       <section className="panel">
         <div className="panel-header">
-          <h3>🌙 Giao diện</h3>
+          <h3><MoonIcon size={17} /> Giao diện</h3>
         </div>
         <p className="muted-copy" style={{ marginTop: -4 }}>
           Chỉ áp dụng cho trình duyệt này — mỗi người quản trị tự chọn riêng, không ảnh hưởng người khác.
         </p>
         <button type="button" className="button button-secondary" onClick={toggleTheme}>
-          {theme === 'light' ? '🌙 Chuyển sang nền tối' : '☀️ Chuyển sang nền sáng'}
+          {theme === 'light' ? <><MoonIcon size={16} /> Chuyển sang nền tối</> : <><SunIcon size={16} /> Chuyển sang nền sáng</>}
         </button>
       </section>
 
       <section className="panel">
         <div className="panel-header">
-          <h3>💰 Tỷ lệ hoàn tiền &amp; ngưỡng rút tiền</h3>
+          <h3><CashIcon size={17} /> Tỷ lệ hoàn tiền &amp; ngưỡng rút tiền</h3>
           <button
             className="button button-secondary"
             onClick={() => {
@@ -212,7 +213,7 @@ export default function AdminSettingsPage() {
 
       <section className="panel">
         <div className="panel-header">
-          <h3>💬 Tin nhắn trả lời tự động</h3>
+          <h3><ChatIcon size={17} /> Tin nhắn trả lời tự động</h3>
           <button className="button button-secondary" onClick={() => setShowAutoReplyForm((v) => !v)}>
             {showAutoReplyForm ? 'Đóng' : 'Chỉnh sửa'}
           </button>
@@ -240,7 +241,7 @@ export default function AdminSettingsPage() {
       </section>
 
       <section className="panel">
-        <h3>🔒 Tài khoản quản trị</h3>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}><LockIcon size={17} /> Tài khoản quản trị</h3>
         <p className="muted-copy">
           Đang đăng nhập với <strong>{userEmail || 'chưa xác định'}</strong> qua Google. Khu vực quản trị chỉ chấp
           nhận đăng nhập Google từ đúng 2 địa chỉ được cấp phép cứng trong mã nguồn và Firestore Rules:
@@ -256,7 +257,7 @@ export default function AdminSettingsPage() {
           lúc tài khoản được tạo, không ai (kể cả Admin) có thể sửa lại sau đó.
         </p>
         <button className="button button-secondary" style={{ marginTop: 14 }} onClick={logout}>
-          🚪 Đăng xuất
+          <LogoutIcon size={16} /> Đăng xuất
         </button>
       </section>
 
@@ -267,7 +268,7 @@ export default function AdminSettingsPage() {
           onClick={() => setShowMaintenanceTools((v) => !v)}
           aria-expanded={showMaintenanceTools}
         >
-          <h3 style={{ margin: 0 }}>🛠️ Công cụ bảo trì (backup, cập nhật dữ liệu 1 lần)</h3>
+          <h3 style={{ margin: 0 }}><ToolIcon size={17} /> Công cụ bảo trì (backup, cập nhật dữ liệu 1 lần)</h3>
           <span className="settings-collapsible-chevron">{showMaintenanceTools ? '▲' : '▼'}</span>
         </button>
 
@@ -280,7 +281,7 @@ export default function AdminSettingsPage() {
         {showMaintenanceTools && (
           <div className="settings-collapsible-body">
             <div className="settings-maintenance-item">
-              <h4>💾 Backup log cũ lên Google Drive</h4>
+              <h4><SaveIcon size={16} /> Backup log cũ lên Google Drive</h4>
               <p className="muted-copy">
                 Không còn Cloud Scheduler nên việc dọn dữ liệu cũ chỉ chạy khi bạn bấm nút này. Xuất các bản ghi{' '}
                 <code>adminAuditLogs</code> cũ hơn số ngày bên dưới thành file CSV, tải thẳng vào Google Drive cá nhân
@@ -306,7 +307,7 @@ export default function AdminSettingsPage() {
                   ngày
                 </label>
                 <button className="button button-primary" onClick={handleBackup} disabled={backingUp || !isGoogleDriveConfigured()}>
-                  {backingUp ? 'Đang backup...' : '☁️ Backup & dọn dẹp'}
+                  {backingUp ? 'Đang backup...' : <><SaveIcon size={16} /> Backup &amp; dọn dẹp</>}
                 </button>
               </div>
 
@@ -324,7 +325,7 @@ export default function AdminSettingsPage() {
             </div>
 
             <div className="settings-maintenance-item">
-              <h4>🔄 Cập nhật hiển thị đơn hàng cho khách (chạy 1 lần)</h4>
+              <h4><RefreshIcon size={16} /> Cập nhật hiển thị đơn hàng cho khách (chạy 1 lần)</h4>
               <p className="muted-copy">
                 Đơn hàng tạo tự động (khi kích hoạt thật) sẽ ẩn khỏi khách hàng cho tới khi Admin duyệt — đơn thủ
                 công không đổi gì, vẫn hiển thị như trước. Để lịch sử đơn hàng của khách không bị trống, các đơn cũ tạo
@@ -332,7 +333,7 @@ export default function AdminSettingsPage() {
                 sau không làm gì nếu đã chạy rồi).
               </p>
               <button className="button button-primary" style={{ marginTop: 10 }} onClick={handleBackfill} disabled={backfilling}>
-                {backfilling ? 'Đang cập nhật...' : '🔄 Chạy cập nhật'}
+                {backfilling ? 'Đang cập nhật...' : <><RefreshIcon size={16} /> Chạy cập nhật</>}
               </button>
               {backfillResult === 'error' && <p className="admin-gate-error" style={{ marginTop: 8 }}>Cập nhật thất bại, vui lòng thử lại.</p>}
               {backfillResult && backfillResult !== 'error' && (
@@ -343,7 +344,7 @@ export default function AdminSettingsPage() {
             </div>
 
             <div className="settings-maintenance-item">
-              <h4>🔄 Đồng bộ số dư khả dụng ví (chạy 1 lần)</h4>
+              <h4><RefreshIcon size={16} /> Đồng bộ số dư khả dụng ví (chạy 1 lần)</h4>
               <p className="muted-copy">
                 Số &quot;Khả dụng&quot; khách thấy trên ví luôn tính trực tiếp từ lịch sử cashback đã giải phóng —
                 đúng, không đổi. Nhưng lệnh rút tiền lại kiểm tra một bộ đếm riêng (<code>walletBalances</code>) chỉ
@@ -357,7 +358,7 @@ export default function AdminSettingsPage() {
                 onClick={handleBackfillWallet}
                 disabled={backfillingWallet}
               >
-                {backfillingWallet ? 'Đang đồng bộ...' : '🔄 Chạy đồng bộ'}
+                {backfillingWallet ? 'Đang đồng bộ...' : <><RefreshIcon size={16} /> Chạy đồng bộ</>}
               </button>
               {backfillWalletResult === 'error' && (
                 <p className="admin-gate-error" style={{ marginTop: 8 }}>Đồng bộ thất bại, vui lòng thử lại.</p>

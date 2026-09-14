@@ -7,7 +7,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { getFirebaseDb } from '../../lib/firebase';
 import { useAuth } from '../../lib/auth';
 import { usePwaInstall } from '../../lib/pwaInstall';
-import { ChartIcon, UsersIcon, BoxIcon, WalletIcon, StoreIcon, CashIcon, HeadsetIcon, WarningIcon, GearIcon, ScrollIcon, ReceiptIcon, DevicesIcon } from '../ui/Icons';
+import { ChartIcon, UsersIcon, BoxIcon, WalletIcon, StoreIcon, CashIcon, HeadsetIcon, WarningIcon, GearIcon, ScrollIcon, ReceiptIcon, DevicesIcon, UserIcon, DownloadIcon, LogoutIcon } from '../ui/Icons';
 import { BrandMark } from '../ui/BrandMark';
 import { Modal } from '../ui/Modal';
 
@@ -155,7 +155,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={avatarUrl} alt={userName} className="account-menu-button-avatar" />
               ) : (
-                '👤'
+                <UserIcon size={18} />
               )}
             </button>
 
@@ -167,7 +167,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={avatarUrl} alt={userName} />
                     ) : (
-                      '👤'
+                      <UserIcon size={18} />
                     )}
                   </span>
                   <div>
@@ -176,7 +176,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   </div>
                 </div>
                 <button role="menuitem" onClick={handleInstallClick}>
-                  📲 Tải về
+                  <DownloadIcon size={16} /> Tải về
                 </button>
                 <button
                   role="menuitem"
@@ -186,7 +186,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     setIsAccountMenuOpen(false);
                   }}
                 >
-                  🚪 Đăng xuất
+                  <LogoutIcon size={16} /> Đăng xuất
                 </button>
               </div>
             )}

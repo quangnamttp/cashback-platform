@@ -5,6 +5,7 @@ import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestor
 import { AdminShell } from '../../components/layout/AdminShell';
 import { getFirebaseDb } from '../../lib/firebase';
 import { usePageTitle } from '../../lib/use-page-title';
+import { UsersIcon, DevicesIcon, BoxIcon, ClockIcon, WalletIcon, WarningIcon } from '../../components/ui/Icons';
 
 type FraudSignal = {
   id: string;
@@ -73,12 +74,12 @@ export default function AdminPage() {
   }, []);
 
   const stats = [
-    { label: 'Người dùng', value: userCount },
-    { label: 'Phiên hoạt động (24h qua)', value: activeSessionCount },
-    { label: 'Đơn hàng chờ duyệt', value: pendingOrderCount },
-    { label: 'Hoàn tiền chờ giải phóng', value: pendingPayoutCount },
-    { label: 'Rút tiền chờ duyệt', value: pendingWithdrawalCount },
-    { label: 'Cảnh báo gian lận mở', value: recentSignals.length },
+    { label: 'Người dùng', value: userCount, icon: <UsersIcon size={19} />, color: 'purple' },
+    { label: 'Phiên hoạt động (24h qua)', value: activeSessionCount, icon: <DevicesIcon size={19} />, color: 'blue' },
+    { label: 'Đơn hàng chờ duyệt', value: pendingOrderCount, icon: <BoxIcon size={19} />, color: 'amber' },
+    { label: 'Hoàn tiền chờ giải phóng', value: pendingPayoutCount, icon: <ClockIcon size={19} />, color: 'amber' },
+    { label: 'Rút tiền chờ duyệt', value: pendingWithdrawalCount, icon: <WalletIcon size={19} />, color: 'teal' },
+    { label: 'Cảnh báo gian lận mở', value: recentSignals.length, icon: <WarningIcon size={19} />, color: 'red' },
   ];
 
   return (
@@ -93,6 +94,7 @@ export default function AdminPage() {
       <div className="stats-grid admin-grid">
         {stats.map((stat) => (
           <div key={stat.label} className="stat-card compact">
+            <span className={`mini-stat-icon-badge ${stat.color}`}>{stat.icon}</span>
             <div className="stat-label">{stat.label}</div>
             <div className="stat-value">{stat.value}</div>
           </div>

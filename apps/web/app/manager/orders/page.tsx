@@ -24,6 +24,7 @@ import {
 import { syncOrderStatusToTelegram } from '../../../lib/telegram';
 import { usePageTitle } from '../../../lib/use-page-title';
 import { displayOrderId } from '../../../lib/orderId';
+import { ClockIcon, ClipboardIcon, EyeIcon, GearIcon, UserIcon, BoxIcon, CashIcon, SaveIcon } from '../../../components/ui/Icons';
 
 const PLATFORM_OPTIONS: { value: Platform; label: string }[] = [
   { value: 'SHOPEE', label: 'Shopee' },
@@ -333,17 +334,17 @@ export default function AdminOrdersPage() {
 
       <div className="sv-platform-tabs" style={{ marginBottom: 16 }}>
         <button className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>
-          ⏳ Chờ duyệt{pendingOrders.length > 0 ? ` (${pendingOrders.length})` : ''}
+          <ClockIcon size={16} /> Chờ duyệt{pendingOrders.length > 0 ? ` (${pendingOrders.length})` : ''}
         </button>
         <button className={tab === 'all' ? 'active' : ''} onClick={() => setTab('all')}>
-          📋 Tất cả đơn hàng
+          <ClipboardIcon size={16} /> Tất cả đơn hàng
         </button>
       </div>
 
       {tab === 'pending' && (
       <div className="panel admin-table-panel" style={{ marginBottom: 16 }}>
         <div className="panel-header">
-          <h3>⏳ Chờ duyệt</h3>
+          <h3><ClockIcon size={17} /> Chờ duyệt</h3>
           <span className="badge badge-warning">{pendingOrders.length} khoản</span>
         </div>
 
@@ -406,7 +407,7 @@ export default function AdminOrdersPage() {
                       <CopyIdChip value={order.id} />
                       {order.source === 'AFFILIATE' && (
                         <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title="Đơn hàng đồng bộ tự động — chưa qua kiểm tra thủ công">
-                          🤖 Tự động
+                          <GearIcon size={11} /> Tự động
                         </span>
                       )}
                     </td>
@@ -442,7 +443,7 @@ export default function AdminOrdersPage() {
       {showForm && (
         <form className="panel order-form" onSubmit={submitNewOrder}>
           <div className="order-form-section">
-            <h4 className="order-form-section-title">👤 Khách hàng</h4>
+            <h4 className="order-form-section-title"><UserIcon size={16} /> Khách hàng</h4>
             <div style={{ position: 'relative' }}>
               <label className="field-label">Tìm người dùng</label>
               <input
@@ -485,7 +486,7 @@ export default function AdminOrdersPage() {
           <div className="order-form-divider" />
 
           <div className="order-form-section">
-            <h4 className="order-form-section-title">🛍️ Sản phẩm</h4>
+            <h4 className="order-form-section-title"><BoxIcon size={16} /> Sản phẩm</h4>
 
             <span className="field-label">Sàn thương mại</span>
             <div className="order-form-platform-picker">
@@ -537,7 +538,7 @@ export default function AdminOrdersPage() {
           <div className="order-form-divider" />
 
           <div className="order-form-section">
-            <h4 className="order-form-section-title">💰 Hoa hồng &amp; trạng thái</h4>
+            <h4 className="order-form-section-title"><CashIcon size={16} /> Hoa hồng &amp; trạng thái</h4>
             <div className="two-column-grid">
               <label>
                 <span className="field-label">Giá trị đơn (đ)</span>
@@ -577,7 +578,7 @@ export default function AdminOrdersPage() {
           </div>
 
           <button type="submit" className="button button-primary order-form-submit" disabled={submitting || !form.userId}>
-            {submitting ? 'Đang lưu...' : '💾 Lưu đơn hàng'}
+            {submitting ? 'Đang lưu...' : <><SaveIcon size={16} /> Lưu đơn hàng</>}
           </button>
         </form>
       )}
@@ -633,7 +634,7 @@ export default function AdminOrdersPage() {
                     {PLATFORM_LABEL[item.platform] ?? item.platform}
                     {item.source === 'AFFILIATE' && (
                       <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title="Đơn hàng được đồng bộ tự động từ sàn liên kết">
-                        🤖 Tự động
+                        <GearIcon size={11} /> Tự động
                       </span>
                     )}
                   </td>
@@ -651,7 +652,7 @@ export default function AdminOrdersPage() {
                   <td>{item.orderDate ? item.orderDate.toDate().toLocaleString('vi-VN') : '—'}</td>
                   <td>
                     <div className="admin-action-row">
-                      <button className="button button-secondary" onClick={() => setDetailOrderId(item.id)}>👁 Chi tiết</button>
+                      <button className="button button-secondary" onClick={() => setDetailOrderId(item.id)}><EyeIcon size={16} /> Chi tiết</button>
                       {item.status === 'CONFIRMED' && (
                         <button className="btn-reject" disabled={busyId === item.id} onClick={() => changeStatus(item, 'REFUNDED')}>Trả hàng</button>
                       )}
@@ -692,7 +693,7 @@ export default function AdminOrdersPage() {
                   {PLATFORM_LABEL[detailOrder.platform] ?? detailOrder.platform}
                   {detailOrder.source === 'AFFILIATE' && (
                     <span className="badge badge-neutral" style={{ marginLeft: 6, fontSize: '0.68rem' }} title="Đơn hàng được đồng bộ tự động từ sàn liên kết">
-                      🤖 Tự động
+                      <GearIcon size={11} /> Tự động
                     </span>
                   )}
                 </span>

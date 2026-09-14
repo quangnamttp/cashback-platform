@@ -15,6 +15,7 @@ import { CopyIdChip } from '../../../components/ui/CopyIdChip';
 import { useLanguage } from '../../../lib/i18n';
 import { formatCurrency } from '../../../lib/currency';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { TrashIcon } from '../../../components/ui/Icons';
 
 const FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả' },
@@ -342,7 +343,7 @@ export default function AdminWithdrawalsPage() {
                         disabled={deletingId === row.id}
                         onClick={() => deleteRejected(row.id)}
                       >
-                        {deletingId === row.id ? 'Đang xoá...' : '🗑 Xoá'}
+                        {deletingId === row.id ? 'Đang xoá...' : <><TrashIcon size={15} /> Xoá</>}
                       </button>
                     )}
                   </td>

@@ -9,6 +9,7 @@ import { AdminShell } from '../../../components/layout/AdminShell';
 import { AdminSearchToolbar } from '../../../components/ui/AdminSearchToolbar';
 import { CopyIdChip } from '../../../components/ui/CopyIdChip';
 import { usePageTitle } from '../../../lib/use-page-title';
+import { TrashIcon, PhoneIcon, MonitorIcon } from '../../../components/ui/Icons';
 
 const DEVICE_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả' },
@@ -139,7 +140,7 @@ export default function AdminDevicesPage() {
         </div>
         {staleSessions.length > 0 && (
           <button className="button button-secondary" disabled={cleaning} onClick={cleanupStaleSessions}>
-            {cleaning ? 'Đang dọn...' : `🧹 Dọn ${staleSessions.length} phiên quá 24h không hoạt động`}
+            {cleaning ? 'Đang dọn...' : <><TrashIcon size={16} /> {`Dọn ${staleSessions.length} phiên quá 24h không hoạt động`}</>}
           </button>
         )}
       </div>
@@ -174,7 +175,11 @@ export default function AdminDevicesPage() {
                 <tr key={session.id}>
                   <td><CopyIdChip value={session.id} /></td>
                   <td>{userLabel(users, session.userId)}</td>
-                  <td>{session.deviceType === 'mobile' ? '📱 Di động' : '🖥️ Máy tính'}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {session.deviceType === 'mobile' ? <><PhoneIcon size={15} /> Di động</> : <><MonitorIcon size={15} /> Máy tính</>}
+                    </span>
+                  </td>
                   <td style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={session.userAgent ?? ''}>
                     {session.userAgent ?? '—'}
                   </td>
