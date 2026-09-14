@@ -110,8 +110,10 @@ body {
   inset: 0;
   z-index: 9999;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 14px;
   background: var(--bg);
   transition: opacity 0.25s ease;
 }
@@ -119,6 +121,14 @@ body {
 .app-boot-splash img {
   width: 72px;
   height: 72px;
+  animation: app-boot-pulse 1.1s ease-in-out infinite;
+}
+
+.app-boot-splash-text {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--primary);
   animation: app-boot-pulse 1.1s ease-in-out infinite;
 }
 
@@ -1206,6 +1216,42 @@ p {
   padding-left: 20px;
   color: var(--muted);
   line-height: 1.9;
+}
+
+/* Replaces the browser's own plain decimal numbering with a small
+   colored step badge per line, matching the numbered-circle language
+   already used elsewhere (e.g. .guide-step-number) instead of reading
+   as a bare, unstyled text list. */
+.get-link-steps-list {
+  list-style: none;
+  counter-reset: get-link-step;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.get-link-steps-list li {
+  counter-increment: get-link-step;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.get-link-steps-list li::before {
+  content: counter(get-link-step);
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .muted-copy {
@@ -2746,9 +2792,23 @@ p {
   min-width: 0;
 }
 
-.mini-stat-icon {
-  font-size: 1.3rem;
+/* Replaces the old raw-emoji icon (rendered inconsistently across
+   devices/fonts) with the same drawn-icon-in-colored-badge language the
+   utility grid below already uses, so this row reads as one consistent
+   design system instead of a plain emoji dropped on a card. */
+.mini-stat-icon-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
 }
+
+.mini-stat-icon-badge.purple { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+.mini-stat-icon-badge.amber { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+.mini-stat-icon-badge.green { background: linear-gradient(135deg, #22c55e, #16a34a); }
 
 .mini-stat-value {
   font-size: 1.05rem;
@@ -2828,15 +2888,13 @@ p {
   }
 }
 
+/* Stays at 4 columns all the way down (was 3 below 420px) — a plain
+   phone screenshot showed 4 columns reading noticeably denser/tidier
+   than 3 with room to spare down to real small-phone widths, so the
+   narrower override was dropped rather than kept "just in case". */
 @media (max-width: 700px) {
   .quick-utility-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 420px) {
-  .quick-utility-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -5361,6 +5419,17 @@ p {
 
 .modal-copy-icon-btn:hover {
   color: var(--primary);
+}
+
+/* Long product names (common on Shopee/TikTok Shop listings) were
+   pushing the rest of the modal down with no limit — caps at 2 lines,
+   the id/order-value/status fields right below still show everything
+   that actually matters. */
+.modal-product-title-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .modal-timeline-title {

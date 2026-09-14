@@ -803,8 +803,11 @@ export default function GetCashbackLinkPage() {
 
           <section className="two-column-grid">
             <div className="panel">
-              <h3>{t('how_it_works')}</h3>
-              <ol className="ordered-list">
+              <div className="policy-section-head">
+                <span className="promo-icon-badge">📋</span>
+                <h3>{t('how_it_works')}</h3>
+              </div>
+              <ol className="ordered-list get-link-steps-list">
                 <li>{t('step1')}</li>
                 <li>{t('step2')}</li>
                 <li>{t('step3')}</li>
@@ -813,7 +816,10 @@ export default function GetCashbackLinkPage() {
             </div>
 
             <div className="panel" id="important-rule-section">
-              <h3>{t('important_rule')}</h3>
+              <div className="policy-section-head">
+                <span className="promo-icon-badge">⚠️</span>
+                <h3>{t('important_rule')}</h3>
+              </div>
               <p className="muted-copy">{t('important_rule_desc')}</p>
             </div>
           </section>

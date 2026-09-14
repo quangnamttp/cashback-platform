@@ -684,7 +684,7 @@ export default function AdminOrdersPage() {
       <Modal open={!!detailOrderId} onClose={() => setDetailOrderId(null)}>
         {detailOrder && (
           <>
-            <h3 style={{ marginTop: 0, marginBottom: 4 }}>{detailOrder.productName}</h3>
+            <h3 className="modal-product-title-clamp" style={{ marginTop: 0, marginBottom: 4 }}>{detailOrder.productName}</h3>
             <div className="modal-field-list">
               <div className="modal-field-row">
                 <span>Sàn</span>

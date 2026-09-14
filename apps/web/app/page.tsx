@@ -13,7 +13,7 @@ import { useAuth } from '../lib/auth';
 import { getFirebaseDb } from '../lib/firebase';
 import { mockHomeEvents, mockPlatforms } from '../lib/mock-data';
 import { usePageTitle } from '../lib/use-page-title';
-import { LinkIcon, BoxIcon, WalletIcon, UsersIcon, HeadsetIcon, BookIcon, GearIcon } from '../components/ui/Icons';
+import { LinkIcon, BoxIcon, WalletIcon, UsersIcon, HeadsetIcon, BookIcon, GearIcon, ClockIcon, CheckIcon, UserIcon } from '../components/ui/Icons';
 
 type LedgerEntry = { amount: number; status: 'FROZEN' | 'RELEASED' | 'REJECTED' };
 type WithdrawalDoc = { amount: number; status: string };
@@ -83,7 +83,7 @@ export default function HomePage() {
         <div className="welcome-card-v2-glow" />
         <div className="welcome-card-v2-head">
           <span className="promo-badge light">✨ {t('welcome_hi')}</span>
-          <Link href="/account" className="welcome-card-v2-avatar">👤</Link>
+          <Link href="/account" className="welcome-card-v2-avatar"><UserIcon size={18} /></Link>
         </div>
 
         {isLoggedIn ? (
@@ -114,17 +114,17 @@ export default function HomePage() {
 
       <section className="mini-stats-row">
         <div className="mini-stat-card">
-          <span className="mini-stat-icon">🛍️</span>
+          <span className="mini-stat-icon-badge purple"><BoxIcon size={20} /></span>
           <div className="mini-stat-value">{formatCurrency(pending + received, lang)}</div>
           <div className="mini-stat-label">{t('welcome_total_orders')}</div>
         </div>
         <div className="mini-stat-card">
-          <span className="mini-stat-icon">⏳</span>
+          <span className="mini-stat-icon-badge amber"><ClockIcon size={20} /></span>
           <div className="mini-stat-value">{formatCurrency(pending, lang)}</div>
           <div className="mini-stat-label">{t('panel_pending')}</div>
         </div>
         <div className="mini-stat-card">
-          <span className="mini-stat-icon">✅</span>
+          <span className="mini-stat-icon-badge green"><CheckIcon size={18} /></span>
           <div className="mini-stat-value">{formatCurrency(received, lang)}</div>
           <div className="mini-stat-label">{t('panel_received')}</div>
         </div>

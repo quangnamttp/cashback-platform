@@ -29,6 +29,7 @@ export function AppLoadingScreen() {
     <div className={`app-boot-splash${hidden ? ' app-boot-splash-hidden' : ''}`} aria-hidden={hidden}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/logo.png" alt="Hoàn Tiền DV" width={72} height={72} />
+      <span className="app-boot-splash-text">Hoàn Tiền DV</span>
     </div>
   );
 }

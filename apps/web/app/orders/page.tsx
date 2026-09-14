@@ -281,7 +281,7 @@ export default function OrdersPage() {
               <span className="order-card-id">#{displayOrderId(activeOrder.id)}</span>
             </div>
 
-            <h3 style={{ marginTop: 8, marginBottom: 0 }}>{activeOrder.productName}</h3>
+            <h3 className="modal-product-title-clamp" style={{ marginTop: 8, marginBottom: 0 }}>{activeOrder.productName}</h3>
 
             <div className="modal-amount-box">
               <div>
@@ -338,7 +338,7 @@ export default function OrdersPage() {
                             </div>
                           </div>
                           {step < 5 && (
-                            <div style={{ display: 'flex' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
                               <div className="modal-timeline-line" />
                             </div>
                           )}
@@ -357,7 +357,7 @@ export default function OrdersPage() {
                     <span>{activeOrder.orderDate ? activeOrder.orderDate.toDate().toLocaleString('vi-VN') : '—'}</span>
                   </div>
                 </div>
-                <div style={{ display: 'flex' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <div className="modal-timeline-line" />
                 </div>
                 <div className="modal-timeline-item">
