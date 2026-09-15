@@ -138,6 +138,37 @@ export default function AdminWithdrawalsPage() {
     return result;
   }, [ledger, rows]);
 
+  // Extra safety gate for APPROVE/MARK_PAID specifically (REJECT/delete
+  // never move money out, so they don't need this) — firestore.rules
+  // can't itself sum a collection to validate a withdrawal's amount (see
+  // availableByUser's own comment above), so this is the last human
+  // checkpoint before approving/paying a request whose real balance
+  // (computed live, same formula the customer's own wallet page uses)
+  // has gone negative. In practice this has so far only ever been stale
+  // test data (rows literally named "(KHONG PHAI THAT)"), not a real
+  // customer — but asks for one explicit extra confirmation either way,
+  // instead of relying on the admin noticing the red "⚠️ Vượt số dư" text
+  // on their own before clicking. Skips ADMIN_WALLET rows — their
+  // balance isn't tracked in cashbackLedger the same way (see the
+  // "Số dư khả dụng của khách" column showing "—" for them below).
+  // Returns whether the action actually went through (false when the
+  // admin cancels the warning) — callers that also close the detail
+  // modal on success (see "Xác nhận đã chuyển khoản" below) check this
+  // instead of closing unconditionally, so cancelling the warning just
+  // returns to the still-open detail view instead of also dismissing it.
+  const confirmAndDecide = async (row: WithdrawalRequest, decision: 'APPROVE' | 'MARK_PAID'): Promise<boolean> => {
+    const bal = row.userId === ADMIN_WALLET_ID ? 0 : (availableByUser.get(row.userId) ?? 0);
+    if (bal < 0) {
+      const actionLabel = decision === 'APPROVE' ? 'duyệt' : 'xác nhận đã thanh toán';
+      const ok = window.confirm(
+        `⚠️ Số dư thật của khách này đang âm ${formatCurrency(Math.abs(bal), lang)} (tổng các lệnh rút đã vượt quá số tiền họ thực sự có).\n\nBạn có chắc chắn muốn ${actionLabel} lệnh rút này không?`,
+      );
+      if (!ok) return false;
+    }
+    await decide(row.id, decision);
+    return true;
+  };
+
   const filteredRows = rows
     .filter((row) => {
       const matchesStatus =
@@ -347,13 +378,13 @@ export default function AdminWithdrawalsPage() {
                       </button>
                       {row.status === 'PENDING_ADMIN' && (
                         <>
-                          <button className="btn-approve" disabled={busyId === row.id} onClick={() => decide(row.id, 'APPROVE')}>Đã duyệt</button>
+                          <button className="btn-approve" disabled={busyId === row.id} onClick={() => confirmAndDecide(row, 'APPROVE')}>Đã duyệt</button>
                           <button className="btn-reject" disabled={busyId === row.id} onClick={() => openReject(row)}>Từ chối</button>
                         </>
                       )}
                       {row.status === 'APPROVED' && (
                         <>
-                          <button className="btn-approve" disabled={busyId === row.id} onClick={() => decide(row.id, 'MARK_PAID')}>Đã thanh toán</button>
+                          <button className="btn-approve" disabled={busyId === row.id} onClick={() => confirmAndDecide(row, 'MARK_PAID')}>Đã thanh toán</button>
                           <button className="btn-reject" disabled={busyId === row.id} onClick={() => openReject(row)}>Từ chối</button>
                         </>
                       )}
@@ -502,7 +533,7 @@ export default function AdminWithdrawalsPage() {
                   <button
                     className="btn-approve"
                     disabled={busyId === detailRow.id}
-                    onClick={async () => { await decide(detailRow.id, 'APPROVE'); }}
+                    onClick={async () => { await confirmAndDecide(detailRow, 'APPROVE'); }}
                   >
                     Đã duyệt
                   </button>
@@ -511,7 +542,7 @@ export default function AdminWithdrawalsPage() {
                   <button
                     className="btn-approve"
                     disabled={busyId === detailRow.id}
-                    onClick={async () => { await decide(detailRow.id, 'MARK_PAID'); setDetailId(null); }}
+                    onClick={async () => { if (await confirmAndDecide(detailRow, 'MARK_PAID')) setDetailId(null); }}
                   >
                     ✅ Xác nhận đã chuyển khoản
                   </button>
